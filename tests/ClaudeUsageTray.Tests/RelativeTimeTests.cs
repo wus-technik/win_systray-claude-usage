@@ -11,6 +11,9 @@ public class RelativeTimeTests
     [InlineData(0, "just now")]
     [InlineData(59, "just now")]
     [InlineData(60, "1m ago")]
+    [InlineData(61, "1m ago")]                     // 61s should be 1m ago (rounds down)
+    [InlineData(119, "1m ago")]                    // 119s should be 1m ago (rounds down)
+    [InlineData(150, "2m ago")]                    // 150s should be 2m ago
     [InlineData(4 * 60, "4m ago")]
     [InlineData(2 * 3600 + 13 * 60, "2h 13m ago")]
     [InlineData(2 * 3600, "2h ago")]
@@ -22,6 +25,7 @@ public class RelativeTimeTests
     [Theory]
     [InlineData(45 * 60, "45m")]
     [InlineData(30, "1m")]                       // sub-minute rounds up to 1m
+    [InlineData(90, "2m")]                       // 90s rounds up to 2m
     [InlineData(2 * 3600 + 13 * 60, "2h 13m")]
     [InlineData(3 * 3600, "3h")]
     [InlineData(3 * 86400 + 20 * 3600, "3d 20h")]

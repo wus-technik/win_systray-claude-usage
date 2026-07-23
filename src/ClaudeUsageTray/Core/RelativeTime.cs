@@ -6,17 +6,17 @@ public static class RelativeTime
     {
         var elapsed = now - then;
         if (elapsed < TimeSpan.FromMinutes(1)) return "just now";
-        return Span(elapsed) + " ago";
+        return Span(elapsed, roundUpMinutes: false) + " ago";
     }
 
     public static string In(DateTimeOffset target, DateTimeOffset now)
     {
         var remaining = target - now;
         if (remaining <= TimeSpan.Zero) return "now";
-        return Span(remaining);
+        return Span(remaining, roundUpMinutes: true);
     }
 
-    private static string Span(TimeSpan d)
+    private static string Span(TimeSpan d, bool roundUpMinutes)
     {
         if (d.TotalDays >= 1)
         {
@@ -28,6 +28,7 @@ public static class RelativeTime
             int hours = (int)d.TotalHours;
             return d.Minutes > 0 ? $"{hours}h {d.Minutes}m" : $"{hours}h";
         }
-        return $"{Math.Max(1, (int)Math.Ceiling(d.TotalMinutes))}m";
+        int minutes = roundUpMinutes ? (int)Math.Ceiling(d.TotalMinutes) : (int)d.TotalMinutes;
+        return $"{Math.Max(1, minutes)}m";
     }
 }
