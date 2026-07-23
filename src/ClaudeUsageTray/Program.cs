@@ -1,3 +1,6 @@
+using ClaudeUsageTray.Core;
+using ClaudeUsageTray.Tray;
+
 namespace ClaudeUsageTray;
 
 internal static class Program
@@ -5,7 +8,12 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        using var instance = SingleInstance.TryAcquire();
+        if (instance is null) return;
+
         ApplicationConfiguration.Initialize();
-        // TrayApp is wired up in a later task; for now the scaffold just exits.
+        var settingsPath = Settings.DefaultPath;
+        var settings = Settings.Load(settingsPath);
+        Application.Run(new TrayApp(settings, settingsPath, isVelopackInstalled: false));
     }
 }
