@@ -19,7 +19,7 @@ public sealed class TrayApp : ApplicationContext
 
     private readonly ContextMenuStrip _menu;
     private ToolStripMenuItem _modeFive = null!, _modeSeven = null!, _modeBoth = null!;
-    private ToolStripMenuItem _startupItem = null!, _updatedItem = null!;
+    private ToolStripMenuItem _startupItem = null!, _updatedItem = null!, _restartToUpdateItem = null!;
 
     private NotifyIcon? _iconFive;
     private NotifyIcon? _iconSeven;
@@ -107,6 +107,8 @@ public sealed class TrayApp : ApplicationContext
             : _snapshot is null
                 ? "No usage data"
                 : $"Updated {RelativeTime.Ago(_snapshot.FetchedAt, now)}";
+
+        _restartToUpdateItem.Enabled = UpdateCheck.IsUpdateReady;
     }
 
     private void Apply(NotifyIcon icon, char digit, WindowUsage? usage, string label, bool clockwise,
@@ -205,6 +207,15 @@ public sealed class TrayApp : ApplicationContext
 
         _updatedItem = new ToolStripMenuItem("Updated —") { Enabled = false };
 
+        // Disabled until a staged update is downloaded (see Render()). ApplyUpdatesAndRestart
+        // terminates the process, so both NotifyIcons must be disposed first to avoid ghost icons.
+        _restartToUpdateItem = new ToolStripMenuItem("Restart to update", null, (_, _) =>
+        {
+            DisposeNotifyIcon(ref _iconFive);
+            DisposeNotifyIcon(ref _iconSeven);
+            UpdateCheck.RestartToApply();
+        }) { Enabled = false };
+
         var menu = new ContextMenuStrip();
         menu.Items.Add(_modeFive);
         menu.Items.Add(_modeSeven);
@@ -212,6 +223,7 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_startupItem);
         menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => Refresh()));
+        menu.Items.Add(_restartToUpdateItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_updatedItem);
         // Dispose the NotifyIcons before ending the message loop — a process that exits
