@@ -1,0 +1,39 @@
+# Normalize line endings: Git stores text as LF, checks out native on each OS.
+* text=auto
+
+# Source & docs — explicit text, LF in the repo
+*.cs        text diff=csharp
+*.csproj    text
+*.props     text
+*.targets   text
+*.json      text
+*.jsonc     text
+*.xml       text
+*.config    text
+*.md        text
+*.html      text
+*.css       text
+*.js        text
+*.yml       text
+*.yaml      text
+
+# Windows-only files that tools expect with CRLF
+*.sln       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Unix shell scripts must stay LF
+*.sh        text eol=lf
+
+# Binary assets — never touch
+*.ico       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.snk       binary
+*.pfx       binary
+*.nupkg     binary
+*.dll       binary
+*.exe       binary
