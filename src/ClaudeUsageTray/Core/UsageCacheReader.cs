@@ -22,6 +22,7 @@ public static class UsageCacheReader
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var doc = JsonDocument.Parse(stream);
 
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
             if (!doc.RootElement.TryGetProperty("cachedUsageUtilization", out var cached)
                 || cached.ValueKind != JsonValueKind.Object) return null;
             if (!cached.TryGetProperty("fetchedAtMs", out var fetched)

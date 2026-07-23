@@ -110,6 +110,14 @@ public class UsageCacheReaderTests : IDisposable
         Assert.Null(s!.FiveHour);
     }
 
+    [Theory]
+    [InlineData("42")]
+    [InlineData("\"foo\"")]
+    [InlineData("[1, 2, 3]")]
+    [InlineData("null")]
+    public void NonObjectRoot_ReturnsNull(string json)
+        => Assert.Null(UsageCacheReader.TryRead(WriteFixture(json)));
+
     [Fact]
     public void ConfigPath_Override_Wins()
         => Assert.Equal(@"C:\x\claude.json", ConfigPath.Resolve(@"C:\x\claude.json"));
