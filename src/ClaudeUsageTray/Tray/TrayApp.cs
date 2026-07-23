@@ -196,6 +196,7 @@ public sealed class TrayApp : ApplicationContext
             _startupItem.Checked = StartupRegistration.IsEnabled();
             _settings.RunAtStartup = _startupItem.Checked;
             PersistSettings();
+            Render();
         };
 
         _updatedItem = new ToolStripMenuItem("Updated —") { Enabled = false };
