@@ -25,6 +25,7 @@ public sealed class TrayApp : ApplicationContext
     private NotifyIcon? _iconSeven;
     private UsageSnapshot? _snapshot;
     private bool _settingsSaveFailed;
+    private UsagePopup? _popup;
 
     public TrayApp(Settings settings, string settingsPath, bool isVelopackInstalled)
     {
@@ -169,10 +170,13 @@ public sealed class TrayApp : ApplicationContext
         return icon;
     }
 
-    /// <summary>Left-click popup; implemented in UsagePopup (later task).</summary>
+    /// <summary>Left-click popup with both windows, countdowns, and last-updated line.</summary>
     public void ShowPopup()
     {
-        // Filled in by the popup task.
+        if (_popup is { IsDisposed: false }) { _popup.Close(); }
+        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow);
+        _popup.Show();
+        _popup.Activate();
     }
 
     // ---- menu ----
