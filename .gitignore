@@ -1,0 +1,28 @@
+# .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+
+# Velopack packaging output
+Releases/
+publish/
+*.nupkg
+
+# User-specific / IDE
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.idea/
+
+# Rider / VS Code
+*.DotSettings.user
+
+# Logs & misc
+*.log
