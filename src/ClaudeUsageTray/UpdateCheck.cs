@@ -57,7 +57,10 @@ public static class UpdateCheck
         lock (Gate)
         {
             if (_manager is { } manager && (manager.UpdatePendingRestart is not null || _stagedUpdate is not null))
-                manager.ApplyUpdatesAndRestart(_stagedUpdate);
+            {
+                // null is valid here: it applies an update staged in a previous session.
+                manager.ApplyUpdatesAndRestart(_stagedUpdate!);
+            }
         }
     }
 
