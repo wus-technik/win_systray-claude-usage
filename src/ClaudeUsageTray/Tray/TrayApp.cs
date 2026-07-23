@@ -24,6 +24,7 @@ public sealed class TrayApp : ApplicationContext
     private NotifyIcon? _iconFive;
     private NotifyIcon? _iconSeven;
     private UsageSnapshot? _snapshot;
+    private bool _settingsSaveFailed;
 
     public TrayApp(Settings settings, string settingsPath, bool isVelopackInstalled)
     {
@@ -100,9 +101,11 @@ public sealed class TrayApp : ApplicationContext
         if (_iconFive is not null) Apply(_iconFive, '5', _snapshot?.FiveHour, "5h", clockwise: true, stale, now);
         if (_iconSeven is not null) Apply(_iconSeven, '7', _snapshot?.SevenDay, "7d", clockwise: false, stale, now);
 
-        _updatedItem.Text = _snapshot is null
-            ? "No usage data"
-            : $"Updated {RelativeTime.Ago(_snapshot.FetchedAt, now)}";
+        _updatedItem.Text = _settingsSaveFailed
+            ? "Settings could not be saved"
+            : _snapshot is null
+                ? "No usage data"
+                : $"Updated {RelativeTime.Ago(_snapshot.FetchedAt, now)}";
     }
 
     private void Apply(NotifyIcon icon, char digit, WindowUsage? usage, string label, bool clockwise,
@@ -149,8 +152,8 @@ public sealed class TrayApp : ApplicationContext
         bool wantSeven = _settings.DisplayMode is DisplayMode.SevenDay or DisplayMode.Both;
 
         // Best effort only: Windows decides notification-area order and overflow placement.
-        if (!wantFive) { _iconFive?.Dispose(); _iconFive = null; }
-        if (!wantSeven) { _iconSeven?.Dispose(); _iconSeven = null; }
+        if (!wantFive) DisposeNotifyIcon(ref _iconFive);
+        if (!wantSeven) DisposeNotifyIcon(ref _iconSeven);
         if (wantFive && _iconFive is null) _iconFive = CreateIcon();
         if (wantSeven && _iconSeven is null) _iconSeven = CreateIcon();
 
@@ -210,8 +213,8 @@ public sealed class TrayApp : ApplicationContext
         // with visible icons leaves ghost entries in the tray until the user mouses over them.
         menu.Items.Add(new ToolStripMenuItem("Quit", null, (_, _) =>
         {
-            _iconFive?.Dispose(); _iconFive = null;
-            _iconSeven?.Dispose(); _iconSeven = null;
+            DisposeNotifyIcon(ref _iconFive);
+            DisposeNotifyIcon(ref _iconSeven);
             ExitThread();
         }));
         return menu;
@@ -227,11 +230,24 @@ public sealed class TrayApp : ApplicationContext
 
     private void PersistSettings()
     {
-        try { _settings.Save(_settingsPath); }
+        try
+        {
+            _settings.Save(_settingsPath);
+            _settingsSaveFailed = false;
+        }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _updatedItem.Text = "Settings could not be saved";
+            _settingsSaveFailed = true;
         }
+    }
+
+    private static void DisposeNotifyIcon(ref NotifyIcon? icon)
+    {
+        if (icon is null) return;
+        var rendered = icon.Icon;
+        icon.Dispose();
+        rendered?.Dispose();
+        icon = null;
     }
 
     // ---- teardown ----
@@ -240,8 +256,8 @@ public sealed class TrayApp : ApplicationContext
     {
         if (disposing)
         {
-            _iconFive?.Dispose();
-            _iconSeven?.Dispose();
+            DisposeNotifyIcon(ref _iconFive);
+            DisposeNotifyIcon(ref _iconSeven);
             _watcher?.Dispose();
             _debounce.Dispose();
             _retry.Dispose();
