@@ -60,13 +60,14 @@ jobs:
             Write-Host "Prior releases found; downloading baseline for delta generation."
             Add-Content -Path $env:GITHUB_OUTPUT -Value "has_releases=true"
           }
+          exit 0
 
       - name: Download previous release assets (delta baseline)
         if: steps.check_releases.outputs.has_releases == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: dnx --yes vpk --version 1.2.0 download github --repoUrl https://github.com/${{ github.repository }}
+        run: dnx --yes vpk --version 1.2.0 download github --repoUrl https://github.com/${{ github.repository }} --token $env:GH_TOKEN
 
       - name: Publish self-contained app
         shell: pwsh
@@ -80,4 +81,4 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: dnx --yes vpk --version 1.2.0 upload github --repoUrl https://github.com/${{ github.repository }} --publish --releaseName "Claude Usage Tray $env:VERSION" --tag "v$env:VERSION"
+        run: dnx --yes vpk --version 1.2.0 upload github --repoUrl https://github.com/${{ github.repository }} --publish --releaseName "Claude Usage Tray $env:VERSION" --tag "v$env:VERSION" --token $env:GH_TOKEN
