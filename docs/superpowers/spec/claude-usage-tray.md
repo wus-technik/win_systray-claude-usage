@@ -101,7 +101,7 @@ running tray.
 | `UsageSnapshot` (+ `WindowUsage`) | Domain model: `FetchedAt`, `FiveHour {Percent, ResetsAt}`, `SevenDay {Percent, ResetsAt}` | n/a (data) |
 | `Severity` | Pure `(percent, thresholds) → Green \| Orange \| Red` | yes |
 | `RelativeTime` | Pure formatting: "resets in 2h 13m", "updated 4m ago" | yes |
-| `IconRenderer` | `(text, color, dpiSize) → Icon` via GDI+; DPI-aware | smoke test |
+| `IconRenderer` | `(window, percent, severity, dpiSize) → Icon` — draws the progress ring + center digit via GDI+; DPI-aware | smoke test |
 | `Settings` | Load/save display mode, thresholds, run-at-startup, update-feed | yes (round-trip) |
 | `StartupRegistration` | Toggle the per-user `Run` registry key | manual |
 | `TrayApp` | WinForms glue: `NotifyIcon`(s), watcher + timer, context menu, popup | manual |
@@ -134,20 +134,34 @@ running tray.
 
 ### 5.4 Missing / unavailable data
 - No file, or no `cachedUsageUtilization` key, or unparseable:
-  neutral **"—"** icon, tooltip **"No Claude usage data yet — run Claude Code."**
-  No crash, no error dialog.
+  neutral icon — empty grey ring with a **"—"** in the center — tooltip
+  **"No Claude usage data yet — run Claude Code."** No crash, no error dialog.
 
 ---
 
 ## 6. Tray UI
 
 ### 6.1 Icons
-- Each icon renders its **integer percentage** (1–3 digits; `%` sign dropped to
-  save space) into the icon bitmap, tinted by `Severity`.
+
+Each icon is a **progress ring** rendered into the icon bitmap with three
+independent channels:
+
+- **Ring fill = usage.** The arc starts at 12 o'clock and fills proportionally to
+  the integer percentage (a thin sliver at low %, nearly closed near 100 %; `>100 %`
+  clamps to a full ring). The 5h ring fills **clockwise**, the 7d ring
+  **counter-clockwise** — a subtle secondary tell of which window is which.
+- **Ring color = `Severity`.** Green `< 50 %`, orange `50–85 %`, red `> 85 %`
+  (§5.2). A faint same-hue track shows the unused remainder.
+- **Center digit = the window.** A single centered digit — **`5`** for the
+  5-hour window, **`7`** for the 7-day window. One glyph keeps the center crisp
+  at 16 px, and the digit maps directly to the window name (no legend needed).
+- The **exact integer percentage is not drawn in the icon** — it lives in the
+  per-icon tooltip and the left-click popup (§6.3). The icon conveys *how full*
+  plus severity at a glance.
 - Rendering is **DPI-aware**: render at the system small-icon size
-  (`SM_CXSMICON`, scaled per monitor) so digits stay crisp.
-- **Order is fixed: 5h (left), 7d (right).** Per-icon tooltip disambiguates:
-  `5h · 42% · resets in 3h 10m` / `7d · 13% · resets in 3d 20h`.
+  (`SM_CXSMICON`, scaled per monitor) so the ring and digit stay crisp.
+- **Order is fixed: 5 (left), 7 (right).** Per-icon tooltip carries the full
+  state: `5h · 42% · resets in 3h 10m` / `7d · 13% · resets in 3d 20h`.
 
 ### 6.2 Display mode (per-icon context switch)
 Right-click radio group: **Show 5h / Show 7d / Show both.**
@@ -171,8 +185,9 @@ A compact popup near the tray showing:
 - Quit
 
 ### 6.5 Accessibility
-- Severity is never conveyed by color alone — the number is always shown, and
-  tooltips carry the full textual state.
+- Severity is never conveyed by color alone — it is redundantly encoded by the
+  **ring fill amount**, and the tooltip and left-click popup always carry the
+  full textual state (window, exact percentage, reset countdown, staleness).
 
 ---
 
