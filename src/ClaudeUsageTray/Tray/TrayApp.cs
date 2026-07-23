@@ -191,7 +191,7 @@ public sealed class TrayApp : ApplicationContext
 
         _startupItem = new ToolStripMenuItem("Run at startup")
         {
-            Checked = _isVelopackInstalled && StartupRegistration.IsEnabled(),
+            Checked = _isVelopackInstalled && TryIsStartupEnabled(),
             Enabled = _isVelopackInstalled,
             ToolTipText = _isVelopackInstalled ? "" : "Available only in the installed app.",
         };
@@ -209,7 +209,7 @@ public sealed class TrayApp : ApplicationContext
             {
                 // Startup registration is best-effort (e.g. GPO-locked HKCU). The checkbox must
                 // never lie about a state it failed to change, so re-read the actual state.
-                try { _startupItem.Checked = StartupRegistration.IsEnabled(); } catch { /* leave unchanged */ }
+                _startupItem.Checked = TryIsStartupEnabled();
             }
             Render();
         };
@@ -222,7 +222,12 @@ public sealed class TrayApp : ApplicationContext
         {
             DisposeNotifyIcon(ref _iconFive);
             DisposeNotifyIcon(ref _iconSeven);
-            UpdateCheck.RestartToApply();
+            try { UpdateCheck.RestartToApply(); }
+            catch { /* Velopack apply failed; recover below */ }
+            // Still running means the apply did not restart the process (no-op on stale
+            // readiness, or a failed apply) — recreate the icons so the app stays reachable.
+            ApplyDisplayMode();
+            Render();
         }) { Enabled = false };
 
         var menu = new ContextMenuStrip();
@@ -274,6 +279,13 @@ public sealed class TrayApp : ApplicationContext
         icon.Dispose();
         rendered?.Dispose();
         icon = null;
+    }
+
+    /// <summary>Registry access can be GPO-locked; a failed read must never crash the tray.</summary>
+    private static bool TryIsStartupEnabled()
+    {
+        try { return StartupRegistration.IsEnabled(); }
+        catch { return false; }
     }
 
     // ---- teardown ----
