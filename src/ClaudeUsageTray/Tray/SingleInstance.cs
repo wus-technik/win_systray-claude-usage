@@ -16,7 +16,8 @@ public sealed class SingleInstance : IDisposable
 
     public void Dispose()
     {
-        _mutex.ReleaseMutex();
-        _mutex.Dispose();
+        try { _mutex.ReleaseMutex(); }
+        catch (ApplicationException) { /* not owned by this thread; OS releases on process exit */ }
+        finally { _mutex.Dispose(); }
     }
 }
