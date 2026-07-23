@@ -197,11 +197,20 @@ public sealed class TrayApp : ApplicationContext
         };
         _startupItem.Click += (_, _) =>
         {
-            if (StartupRegistration.IsEnabled()) StartupRegistration.Disable();
-            else StartupRegistration.Enable();
-            _startupItem.Checked = StartupRegistration.IsEnabled();
-            _settings.RunAtStartup = _startupItem.Checked;
-            PersistSettings();
+            try
+            {
+                if (StartupRegistration.IsEnabled()) StartupRegistration.Disable();
+                else StartupRegistration.Enable();
+                _startupItem.Checked = StartupRegistration.IsEnabled();
+                _settings.RunAtStartup = _startupItem.Checked;
+                PersistSettings();
+            }
+            catch
+            {
+                // Startup registration is best-effort (e.g. GPO-locked HKCU). The checkbox must
+                // never lie about a state it failed to change, so re-read the actual state.
+                try { _startupItem.Checked = StartupRegistration.IsEnabled(); } catch { /* leave unchanged */ }
+            }
             Render();
         };
 

@@ -13,8 +13,12 @@ internal static class Program
         VelopackApp.Build()
             .OnFirstRun(_ =>
             {
-                if (Settings.Load(Settings.DefaultPath).RunAtStartup)
-                    StartupRegistration.Enable();
+                try
+                {
+                    if (Settings.Load(Settings.DefaultPath).RunAtStartup)
+                        StartupRegistration.Enable();
+                }
+                catch { /* startup registration is best-effort; a locked-down registry must not kill the tray */ }
             })
             .OnBeforeUninstallFastCallback(_ => StartupRegistration.Disable())
             .Run();
@@ -31,8 +35,12 @@ internal static class Program
         bool isInstalled = UpdateCheck.IsInstalled;
         if (isInstalled)
         {
-            if (settings.RunAtStartup) StartupRegistration.Enable();
-            else StartupRegistration.Disable();
+            try
+            {
+                if (settings.RunAtStartup) StartupRegistration.Enable();
+                else StartupRegistration.Disable();
+            }
+            catch { /* startup registration is best-effort; a locked-down registry must not kill the tray */ }
         }
 
         _ = UpdateCheck.RunPeriodicAsync(); // fire-and-forget; never blocks the tray

@@ -7,7 +7,7 @@ calls to Anthropic, no tokens, no credentials**. Spec: `docs/superpowers/spec/cl
 
 ## Install
 
-Run `ClaudeUsageTray-win-Setup.exe` from the latest release. Per-user install
+Run `WusTechnik.ClaudeUsageTray-win-Setup.exe` from the latest release. Per-user install
 (no admin), auto-updates via Velopack, starts at login by default.
 
 ## Usage

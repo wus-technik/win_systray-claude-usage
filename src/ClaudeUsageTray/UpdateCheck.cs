@@ -47,6 +47,8 @@ public static class UpdateCheck
         lock (Gate)
         {
             _manager = manager;
+            // Best-effort cache only; manager.UpdatePendingRestart (checked via IsUpdateReady/
+            // RestartToApply) is the source of truth for whether an update is actually staged.
             _stagedUpdate = updates;
         }
     }
