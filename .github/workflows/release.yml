@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Validate tag matches project version
+        shell: pwsh
+        run: |
+          $csprojPath = "src/ClaudeUsageTray/ClaudeUsageTray.csproj"
+          $csproj = Get-Content -Path $csprojPath -Raw
+          if ($csproj -notmatch '<Version>([^<]+)</Version>') {
+            Write-Error "Could not find a <Version> element in $csprojPath"
+            exit 1
+          }
+          $version = $Matches[1]
+          $tag = $env:GITHUB_REF_NAME
+          $expectedTag = "v$version"
+          if ($tag -ne $expectedTag) {
+            Write-Error "Pushed tag '$tag' does not match the project version. Expected tag '$expectedTag' for <Version>$version</Version> in $csprojPath."
+            exit 1
+          }
+          Write-Host "Tag '$tag' matches project version '$version'."
+          Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-restore
+
+      - name: Check for existing public releases
+        id: check_releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $releases = gh release list --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releases)) {
+            Write-Host "No prior releases found; skipping delta baseline download for this (first) release."
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "has_releases=false"
+          } else {
+            Write-Host "Prior releases found; downloading baseline for delta generation."
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "has_releases=true"
+          }
+
+      - name: Download previous release assets (delta baseline)
+        if: steps.check_releases.outputs.has_releases == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: dnx --yes vpk --version 1.2.0 download github --repoUrl https://github.com/${{ github.repository }}
+
+      - name: Publish self-contained app
+        shell: pwsh
+        run: dotnet publish src/ClaudeUsageTray/ClaudeUsageTray.csproj --configuration Release --runtime win-x64 --self-contained true -o artifacts\publish
+
+      - name: Pack Velopack release
+        shell: pwsh
+        run: dnx --yes vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packVersion $env:VERSION --packDir artifacts\publish --mainExe ClaudeUsageTray.exe
+
+      - name: Upload and publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: dnx --yes vpk --version 1.2.0 upload github --repoUrl https://github.com/${{ github.repository }} --publish --releaseName "Claude Usage Tray $env:VERSION" --tag "v$env:VERSION"
