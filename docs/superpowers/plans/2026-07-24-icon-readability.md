@@ -174,9 +174,23 @@ git commit -m "feat: filled-badge tray icons readable at 16px on dark and light 
 - Consumes: the badge design from Task 1 (visual parity only — no code dependency).
 - Produces: docs consistent with the shipped renderer; version ready for the `v0.2.0` tag.
 
-- [ ] **Step 1: Update the README icon line**
+- [ ] **Step 1: Update the README icon wording (both occurrences)**
 
-In `README.md`, replace the line
+In `README.md`:
+
+a) In the opening paragraph, replace
+
+```markdown
+as progress-ring icons next to the clock. Passive reader of the cache Claude Code
+```
+
+with
+
+```markdown
+as filled-badge icons next to the clock. Passive reader of the cache Claude Code
+```
+
+b) In the Usage section, replace the line
 
 ```markdown
 - **Icons:** ring fill = usage, color = severity (green < 50 %, orange 50–85 %,
@@ -187,6 +201,8 @@ with
 ```markdown
 - **Icons:** badge fill = usage, color = severity (green < 50 %, orange 50–85 %,
 ```
+
+c) Verify no ring wording remains: `grep -in "ring" README.md` must return no icon-design matches (the grey `—` no-data line is already correct — the em-dash glyph is unchanged from v0.1).
 
 - [ ] **Step 2: Update `docs/icon-preview.html` to the badge design**
 
@@ -203,16 +219,20 @@ a) Replace the `arcIcon` function (the whole `function arcIcon(letter, pct, dir,
     const C = themeColors();
     const cx = px/2, cy = px/2;
     const color = opts.color || severity(pct, C);
-    const dim = opts.dim ? 0.5 : 1;
+    // Explicit per-element alphas — MUST mirror IconRenderer.cs exactly:
+    // disc 90 (dim 50), wedge/rim 255 (dim 120), digit 255 (dim 160), halo 140 (dim 90).
+    const A = opts.dim
+      ? { disc: 50/255, solid: 120/255, digit: 160/255, halo: 90/255 }
+      : { disc: 90/255, solid: 1,       digit: 1,       halo: 140/255 };
     const rad = (px/2) - 0.5*S;
 
     // Translucent base disc (unused fraction).
-    ctx.globalAlpha = dim * 0.35; ctx.fillStyle = color;
+    ctx.globalAlpha = A.disc; ctx.fillStyle = color;
     ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI*2); ctx.fill();
 
     // Solid usage wedge from 12 o'clock.
     if (pct > 0) {
-      ctx.globalAlpha = dim;
+      ctx.globalAlpha = A.solid;
       const start = -Math.PI/2;
       const sweep = Math.min(pct,100)/100 * Math.PI*2;
       ctx.beginPath(); ctx.moveTo(cx, cy);
@@ -222,17 +242,17 @@ a) Replace the `arcIcon` function (the whole `function arcIcon(letter, pct, dir,
     }
 
     // 1 px rim.
-    ctx.globalAlpha = dim; ctx.lineWidth = 1*S; ctx.strokeStyle = color;
+    ctx.globalAlpha = A.solid; ctx.lineWidth = 1*S; ctx.strokeStyle = color;
     ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI*2); ctx.stroke();
 
     // White digit over a dark halo — reads on both halves and on light taskbars.
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.font = '700 ' + (9.6*S) + 'px "Segoe UI", system-ui, sans-serif';
-    ctx.globalAlpha = dim * 0.55; ctx.fillStyle = '#000';
+    ctx.globalAlpha = A.halo; ctx.fillStyle = '#000';
     for (let dx = -1; dx <= 1; dx++)
       for (let dy = -1; dy <= 1; dy++)
         if (dx || dy) ctx.fillText(letter, cx + dx*S, cy + 0.5*S + dy*S);
-    ctx.globalAlpha = dim; ctx.fillStyle = opts.labelColor || '#fff';
+    ctx.globalAlpha = A.digit; ctx.fillStyle = opts.labelColor || '#fff';
     ctx.fillText(letter, cx, cy + 0.5*S);
     return c;
   }
