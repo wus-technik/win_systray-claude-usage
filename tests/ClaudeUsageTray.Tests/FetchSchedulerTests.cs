@@ -32,13 +32,25 @@ public class FetchSchedulerTests
     }
 
     [Fact]
-    public void RateLimited_WithoutRetryAfter_Blocks15Minutes()
+    public void RateLimited_WithoutRetryAfter_Blocks60Seconds()
     {
         var s = new FetchScheduler();
         s.RecordAttempt(T0);
         s.RecordRateLimited(T0, retryAfter: null);
-        Assert.False(s.CanFetch(T0.AddMinutes(14)));
-        Assert.True(s.CanFetch(T0.AddMinutes(15)));
+        Assert.False(s.CanFetch(T0.AddSeconds(59)));
+        Assert.True(s.CanFetch(T0.AddSeconds(60)));
+    }
+
+    [Fact]
+    public void RateLimited_WithZeroRetryAfter_Blocks60SecondFloor()
+    {
+        // The endpoint answers Retry-After: 0; the 60 s floor prevents a busy-loop but still
+        // lets the tray catch the next brief window instead of going blind for minutes.
+        var s = new FetchScheduler();
+        s.RecordAttempt(T0);
+        s.RecordRateLimited(T0, TimeSpan.Zero);
+        Assert.False(s.CanFetch(T0.AddSeconds(59)));
+        Assert.True(s.CanFetch(T0.AddSeconds(60)));
     }
 
     [Fact]
@@ -52,13 +64,13 @@ public class FetchSchedulerTests
     }
 
     [Fact]
-    public void RateLimited_WithShortRetryAfter_StillBlocks15Minutes()
+    public void RateLimited_WithRetryAfterAboveFloor_HonorsRetryAfter()
     {
         var s = new FetchScheduler();
         s.RecordAttempt(T0);
         s.RecordRateLimited(T0, TimeSpan.FromMinutes(2));
-        Assert.False(s.CanFetch(T0.AddMinutes(14)));
-        Assert.True(s.CanFetch(T0.AddMinutes(15)));
+        Assert.False(s.CanFetch(T0.AddSeconds(119)));
+        Assert.True(s.CanFetch(T0.AddSeconds(120)));
     }
 
     [Fact]
@@ -109,12 +121,12 @@ public class FetchSchedulerTests
     }
 
     [Fact]
-    public void RateLimited_WithNegativeRetryAfter_StillBlocks15Minutes()
+    public void RateLimited_WithNegativeRetryAfter_FallsBackToFloor()
     {
         var s = new FetchScheduler();
         s.RecordAttempt(T0);
         s.RecordRateLimited(T0, TimeSpan.FromMinutes(-5)); // HTTP-date in the past
-        Assert.False(s.CanFetch(T0.AddMinutes(14)));
-        Assert.True(s.CanFetch(T0.AddMinutes(15)));
+        Assert.False(s.CanFetch(T0.AddSeconds(59)));
+        Assert.True(s.CanFetch(T0.AddSeconds(60)));
     }
 }

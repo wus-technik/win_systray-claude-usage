@@ -22,8 +22,10 @@ public sealed class TrayApp : ApplicationContext
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
     private readonly System.Windows.Forms.Timer _poll = new() { Interval = 300_000 };
     private readonly FetchScheduler _fetchScheduler = new();
+    private readonly FetchLog _log = new(FetchLog.DefaultPath);
     private bool _fetchInFlight;
     private string? _rejectedToken;
+    private string _lastFetchStatus = "no fetch yet";
 
     private readonly ContextMenuStrip _menu;
     private ToolStripMenuItem _modeFive = null!, _modeSeven = null!, _modeBoth = null!;
@@ -115,12 +117,15 @@ public sealed class TrayApp : ApplicationContext
     private void StartApiFetch()
     {
         var now = DateTimeOffset.UtcNow;
-        if (_fetchInFlight || !_fetchScheduler.CanFetch(now)) return;
+        if (_fetchInFlight) return; // transient; not worth logging on every timer tick
+        if (!_fetchScheduler.CanFetch(now)) { _log.Write(now, "skip: budget/backoff gate not open yet"); return; }
         var token = CredentialsReader.TryReadAccessToken(CredentialsReader.DefaultPath, now);
-        if (token is null || token == _rejectedToken) return;
+        if (token is null) { _log.Write(now, "skip: no valid access token (missing/expired/near-expiry)"); return; }
+        if (token == _rejectedToken) { _log.Write(now, "skip: token previously rejected (401/403); waiting for refresh"); return; }
 
         _fetchInFlight = true;
         _fetchScheduler.RecordAttempt(now);
+        _log.Write(now, "attempt: GET oauth/usage");
         _ = Task.Run(async () =>
         {
             var result = await UsageApiClient.FetchAsync(Http, token, DateTimeOffset.UtcNow, CancellationToken.None)
@@ -138,24 +143,36 @@ public sealed class TrayApp : ApplicationContext
         {
             _fetchScheduler.RecordSuccess();
             _rejectedToken = null;
-            if (SnapshotPrecedence.IsNewer(result.Snapshot, _snapshot))
+            bool adopted = SnapshotPrecedence.IsNewer(result.Snapshot, _snapshot);
+            if (adopted)
             {
                 _snapshot = result.Snapshot;
                 _consecutiveReadFailures = 0;
             }
+            string five = result.Snapshot.FiveHour?.Percent.ToString() ?? "-";
+            string seven = result.Snapshot.SevenDay?.Percent.ToString() ?? "-";
+            _lastFetchStatus = $"live · 5h={five}% 7d={seven}%";
+            _log.Write(now, $"200 ok: 5h={five}% 7d={seven}% ({(adopted ? "adopted" : "not newer than current, kept")})");
         }
         else if (result.Unauthorized)
         {
             // Claude Code owns the credentials; wait for it to refresh them rather than retrying.
             _rejectedToken = token;
+            _lastFetchStatus = "token rejected (401/403)";
+            _log.Write(now, "401/403 unauthorized: token rejected; waiting for Claude Code to refresh it");
         }
         else if (result.RateLimited)
         {
             _fetchScheduler.RecordRateLimited(now, result.RetryAfter);
+            string ra = result.RetryAfter is { } r ? $"{(int)r.TotalSeconds}s" : "none";
+            _lastFetchStatus = "rate-limited (429)";
+            _log.Write(now, $"429 rate-limited: retry-after={ra}; next attempt >= 15 min");
         }
         else
         {
             _fetchScheduler.RecordFailure(now);
+            _lastFetchStatus = "network/other error";
+            _log.Write(now, "network/other error: no response; escalating 5/10/20 min backoff");
         }
         Render();
     }
@@ -245,7 +262,7 @@ public sealed class TrayApp : ApplicationContext
     public void ShowPopup()
     {
         if (_popup is { IsDisposed: false }) { _popup.Close(); }
-        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow);
+        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow, _lastFetchStatus);
         _popup.Show();
         _popup.Activate();
     }

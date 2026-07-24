@@ -5,7 +5,7 @@ namespace ClaudeUsageTray.Tray;
 /// <summary>Compact popup near the tray: both windows as colored bars, countdowns, last-updated line.</summary>
 public sealed class UsagePopup : Form
 {
-    public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now)
+    public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now, string? lastFetchStatus = null)
     {
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
         Text = "Claude Usage";
@@ -45,6 +45,17 @@ public sealed class UsagePopup : Form
                 AutoSize = true,
                 ForeColor = stale ? Color.Firebrick : SystemColors.GrayText,
                 Margin = new Padding(0, 8, 0, 0),
+            });
+        }
+
+        if (!string.IsNullOrEmpty(lastFetchStatus))
+        {
+            layout.Controls.Add(new Label
+            {
+                Text = $"Fetch: {lastFetchStatus}",
+                AutoSize = true,
+                ForeColor = SystemColors.GrayText,
+                Margin = new Padding(0, 2, 0, 0),
             });
         }
 

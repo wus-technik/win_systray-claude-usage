@@ -2,14 +2,21 @@ namespace ClaudeUsageTray.Core;
 
 /// <summary>
 /// Budget gate for usage-API fetches: a 30 s floor between attempts, a rolling-hour attempt
-/// cap (manual and timed fetches combined), a ≥ 15 min penalty on any rate limit, and
+/// cap (manual and timed fetches combined), a proportionate rate-limit backoff, and
 /// 5/10/20-minute network-failure backoff. Pure state machine driven by caller-supplied
 /// timestamps — no clocks, no threads, fully unit-testable.
 /// </summary>
 public sealed class FetchScheduler
 {
     private static readonly TimeSpan Floor = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan RateLimitPenalty = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// Minimum wait after a 429. The endpoint's per-token budget is shared with Claude Code and
+    /// recovers within ~90 s (it answers <c>Retry-After: 0</c>), so a flat multi-minute penalty
+    /// would make the tray miss every brief window and show stale data indefinitely. A long
+    /// <c>Retry-After</c> is still honored in full; the rolling-hour cap is the real abuse guard.
+    /// </summary>
+    private static readonly TimeSpan RateLimitFloor = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan BudgetWindow = TimeSpan.FromHours(1);
 
     private readonly int _maxPerHour;
@@ -36,7 +43,7 @@ public sealed class FetchScheduler
     public void RecordSuccess() => _failureStreak = 0;
 
     public void RecordRateLimited(DateTimeOffset now, TimeSpan? retryAfter)
-        => _notBefore = now + (retryAfter > RateLimitPenalty ? retryAfter.Value : RateLimitPenalty);
+        => _notBefore = now + (retryAfter is { } ra && ra > RateLimitFloor ? ra : RateLimitFloor);
 
     public void RecordFailure(DateTimeOffset now)
     {
