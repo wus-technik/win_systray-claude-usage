@@ -26,14 +26,14 @@ the 5h window, the 7d window, or both.
 - Give an at-a-glance view of Claude 5h and 7d usage from the Windows tray.
 - Stay strictly **ToS-clean**: read only local data that the official Claude
   Code client writes; never call the undocumented usage endpoint, never read or
-  use OAuth tokens.
+  use OAuth tokens. *(superseded in v0.3 — see amendment note above: the app now polls the usage endpoint read-only with Claude Code's existing token under a strict budget)*
 - Easy per-user install with painless auto-updates (no admin rights).
 
 ### Non-Goals (v1)
 - **Actively refreshing** usage via the OAuth endpoint
   (`api.anthropic.com/api/oauth/usage`). Using the local OAuth token from a
   third-party product violates Anthropic's ToS (as of Feb 2026) and the endpoint
-  is undocumented. Explicitly out of scope. See §9.
+  is undocumented. Explicitly out of scope. See §9. *(superseded in v0.3 — this is now implemented; see amendment note above)*
 - Weekly-scoped / per-model (Opus, Sonnet, Fable) sub-limits.
 - Spend / extra-usage credit display.
 - Non-Windows platforms.
@@ -233,18 +233,20 @@ Persisted to `%APPDATA%\ClaudeUsageTray\settings.json`:
 
 ## 9. Compliance & Security Notes
 
+> **Note (v0.3):** several statements in this section describe the superseded v0.1 network posture — each is flagged inline. The authoritative current description is docs/superpowers/specs/2026-07-24-live-usage-fetch-design.md.
+
 - **ToS-clean by construction.** The app reads only `cachedUsageUtilization`
   from `%USERPROFILE%\.claude.json`, a cache the official Claude Code client
   writes. It does **not** read `.credentials.json`, does **not** read or use any
-  OAuth token, and makes **no** network requests to Anthropic (or anywhere).
+  OAuth token, and makes **no** network requests to Anthropic (or anywhere). *(superseded in v0.3 — the app now makes exactly one kind of read-only request to Anthropic's usage endpoint; see amendment note above)*
 - The undocumented `api.anthropic.com/api/oauth/usage` endpoint is **explicitly
   not used** — calling it from a third-party product would violate Anthropic's
-  ToS. This is the reason active-refresh is a non-goal (§1).
+  ToS. This is the reason active-refresh is a non-goal (§1). *(superseded in v0.3 — the endpoint is now used read-only with Claude Code's own token under a strict self-imposed budget, following the approach proven by community tools; see the v0.3 design spec)*
 - No secrets are stored or transmitted by the app. Settings contain only display
   preferences.
 - The only outbound network traffic the app makes at all is the **Velopack
   update check** to the configured feed (GitHub / file share) — never to
-  Anthropic.
+  Anthropic. *(superseded in v0.3 — usage polling to Anthropic was added; see amendment note above)*
 
 ---
 
