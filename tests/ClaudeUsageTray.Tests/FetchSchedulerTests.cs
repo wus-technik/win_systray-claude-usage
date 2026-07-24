@@ -97,4 +97,24 @@ public class FetchSchedulerTests
         Assert.False(s.CanFetch(T0.AddMinutes(30)));           // floor long past; budget blocks
         Assert.True(s.CanFetch(T0.AddMinutes(60)));
     }
+
+    [Fact]
+    public void DefaultCap_Is20PerRollingHour()
+    {
+        var s = new FetchScheduler(); // production default
+        for (int i = 0; i < 20; i++)
+            s.RecordAttempt(T0.AddSeconds(i * 31)); // spaced past the 30 s floor
+        Assert.False(s.CanFetch(T0.AddMinutes(30)));            // 21st attempt blocked
+        Assert.True(s.CanFetch(T0.AddMinutes(61)));             // oldest aged out
+    }
+
+    [Fact]
+    public void RateLimited_WithNegativeRetryAfter_StillBlocks15Minutes()
+    {
+        var s = new FetchScheduler();
+        s.RecordAttempt(T0);
+        s.RecordRateLimited(T0, TimeSpan.FromMinutes(-5)); // HTTP-date in the past
+        Assert.False(s.CanFetch(T0.AddMinutes(14)));
+        Assert.True(s.CanFetch(T0.AddMinutes(15)));
+    }
 }
