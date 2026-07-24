@@ -11,10 +11,12 @@
 A small Windows **notification-area (system tray)** application that shows the
 current user's Claude **5-hour** and **7-day** usage as percentages, next to the
 clock. It is a **passive reader** of the usage data that Claude Code already
-caches on the local machine — it performs **no network calls and touches no
-credentials**. Values are rendered into tray icons, tinted green/orange/red by
-severity, with a right-click switch to show the 5h window, the 7d window, or
-both.
+caches on the local machine — since v0.3 it additionally polls Anthropic's OAuth
+usage endpoint **read-only** with Claude Code's existing token under a strict
+budget (see the amendment note above) — it still **never writes any Claude Code
+file and never refreshes or stores credentials**. Values are rendered into tray
+icons, tinted green/orange/red by severity, with a right-click switch to show
+the 5h window, the 7d window, or both.
 
 ---
 
