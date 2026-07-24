@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 
 namespace ClaudeUsageTray.Core;
@@ -32,8 +31,8 @@ public static class UsageCacheReader
             WindowUsage? five = null, seven = null;
             if (cached.TryGetProperty("utilization", out var u) && u.ValueKind == JsonValueKind.Object)
             {
-                five = ReadWindow(u, "five_hour");
-                seven = ReadWindow(u, "seven_day");
+                five = UsageJson.ReadWindow(u, "five_hour");
+                seven = UsageJson.ReadWindow(u, "seven_day");
             }
             return new UsageSnapshot(fetchedAt, five, seven);
         }
@@ -42,21 +41,5 @@ public static class UsageCacheReader
         {
             return null;
         }
-    }
-
-    private static WindowUsage? ReadWindow(JsonElement utilization, string name)
-    {
-        if (!utilization.TryGetProperty(name, out var w) || w.ValueKind != JsonValueKind.Object) return null;
-        if (!w.TryGetProperty("utilization", out var p) || p.ValueKind != JsonValueKind.Number
-            || !p.TryGetInt32(out var percent)) return null;
-
-        DateTimeOffset? resetsAt = null;
-        if (w.TryGetProperty("resets_at", out var r) && r.ValueKind == JsonValueKind.String
-            && DateTimeOffset.TryParse(r.GetString(), CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
-        {
-            resetsAt = parsed;
-        }
-        return new WindowUsage(percent, resetsAt);
     }
 }
