@@ -17,6 +17,14 @@ public sealed class TrayApp : ApplicationContext
     private readonly System.Windows.Forms.Timer _tick = new() { Interval = 30_000 };
     private int _consecutiveReadFailures;
 
+    // Live usage polling: 5 min steady state; all budget/backoff state lives in the
+    // unit-tested FetchScheduler. Single-flight via _fetchInFlight (UI thread only).
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
+    private readonly System.Windows.Forms.Timer _poll = new() { Interval = 300_000 };
+    private readonly FetchScheduler _fetchScheduler = new();
+    private bool _fetchInFlight;
+    private string? _rejectedToken;
+
     private readonly ContextMenuStrip _menu;
     private ToolStripMenuItem _modeFive = null!, _modeSeven = null!, _modeBoth = null!;
     private ToolStripMenuItem _startupItem = null!, _updatedItem = null!, _restartToUpdateItem = null!;
@@ -58,9 +66,12 @@ public sealed class TrayApp : ApplicationContext
         _retry.Tick += (_, _) => { _retry.Stop(); Refresh(); };
         _tick.Tick += (_, _) => Refresh(); // update relative text and recover from missed watcher events
         _tick.Start();
+        _poll.Tick += (_, _) => StartApiFetch();
+        _poll.Start();
 
         ApplyDisplayMode();
         Refresh();
+        StartApiFetch();
     }
 
     // ---- data ----
@@ -70,23 +81,81 @@ public sealed class TrayApp : ApplicationContext
         var read = UsageCacheReader.TryRead(_configPath);
         if (read is not null)
         {
-            _snapshot = read;
+            if (SnapshotPrecedence.IsNewer(read, _snapshot)) _snapshot = read;
             _consecutiveReadFailures = 0;
         }
         else if (!File.Exists(_configPath))
         {
-            _snapshot = null;
+            if (_snapshot is null || DateTimeOffset.UtcNow - _snapshot.FetchedAt
+                > TimeSpan.FromMinutes(_settings.StalenessMinutes))
+            {
+                _snapshot = null;
+            }
             _consecutiveReadFailures = 0;
         }
         else if (_snapshot is null || ++_consecutiveReadFailures >= 3)
         {
-            _snapshot = null; // permanently malformed/unavailable cache: show neutral state
+            if (_snapshot is null || DateTimeOffset.UtcNow - _snapshot.FetchedAt
+                > TimeSpan.FromMinutes(_settings.StalenessMinutes))
+            {
+                _snapshot = null;
+            }
             _consecutiveReadFailures = 0;
         }
         else
         {
             _retry.Stop();
             _retry.Start(); // likely a partial replace; preserve the last known good snapshot briefly
+        }
+        Render();
+    }
+
+    // ---- live usage polling ----
+
+    private void StartApiFetch()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_fetchInFlight || !_fetchScheduler.CanFetch(now)) return;
+        var token = CredentialsReader.TryReadAccessToken(CredentialsReader.DefaultPath, now);
+        if (token is null || token == _rejectedToken) return;
+
+        _fetchInFlight = true;
+        _fetchScheduler.RecordAttempt(now);
+        _ = Task.Run(async () =>
+        {
+            var result = await UsageApiClient.FetchAsync(Http, token, DateTimeOffset.UtcNow, CancellationToken.None)
+                .ConfigureAwait(false);
+            try { _sync.BeginInvoke((Action)(() => OnApiFetchCompleted(result, token))); }
+            catch (InvalidOperationException) { /* app shutting down */ }
+        });
+    }
+
+    private void OnApiFetchCompleted(UsageFetchResult result, string token)
+    {
+        _fetchInFlight = false;
+        var now = DateTimeOffset.UtcNow;
+        if (result.Snapshot is not null)
+        {
+            _fetchScheduler.RecordSuccess();
+            _rejectedToken = null;
+            if (SnapshotPrecedence.IsNewer(result.Snapshot, _snapshot))
+            {
+                _snapshot = result.Snapshot;
+                _consecutiveReadFailures = 0;
+            }
+        }
+        else if (result.Unauthorized)
+        {
+            // Claude Code owns the credentials; wait for it to refresh them rather than retrying.
+            _rejectedToken = token;
+        }
+        else if (result.RateLimited)
+        {
+            _fetchScheduler.RecordRateLimited(now, result.RetryAfter);
+        }
+        else
+        {
+            _fetchScheduler.RecordFailure(now);
         }
         Render();
     }
@@ -236,7 +305,7 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add(_modeBoth);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_startupItem);
-        menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => Refresh()));
+        menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => { Refresh(); StartApiFetch(); }));
         menu.Items.Add(_restartToUpdateItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_updatedItem);
@@ -300,6 +369,7 @@ public sealed class TrayApp : ApplicationContext
             _debounce.Dispose();
             _retry.Dispose();
             _tick.Dispose();
+            _poll.Dispose();
             _menu.Dispose();
             _sync.Dispose();
         }
