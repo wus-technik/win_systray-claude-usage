@@ -17,7 +17,8 @@ The endpoint enforces roughly 28–30 requests per rolling hour per token for no
 - Poll every **5 minutes** (12/hour steady state). First fetch at startup.
 - **429**: honor `Retry-After` when present; next poll no sooner than `max(Retry-After, 15 minutes)`. Keep showing last-known-good data (it stays valid until a window resets).
 - **401/403**: remember the rejected token string and skip API fetches until `CredentialsReader` returns a *different* token (i.e., Claude Code has refreshed it); meanwhile the `.claude.json` cache path covers.
-- Manual "Refresh now" triggers an immediate API fetch, but never more than one API request per **30 seconds**.
+- Manual "Refresh now" triggers an immediate API fetch, but never more than one API request per **30 seconds**, and a **rolling-hour hard cap of 20 requests** (safety margin under the measured 28–30) bounds all fetches — manual and timed combined.
+- A 429 **without** a usable `Retry-After` header (or with the HTTP-date form) must still incur the ≥ 15 minute penalty — rate-limit responses are never treated as generic network errors.
 - Timeout 5 s; network errors → exponential backoff (5 → 10 → 20 min, capped) with last-known-good retained.
 
 ## Request contract
@@ -41,7 +42,8 @@ Response (fields we consume; same shape as the cache's `utilization` object):
 ## New units (namespace `ClaudeUsageTray.Core`)
 
 - `static class CredentialsReader` — `static string? TryReadAccessToken(string path, DateTimeOffset now)`: parses the credentials file; returns `claudeAiOauth.accessToken` only when it is a non-empty string AND `expiresAt` (Unix ms) is more than 5 minutes in the future; null on missing file/key, expired token, malformed JSON, or any IO error. Never throws. `FileShare.ReadWrite`, 32 MiB guard (same pattern as `UsageCacheReader`). Default path helper: `%USERPROFILE%\.claude\.credentials.json`.
-- `sealed record UsageFetchResult(UsageSnapshot? Snapshot, bool Unauthorized, TimeSpan? RetryAfter)` — `Snapshot` non-null on success (with `FetchedAt = now`); `Unauthorized` true on 401/403; `RetryAfter` set from a 429's header when present.
+- `sealed record UsageFetchResult(UsageSnapshot? Snapshot, bool Unauthorized, bool RateLimited, TimeSpan? RetryAfter)` — `Snapshot` non-null on success (with `FetchedAt = now`); `Unauthorized` true on 401/403; `RateLimited` true on any 429 (regardless of header form); `RetryAfter` from the 429's header when present (delta form, or HTTP-date computed against `now`).
+- `sealed class FetchScheduler` — pure, unit-testable budget gate owning the 30 s floor, the rolling-hour cap, the ≥ 15 min rate-limit penalty, and the 5/10/20 min failure backoff; `TrayApp` consults it before every fetch and records every outcome.
 - `static class UsageApiClient` — `static Task<UsageFetchResult> FetchAsync(HttpClient http, string accessToken, DateTimeOffset now, CancellationToken ct)`: performs the request above, parses per the response contract, maps failures (timeout, network, non-2xx, malformed body) to `Snapshot = null`. Never throws. Testable via injected `HttpMessageHandler`.
 
 ## TrayApp integration

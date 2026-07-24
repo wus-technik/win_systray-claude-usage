@@ -4,7 +4,7 @@
 
 **Goal:** The tray shows live usage by polling `https://api.anthropic.com/api/oauth/usage` with Claude Code's existing OAuth token, read-only, under a strict budget — fixing the permanently-stale cache problem (spec: `docs/superpowers/specs/2026-07-24-live-usage-fetch-design.md`).
 
-**Architecture:** Two new pure Core units (`CredentialsReader`, `UsageApiClient` + shared `UsageJson` window parser + `SnapshotPrecedence`) are fully unit-tested; `TrayApp` gains a poll timer with single-flight fetch, UI-thread marshaling, budget/backoff state, and a freshness-precedence rule that also stops the 30 s cache re-read from clobbering fresher API data. Cache reading remains the fallback path.
+**Architecture:** Pure Core units (`CredentialsReader`, `UsageApiClient` + shared `UsageJson` window parser, `FetchScheduler` budget gate, `SnapshotPrecedence`) are fully unit-tested; `TrayApp` gains a poll timer with single-flight fetch and UI-thread marshaling, consulting the scheduler before every fetch, plus a freshness-precedence rule that also stops the 30 s cache re-read from clobbering fresher API data. Cache reading remains the fallback path.
 
 **Tech Stack:** C# / .NET 10 WinForms, `System.Net.Http` (built in), `System.Text.Json`, xUnit (fake `HttpMessageHandler` for API tests).
 
@@ -12,7 +12,7 @@
 
 - Endpoint: `GET https://api.anthropic.com/api/oauth/usage` with headers `Authorization: Bearer <accessToken>`, `anthropic-beta: oauth-2025-04-20`, `User-Agent: ClaudeUsageTray/<version>`. No other Anthropic calls.
 - Credentials: `%USERPROFILE%\.claude\.credentials.json`, key `claudeAiOauth.accessToken`, gated by `claudeAiOauth.expiresAt` (Unix ms) > now + 5 min. READ-ONLY. Never refresh/rotate tokens; never log, display, or persist token material — tests use dummy strings only.
-- Budget: poll every 5 min; first fetch at startup; ≥ 30 s between any two API requests (covers manual "Refresh now"); 429 → next fetch no sooner than `max(Retry-After, 15 min)`; 401/403 → remember rejected token, skip fetches until `CredentialsReader` returns a different token; network error/timeout → backoff 5 → 10 → 20 min (capped); HTTP timeout 5 s.
+- Budget: poll every 5 min; first fetch at startup; ≥ 30 s between any two API requests AND a rolling-hour hard cap of 20 requests (manual + timed combined); ANY 429 (with, without, or with HTTP-date `Retry-After`) → next fetch no sooner than `max(Retry-After, 15 min)`; 401/403 → remember rejected token, skip fetches until `CredentialsReader` returns a different token; network error/timeout → backoff 5 → 10 → 20 min (capped); HTTP timeout 5 s. All budget state lives in the unit-tested `FetchScheduler` — TrayApp only consults/records.
 - Freshness precedence: a snapshot (API or cache) only replaces the current one when its `FetchedAt` is strictly newer; the cache path may clear the snapshot to null only when the current snapshot is already stale per `Settings.StalenessMinutes`.
 - Both new file parsers follow `UsageCacheReader` conventions: `FileShare.ReadWrite`, 32 MiB guard, never throw, non-object-root tolerant.
 - Existing tests must keep passing; `UsageCacheReaderTests` unmodified.
@@ -25,10 +25,12 @@ src/ClaudeUsageTray/Core/CredentialsReader.cs      (Task 1: token extraction)
 src/ClaudeUsageTray/Core/UsageJson.cs              (Task 2: shared window parser)
 src/ClaudeUsageTray/Core/UsageApiClient.cs         (Task 2: endpoint client + UsageFetchResult)
 src/ClaudeUsageTray/Core/UsageCacheReader.cs       (Task 2: delegate to UsageJson)
+src/ClaudeUsageTray/Core/FetchScheduler.cs         (Task 3: budget gate)
 src/ClaudeUsageTray/Core/SnapshotPrecedence.cs     (Task 3: freshness rule)
 src/ClaudeUsageTray/Tray/TrayApp.cs                (Task 3: poll timer + wiring)
 tests/ClaudeUsageTray.Tests/CredentialsReaderTests.cs   (Task 1)
 tests/ClaudeUsageTray.Tests/UsageApiClientTests.cs      (Task 2)
+tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs      (Task 3)
 tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs  (Task 3)
 README.md, docs/superpowers/spec/claude-usage-tray.md,
 src/ClaudeUsageTray/ClaudeUsageTray.csproj         (Task 4: docs + 0.3.0)
@@ -208,7 +210,7 @@ git commit -m "feat: read-only OAuth access token extraction from Claude Code cr
 - Consumes: `UsageSnapshot`, `WindowUsage` (existing records).
 - Produces (namespace `ClaudeUsageTray.Core`):
   - `internal static WindowUsage? UsageJson.ReadWindow(JsonElement parent, string name)` — the exact parsing currently private in `UsageCacheReader` (integer `utilization`, optional ISO `resets_at` with `AssumeUniversal|AdjustToUniversal`).
-  - `sealed record UsageFetchResult(UsageSnapshot? Snapshot, bool Unauthorized, TimeSpan? RetryAfter)`.
+  - `sealed record UsageFetchResult(UsageSnapshot? Snapshot, bool Unauthorized, bool RateLimited, TimeSpan? RetryAfter)` — `RateLimited` is true for ANY 429 regardless of header form; `RetryAfter` is the delta form, or the HTTP-date form computed against `now`, else null.
   - `static Task<UsageFetchResult> UsageApiClient.FetchAsync(HttpClient http, string accessToken, DateTimeOffset now, CancellationToken ct)` and `const string UsageApiClient.EndpointUrl`. Never throws.
 
 - [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/UsageApiClientTests.cs`
@@ -308,7 +310,7 @@ public class UsageApiClientTests
     }
 
     [Fact]
-    public void TooManyRequests_CarriesRetryAfter()
+    public void TooManyRequests_CarriesRetryAfterDelta()
     {
         var (r, _) = Fetch(_ =>
         {
@@ -318,23 +320,39 @@ public class UsageApiClientTests
         });
         Assert.Null(r.Snapshot);
         Assert.False(r.Unauthorized);
+        Assert.True(r.RateLimited);
         Assert.Equal(TimeSpan.FromSeconds(1200), r.RetryAfter);
     }
 
     [Fact]
-    public void TooManyRequests_WithoutHeader_HasNullRetryAfter()
+    public void TooManyRequests_WithHttpDateRetryAfter_ComputesDeltaAgainstNow()
+    {
+        var (r, _) = Fetch(_ =>
+        {
+            var resp = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+            resp.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(Now.AddMinutes(30));
+            return resp;
+        });
+        Assert.True(r.RateLimited);
+        Assert.Equal(TimeSpan.FromMinutes(30), r.RetryAfter);
+    }
+
+    [Fact]
+    public void TooManyRequests_WithoutHeader_IsStillRateLimited()
     {
         var (r, _) = Fetch(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
         Assert.Null(r.Snapshot);
+        Assert.True(r.RateLimited);
         Assert.Null(r.RetryAfter);
     }
 
     [Fact]
-    public void ServerError_ReturnsFailure()
+    public void ServerError_ReturnsFailure_NotRateLimited()
     {
         var (r, _) = Fetch(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
         Assert.Null(r.Snapshot);
         Assert.False(r.Unauthorized);
+        Assert.False(r.RateLimited);
     }
 
     [Fact]
@@ -397,8 +415,9 @@ using System.Text.Json;
 namespace ClaudeUsageTray.Core;
 
 /// <summary>Outcome of one usage-API fetch: Snapshot set on success; Unauthorized on 401/403;
-/// RetryAfter carries a 429's Retry-After delta when the server sent one.</summary>
-public sealed record UsageFetchResult(UsageSnapshot? Snapshot, bool Unauthorized, TimeSpan? RetryAfter);
+/// RateLimited on ANY 429 (so throttles are never mistaken for network errors);
+/// RetryAfter from the 429's header — delta form, or HTTP-date computed against now.</summary>
+public sealed record UsageFetchResult(UsageSnapshot? Snapshot, bool Unauthorized, bool RateLimited, TimeSpan? RetryAfter);
 
 /// <summary>Read-only client for Anthropic's OAuth usage endpoint. Never throws; never logs the token.</summary>
 public static class UsageApiClient
@@ -420,25 +439,29 @@ public static class UsageApiClient
 
             using var response = await http.SendAsync(request, ct).ConfigureAwait(false);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-                return new UsageFetchResult(null, Unauthorized: true, RetryAfter: null);
+                return new UsageFetchResult(null, Unauthorized: true, RateLimited: false, RetryAfter: null);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                return new UsageFetchResult(null, false, response.Headers.RetryAfter?.Delta);
+            {
+                var header = response.Headers.RetryAfter;
+                TimeSpan? retryAfter = header?.Delta ?? (header?.Date is { } date ? date - now : null);
+                return new UsageFetchResult(null, false, RateLimited: true, retryAfter);
+            }
             if (!response.IsSuccessStatusCode)
-                return new UsageFetchResult(null, false, null);
+                return new UsageFetchResult(null, false, false, null);
 
             using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
             if (doc.RootElement.ValueKind != JsonValueKind.Object)
-                return new UsageFetchResult(null, false, null);
+                return new UsageFetchResult(null, false, false, null);
 
             var five = UsageJson.ReadWindow(doc.RootElement, "five_hour");
             var seven = UsageJson.ReadWindow(doc.RootElement, "seven_day");
-            return new UsageFetchResult(new UsageSnapshot(now, five, seven), false, null);
+            return new UsageFetchResult(new UsageSnapshot(now, five, seven), false, false, null);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException
             or OperationCanceledException or JsonException)
         {
-            return new UsageFetchResult(null, false, null);
+            return new UsageFetchResult(null, false, false, null);
         }
     }
 }
@@ -446,12 +469,12 @@ public static class UsageApiClient
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `dotnet test --filter UsageApiClientTests` — expected PASS (12 tests).
+Run: `dotnet test --filter UsageApiClientTests` — expected PASS (13 tests).
 Then: `dotnet test --filter UsageCacheReaderTests` — expected PASS (21 tests, file unmodified).
 
 - [ ] **Step 7: Run the full suite, then commit**
 
-Run: `dotnet test` — expected PASS (96 total).
+Run: `dotnet test` — expected PASS (97 total).
 
 ```powershell
 git add src/ClaudeUsageTray/Core/UsageJson.cs src/ClaudeUsageTray/Core/UsageApiClient.cs src/ClaudeUsageTray/Core/UsageCacheReader.cs tests/ClaudeUsageTray.Tests/UsageApiClientTests.cs
@@ -460,18 +483,128 @@ git commit -m "feat: usage-API client with budget-aware result contract and shar
 
 ---
 
-### Task 3: SnapshotPrecedence + TrayApp polling integration
+### Task 3: FetchScheduler, SnapshotPrecedence, TrayApp polling integration
 
 **Files:**
+- Create: `src/ClaudeUsageTray/Core/FetchScheduler.cs`
 - Create: `src/ClaudeUsageTray/Core/SnapshotPrecedence.cs`
+- Test: `tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs`
 - Test: `tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs`
 - Modify: `src/ClaudeUsageTray/Tray/TrayApp.cs`
 
 **Interfaces:**
-- Consumes: `CredentialsReader.TryReadAccessToken` / `DefaultPath` (Task 1), `UsageApiClient.FetchAsync` / `UsageFetchResult` (Task 2), existing TrayApp members (`_sync`, `_snapshot`, `Refresh()`, `Render()`, `_settings`).
-- Produces: `static bool SnapshotPrecedence.IsNewer(UsageSnapshot? candidate, UsageSnapshot? current)` — true iff `candidate` is non-null AND (`current` is null OR `candidate.FetchedAt > current.FetchedAt`). TrayApp polls the API per the budget rules.
+- Consumes: `CredentialsReader.TryReadAccessToken` / `DefaultPath` (Task 1), `UsageApiClient.FetchAsync` / `UsageFetchResult` (Task 2), existing TrayApp members (`_sync`, `_snapshot`, `Refresh()`, `Render()`, `_settings`, `_consecutiveReadFailures`).
+- Produces:
+  - `sealed class FetchScheduler` (`ClaudeUsageTray.Core`) with `FetchScheduler(int maxPerHour = 20)`, `bool CanFetch(DateTimeOffset now)`, `void RecordAttempt(DateTimeOffset now)`, `void RecordSuccess()`, `void RecordRateLimited(DateTimeOffset now, TimeSpan? retryAfter)`, `void RecordFailure(DateTimeOffset now)`. Encapsulates: 30 s floor after every attempt, rolling-hour attempt cap, ≥ 15 min penalty on any rate limit (`max(retryAfter, 15 min)`), 5/10/20 min failure backoff (streak capped, reset on success).
+  - `static bool SnapshotPrecedence.IsNewer(UsageSnapshot? candidate, UsageSnapshot? current)` — true iff `candidate` is non-null AND (`current` is null OR `candidate.FetchedAt > current.FetchedAt`).
+  - TrayApp polls the API per the budget rules, consulting the scheduler before every fetch.
 
-- [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs`
+- [ ] **Step 1a: Write the failing scheduler tests** — `tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs`
+
+```csharp
+using ClaudeUsageTray.Core;
+using Xunit;
+
+namespace ClaudeUsageTray.Tests;
+
+public class FetchSchedulerTests
+{
+    private static readonly DateTimeOffset T0 = new(2026, 7, 24, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void FreshScheduler_AllowsFetch() => Assert.True(new FetchScheduler().CanFetch(T0));
+
+    [Fact]
+    public void Floor_BlocksFor30Seconds_ThenAllows()
+    {
+        var s = new FetchScheduler();
+        s.RecordAttempt(T0);
+        Assert.False(s.CanFetch(T0.AddSeconds(29)));
+        Assert.True(s.CanFetch(T0.AddSeconds(30)));
+    }
+
+    [Fact]
+    public void RollingHourCap_BlocksAtLimit_UnblocksWhenOldestAgesOut()
+    {
+        var s = new FetchScheduler(maxPerHour: 3);
+        s.RecordAttempt(T0);
+        s.RecordAttempt(T0.AddMinutes(1));
+        s.RecordAttempt(T0.AddMinutes(2));
+        Assert.False(s.CanFetch(T0.AddMinutes(10)));           // cap reached
+        Assert.False(s.CanFetch(T0.AddMinutes(59)));           // still 3 in window
+        Assert.True(s.CanFetch(T0.AddMinutes(60)));            // T0 attempt aged out
+    }
+
+    [Fact]
+    public void RateLimited_WithoutRetryAfter_Blocks15Minutes()
+    {
+        var s = new FetchScheduler();
+        s.RecordAttempt(T0);
+        s.RecordRateLimited(T0, retryAfter: null);
+        Assert.False(s.CanFetch(T0.AddMinutes(14)));
+        Assert.True(s.CanFetch(T0.AddMinutes(15)));
+    }
+
+    [Fact]
+    public void RateLimited_WithLongRetryAfter_BlocksForRetryAfter()
+    {
+        var s = new FetchScheduler();
+        s.RecordAttempt(T0);
+        s.RecordRateLimited(T0, TimeSpan.FromMinutes(45));
+        Assert.False(s.CanFetch(T0.AddMinutes(44)));
+        Assert.True(s.CanFetch(T0.AddMinutes(45)));
+    }
+
+    [Fact]
+    public void RateLimited_WithShortRetryAfter_StillBlocks15Minutes()
+    {
+        var s = new FetchScheduler();
+        s.RecordAttempt(T0);
+        s.RecordRateLimited(T0, TimeSpan.FromMinutes(2));
+        Assert.False(s.CanFetch(T0.AddMinutes(14)));
+        Assert.True(s.CanFetch(T0.AddMinutes(15)));
+    }
+
+    [Fact]
+    public void FailureBackoff_Escalates5_10_20_AndCaps()
+    {
+        var s = new FetchScheduler();
+        s.RecordFailure(T0);
+        Assert.False(s.CanFetch(T0.AddMinutes(4)));
+        Assert.True(s.CanFetch(T0.AddMinutes(5)));
+        s.RecordFailure(T0.AddMinutes(5));
+        Assert.False(s.CanFetch(T0.AddMinutes(14)));
+        Assert.True(s.CanFetch(T0.AddMinutes(15)));            // 5 + 10
+        s.RecordFailure(T0.AddMinutes(15));
+        Assert.True(s.CanFetch(T0.AddMinutes(35)));            // 15 + 20
+        s.RecordFailure(T0.AddMinutes(35));
+        Assert.False(s.CanFetch(T0.AddMinutes(54)));           // still 20 (capped)
+        Assert.True(s.CanFetch(T0.AddMinutes(55)));
+    }
+
+    [Fact]
+    public void Success_ResetsFailureStreak()
+    {
+        var s = new FetchScheduler();
+        s.RecordFailure(T0);
+        s.RecordFailure(T0.AddMinutes(5));
+        s.RecordSuccess();
+        s.RecordFailure(T0.AddMinutes(30));
+        Assert.True(s.CanFetch(T0.AddMinutes(35)));            // back to 5 min, not 20
+    }
+
+    [Fact]
+    public void BudgetCap_AppliesEvenAfterFloorElapsed()
+    {
+        var s = new FetchScheduler(maxPerHour: 1);
+        s.RecordAttempt(T0);
+        Assert.False(s.CanFetch(T0.AddMinutes(30)));           // floor long past; budget blocks
+        Assert.True(s.CanFetch(T0.AddMinutes(60)));
+    }
+}
+```
+
+- [ ] **Step 1b: Write the failing precedence tests** — `tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -494,10 +627,62 @@ public class SnapshotPrecedenceTests
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `dotnet test --filter SnapshotPrecedenceTests`
-Expected: FAIL to compile.
+Run: `dotnet test --filter "FetchSchedulerTests|SnapshotPrecedenceTests"`
+Expected: FAIL to compile — `FetchScheduler` / `SnapshotPrecedence` not defined.
 
-- [ ] **Step 3: Write `src/ClaudeUsageTray/Core/SnapshotPrecedence.cs`**
+- [ ] **Step 3a: Write `src/ClaudeUsageTray/Core/FetchScheduler.cs`**
+
+```csharp
+namespace ClaudeUsageTray.Core;
+
+/// <summary>
+/// Budget gate for usage-API fetches: a 30 s floor between attempts, a rolling-hour attempt
+/// cap (manual and timed fetches combined), a ≥ 15 min penalty on any rate limit, and
+/// 5/10/20-minute network-failure backoff. Pure state machine driven by caller-supplied
+/// timestamps — no clocks, no threads, fully unit-testable.
+/// </summary>
+public sealed class FetchScheduler
+{
+    private static readonly TimeSpan Floor = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RateLimitPenalty = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan BudgetWindow = TimeSpan.FromHours(1);
+
+    private readonly int _maxPerHour;
+    private readonly Queue<DateTimeOffset> _attempts = new();
+    private DateTimeOffset _notBefore = DateTimeOffset.MinValue;
+    private int _failureStreak;
+
+    /// <summary>Default 20/h: safety margin under the endpoint's measured ~28-30/h per-token budget.</summary>
+    public FetchScheduler(int maxPerHour = 20) => _maxPerHour = maxPerHour;
+
+    public bool CanFetch(DateTimeOffset now)
+    {
+        if (now < _notBefore) return false;
+        while (_attempts.Count > 0 && now - _attempts.Peek() >= BudgetWindow) _attempts.Dequeue();
+        return _attempts.Count < _maxPerHour;
+    }
+
+    public void RecordAttempt(DateTimeOffset now)
+    {
+        _attempts.Enqueue(now);
+        _notBefore = now + Floor;
+    }
+
+    public void RecordSuccess() => _failureStreak = 0;
+
+    public void RecordRateLimited(DateTimeOffset now, TimeSpan? retryAfter)
+        => _notBefore = now + (retryAfter > RateLimitPenalty ? retryAfter.Value : RateLimitPenalty);
+
+    public void RecordFailure(DateTimeOffset now)
+    {
+        _failureStreak = Math.Min(_failureStreak + 1, 3);
+        var minutes = _failureStreak switch { 1 => 5, 2 => 10, _ => 20 };
+        _notBefore = now + TimeSpan.FromMinutes(minutes);
+    }
+}
+```
+
+- [ ] **Step 3b: Write `src/ClaudeUsageTray/Core/SnapshotPrecedence.cs`**
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -513,21 +698,20 @@ public static class SnapshotPrecedence
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `dotnet test --filter SnapshotPrecedenceTests` — expected PASS (6 tests).
+Run: `dotnet test --filter "FetchSchedulerTests|SnapshotPrecedenceTests"` — expected PASS (15 tests: 9 scheduler + 6 precedence).
 
 - [ ] **Step 5: Modify `src/ClaudeUsageTray/Tray/TrayApp.cs`** — read the current file first; it contains patterns (e.g. `_settingsSaveFailed`, `DisposeNotifyIcon`, `TryIsStartupEnabled`) that must be preserved. Make exactly these changes:
 
 a) Add fields next to the existing timers:
 
 ```csharp
-    // Live usage polling: 5 min steady state; _nextApiFetchAllowed implements the
-    // 30 s floor, 429 Retry-After, and network backoff. Single-flight via _fetchInFlight.
+    // Live usage polling: 5 min steady state; all budget/backoff state lives in the
+    // unit-tested FetchScheduler. Single-flight via _fetchInFlight (UI thread only).
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
     private readonly System.Windows.Forms.Timer _poll = new() { Interval = 300_000 };
+    private readonly FetchScheduler _fetchScheduler = new();
     private bool _fetchInFlight;
-    private DateTimeOffset _nextApiFetchAllowed = DateTimeOffset.MinValue;
     private string? _rejectedToken;
-    private int _networkFailureStreak;
 ```
 
 b) In the constructor, after `_tick.Start();` add:
@@ -549,17 +733,17 @@ c) Add the fetch methods (new `// ---- live usage polling ----` section after `R
     private void StartApiFetch()
     {
         var now = DateTimeOffset.UtcNow;
-        if (_fetchInFlight || now < _nextApiFetchAllowed) return;
+        if (_fetchInFlight || !_fetchScheduler.CanFetch(now)) return;
         var token = CredentialsReader.TryReadAccessToken(CredentialsReader.DefaultPath, now);
         if (token is null || token == _rejectedToken) return;
 
         _fetchInFlight = true;
-        _nextApiFetchAllowed = now + TimeSpan.FromSeconds(30); // hard floor between API requests
+        _fetchScheduler.RecordAttempt(now);
         _ = Task.Run(async () =>
         {
             var result = await UsageApiClient.FetchAsync(Http, token, DateTimeOffset.UtcNow, CancellationToken.None)
                 .ConfigureAwait(false);
-            try { _sync.BeginInvoke(() => OnApiFetchCompleted(result, token)); }
+            try { _sync.BeginInvoke((Action)(() => OnApiFetchCompleted(result, token))); }
             catch (InvalidOperationException) { /* app shutting down */ }
         });
     }
@@ -567,9 +751,10 @@ c) Add the fetch methods (new `// ---- live usage polling ----` section after `R
     private void OnApiFetchCompleted(UsageFetchResult result, string token)
     {
         _fetchInFlight = false;
+        var now = DateTimeOffset.UtcNow;
         if (result.Snapshot is not null)
         {
-            _networkFailureStreak = 0;
+            _fetchScheduler.RecordSuccess();
             _rejectedToken = null;
             if (SnapshotPrecedence.IsNewer(result.Snapshot, _snapshot))
             {
@@ -582,16 +767,13 @@ c) Add the fetch methods (new `// ---- live usage polling ----` section after `R
             // Claude Code owns the credentials; wait for it to refresh them rather than retrying.
             _rejectedToken = token;
         }
-        else if (result.RetryAfter is { } retryAfter)
+        else if (result.RateLimited)
         {
-            var wait = retryAfter > TimeSpan.FromMinutes(15) ? retryAfter : TimeSpan.FromMinutes(15);
-            _nextApiFetchAllowed = DateTimeOffset.UtcNow + wait;
+            _fetchScheduler.RecordRateLimited(now, result.RetryAfter);
         }
         else
         {
-            _networkFailureStreak = Math.Min(_networkFailureStreak + 1, 3);
-            var wait = _networkFailureStreak switch { 1 => 5, 2 => 10, _ => 20 };
-            _nextApiFetchAllowed = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(wait);
+            _fetchScheduler.RecordFailure(now);
         }
         Render();
     }
@@ -635,7 +817,7 @@ f) In `Dispose(bool disposing)`, dispose `_poll` alongside the other timers.
 
 - [ ] **Step 6: Build and run the full suite (regression)**
 
-Run: `dotnet test` — expected PASS (102 total), build warning-free.
+Run: `dotnet test` — expected PASS (112 total), build warning-free.
 
 - [ ] **Step 7: Manual verification — live data (deferred to human where noted)**
 
@@ -644,8 +826,8 @@ Run: `dotnet run --project src/ClaudeUsageTray` (human): within seconds of start
 - [ ] **Step 8: Commit**
 
 ```powershell
-git add src/ClaudeUsageTray/Core/SnapshotPrecedence.cs tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs src/ClaudeUsageTray/Tray/TrayApp.cs
-git commit -m "feat: live usage polling with budget, backoff, and freshness precedence"
+git add src/ClaudeUsageTray/Core/FetchScheduler.cs src/ClaudeUsageTray/Core/SnapshotPrecedence.cs tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs src/ClaudeUsageTray/Tray/TrayApp.cs
+git commit -m "feat: live usage polling with budget scheduler and freshness precedence"
 ```
 
 ---
@@ -701,7 +883,7 @@ In `src/ClaudeUsageTray/ClaudeUsageTray.csproj`: `<Version>0.2.0</Version>` → 
 
 - [ ] **Step 4: Full suite, then commit**
 
-Run: `dotnet test` — expected PASS (102 total).
+Run: `dotnet test` — expected PASS (112 total).
 
 ```powershell
 git add README.md docs/superpowers/spec/claude-usage-tray.md src/ClaudeUsageTray/ClaudeUsageTray.csproj
@@ -717,7 +899,7 @@ git commit -m "docs: document live usage polling; bump version to 0.3.0"
 | Token extraction, expiry-gated, read-only, never throws | 1 |
 | Endpoint/headers contract, response parsing, error → result mapping | 2 |
 | Shared window parser (no duplicated parsing logic) | 2 |
-| 5 min cadence, 30 s floor, 429/Retry-After ≥ 15 min, 401 rejected-token latch, network backoff 5/10/20 | 3 |
+| 5 min cadence, 30 s floor, rolling-hour cap 20, any-429 ≥ 15 min penalty, 401 rejected-token latch, network backoff 5/10/20 | 3 (FetchScheduler, unit-tested) |
 | Freshness precedence incl. cache-clobber fix and stale-only clearing | 3 |
 | Single-flight + UI-thread marshaling | 3 |
 | README truthfulness + v0.1 spec amendment + 0.3.0 | 4 |
