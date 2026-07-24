@@ -1,7 +1,7 @@
 # Claude Usage Tray
 
 Windows tray app showing the current user's Claude **5-hour** and **7-day** usage
-as progress-ring icons next to the clock. Passive reader of the cache Claude Code
+as filled-badge icons next to the clock. Passive reader of the cache Claude Code
 writes to `%USERPROFILE%\.claude.json` (`cachedUsageUtilization`) — **no network
 calls to Anthropic, no tokens, no credentials**. Spec: `docs/superpowers/spec/claude-usage-tray.md`.
 
@@ -12,7 +12,7 @@ Run `WusTechnik.ClaudeUsageTray-win-Setup.exe` from the latest release. Per-user
 
 ## Usage
 
-- **Icons:** ring fill = usage, color = severity (green < 50 %, orange 50–85 %,
+- **Icons:** badge fill = usage, color = severity (green < 50 %, orange 50–85 %,
   red > 85 %), center digit = window (`5` = 5-hour, `7` = 7-day). Dimmed = stale
   cache (> 15 min old). Grey `—` = no data yet (run Claude Code once).
 - **Hover** an icon for the exact percentage and reset countdown.

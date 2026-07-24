@@ -1,4 +1,4 @@
-<title>Claude Usage Tray — Arc Icons (5 / 7)</title>
+<title>Claude Usage Tray — Badge Icons (5 / 7)</title>
 <style>
   :root {
     --bg: #f4f5f7; --panel: #ffffff; --ink: #1b1e23; --ink-soft: #5a6270;
@@ -65,9 +65,9 @@
 
 <div class="wrap">
   <header>
-    <p class="eyebrow">Claude Usage Tray · arc concept, single-digit</p>
-    <h1>Arc icons with <code>5</code> / <code>7</code> inside</h1>
-    <p class="lede">Same progress-arc idea, but the center holds a single digit — <code>5</code> for the 5-hour window, <code>7</code> for the 7-day window. One character reads noticeably crisper at 16&nbsp;px than two. The ring still <strong>fills with usage</strong> and its <strong>color follows severity</strong>.</p>
+    <p class="eyebrow">Claude Usage Tray · filled-badge concept, single-digit</p>
+    <h1>Badge icons with <code>5</code> / <code>7</code> inside</h1>
+    <p class="lede">Same progress-arc idea, but the center holds a single digit — <code>5</code> for the 5-hour window, <code>7</code> for the 7-day window. One character reads noticeably crisper at 16&nbsp;px than two. The badge still <strong>fills with usage</strong> and its <strong>color follows severity</strong>.</p>
   </header>
 
   <section>
@@ -124,8 +124,8 @@
   }
   function severity(pct, C) { return pct > 85 ? C.red : pct >= 50 ? C.orange : C.green; }
 
-  // Arc icon, single-digit center. dir 'cw' for 5, 'ccw' for 7 (subtle extra tell).
-  function arcIcon(letter, pct, dir, scale, opts) {
+  // Filled-badge icon, single-digit center. dir 'cw' for 5, 'ccw' for 7.
+  function badgeIcon(letter, pct, dir, scale, opts) {
     opts = opts || {};
     const size = 16, S = scale || 1, px = size * S;
     const c = document.createElement('canvas');
@@ -134,29 +134,40 @@
     const C = themeColors();
     const cx = px/2, cy = px/2;
     const color = opts.color || severity(pct, C);
-    const dim = opts.dim ? 0.4 : 1;
-    const rad = (px/2) - 1.6*S;
+    // Explicit per-element alphas — MUST mirror IconRenderer.cs exactly:
+    // disc 90 (dim 50), wedge/rim 255 (dim 120), digit 255 (dim 160), halo 140 (dim 90).
+    const A = opts.dim
+      ? { disc: 50/255, solid: 120/255, digit: 160/255, halo: 90/255 }
+      : { disc: 90/255, solid: 1,       digit: 1,       halo: 140/255 };
+    const rad = (px/2) - 0.5*S;
 
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 1.9*S;
+    // Translucent base disc (unused fraction).
+    ctx.globalAlpha = A.disc; ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI*2); ctx.fill();
 
-    ctx.globalAlpha = dim * 0.20; ctx.strokeStyle = color;
-    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI*2); ctx.stroke();
-
+    // Solid usage wedge from 12 o'clock.
     if (pct > 0) {
-      ctx.globalAlpha = dim; ctx.strokeStyle = color;
+      ctx.globalAlpha = A.solid;
       const start = -Math.PI/2;
       const sweep = Math.min(pct,100)/100 * Math.PI*2;
-      ctx.beginPath();
+      ctx.beginPath(); ctx.moveTo(cx, cy);
       if (dir === 'ccw') ctx.arc(cx, cy, rad, start, start - sweep, true);
       else ctx.arc(cx, cy, rad, start, start + sweep);
-      ctx.stroke();
+      ctx.closePath(); ctx.fill();
     }
 
-    ctx.globalAlpha = dim;
-    ctx.fillStyle = opts.labelColor || color;
+    // 1 px rim.
+    ctx.globalAlpha = A.solid; ctx.lineWidth = 1*S; ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI*2); ctx.stroke();
+
+    // White digit over a dark halo — reads on both halves and on light taskbars.
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = '700 ' + (9*S) + 'px "Segoe UI", system-ui, sans-serif';   // bigger — single char
+    ctx.font = '700 ' + (9.6*S) + 'px "Segoe UI", system-ui, sans-serif';
+    ctx.globalAlpha = A.halo; ctx.fillStyle = '#000';
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        if (dx || dy) ctx.fillText(letter, cx + dx*S, cy + 0.5*S + dy*S);
+    ctx.globalAlpha = A.digit; ctx.fillStyle = opts.labelColor || '#fff';
     ctx.fillText(letter, cx, cy + 0.5*S);
     return c;
   }
@@ -169,14 +180,14 @@
 
     const tg = document.getElementById('trayGroup');
     tg.innerHTML = '';
-    tg.appendChild(arcIcon('5', dv, 'cw', 1));
-    tg.appendChild(arcIcon('7', wv, 'ccw', 1));
+    tg.appendChild(badgeIcon('5', dv, 'cw', 1));
+    tg.appendChild(badgeIcon('7', wv, 'ccw', 1));
 
     if (dVal == null) {
       const ramp = document.getElementById('ramp'); ramp.innerHTML = '';
       [8, 35, 50, 68, 88, 100].forEach(p => {
         const s = document.createElement('div'); s.className='step';
-        s.appendChild(arcIcon('5', p, 'cw', 4));
+        s.appendChild(badgeIcon('5', p, 'cw', 4));
         const pv=document.createElement('div'); pv.className='pv'; pv.style.color=severity(p,C); pv.textContent=p+'%'; s.appendChild(pv);
         const sv=document.createElement('div'); sv.className='sv'; sv.textContent=p>85?'red':p>=50?'orange':'green'; s.appendChild(sv);
         ramp.appendChild(s);
@@ -185,7 +196,7 @@
       const pw = document.getElementById('pairWrap'); pw.innerHTML='';
       [['5','5-hour','cw',42,'resets in 3h 10m'],['7','7-day','ccw',13,'resets in 3d 20h']].forEach(x=>{
         const p=document.createElement('div'); p.className='pair';
-        p.appendChild(arcIcon(x[0], x[3], x[2], 5));
+        p.appendChild(badgeIcon(x[0], x[3], x[2], 5));
         const m=document.createElement('div'); m.className='meta';
         m.innerHTML='<b>'+x[1]+'</b><br>'+x[3]+'% · <span style="color:'+severity(x[3],C)+'">'+(x[3]>85?'red':x[3]>=50?'orange':'green')+'</span><div>'+x[4]+'</div>';
         p.appendChild(m); pw.appendChild(p);
@@ -194,7 +205,7 @@
       const sg = document.getElementById('statesGrid'); sg.innerHTML='';
       const mk=(letter,pct,dir,label,sub,o)=>{
         const d=document.createElement('div'); d.className='scell';
-        d.appendChild(arcIcon(letter,pct,dir,4,o));
+        d.appendChild(badgeIcon(letter,pct,dir,4,o));
         const l=document.createElement('div'); l.className='label'; l.textContent=label; d.appendChild(l);
         const s=document.createElement('div'); s.className='sub'; s.textContent=sub; d.appendChild(s);
         sg.appendChild(d);
@@ -202,7 +213,7 @@
       mk('5',91,'cw','Near limit','91% · red');
       mk('5',88,'cw','Stale (dimmed)','updated 22m ago',{dim:true});
       mk('—',0,'cw','No data','run Claude Code',{color:C.faint,labelColor:C.faint});
-      mk('7',0,'ccw','Fresh window','0% · empty ring');
+      mk('7',0,'ccw','Fresh window','0% · empty badge');
     }
   }
 
