@@ -1,6 +1,8 @@
 # Claude Usage Tray — Spec
 
 > **Amended (v0.2):** the icon design changed from a stroked progress ring to a **filled badge** for 16 px readability — see `docs/superpowers/specs/2026-07-24-icon-readability-design.md` (issue #2). Icon-geometry statements below describe the superseded v0.1 design; fill semantics (arc sweep from 12 o'clock, 5h clockwise / 7d counter-clockwise, color = severity) are unchanged.
+>
+> **Amended (v0.3):** the "no network calls to Anthropic" constraint is superseded — the app now polls `GET https://api.anthropic.com/api/oauth/usage` read-only with Claude Code's existing OAuth token under a strict budget; see `docs/superpowers/specs/2026-07-24-live-usage-fetch-design.md`. The `.claude.json` cache read remains as fallback. Credentials are still never written, refreshed, or logged.
 
 **Status:** Draft for implementation
 **Date:** 2026-07-23

@@ -1,9 +1,11 @@
 # Claude Usage Tray
 
 Windows tray app showing the current user's Claude **5-hour** and **7-day** usage
-as filled-badge icons next to the clock. Passive reader of the cache Claude Code
-writes to `%USERPROFILE%\.claude.json` (`cachedUsageUtilization`) — **no network
-calls to Anthropic, no tokens, no credentials**. Spec: `docs/superpowers/spec/claude-usage-tray.md`.
+as filled-badge icons next to the clock. Reads from the cache Claude Code
+writes to `%USERPROFILE%\.claude.json` (`cachedUsageUtilization`), combined with
+**live polling of Anthropic's OAuth usage endpoint** (read-only, every 5 minutes,
+using Claude Code's own token — the app never stores, refreshes, or logs it).
+Spec: `docs/superpowers/spec/claude-usage-tray.md`.
 
 ## Install
 
@@ -19,6 +21,9 @@ Run `WusTechnik.ClaudeUsageTray-win-Setup.exe` from the latest release. Per-user
 - **Left-click** for a popup with both windows.
 - **Right-click** to switch Show 5h / Show 7d / Show both, toggle run-at-startup,
   refresh, apply a staged update with **Restart to update**, or quit.
+- **Data:** fetched live from Anthropic's usage API (same source as claude.ai)
+  every 5 minutes with strict rate-limit respect; falls back to Claude Code's
+  local cache when no valid token is available.
 
 ## Settings
 
