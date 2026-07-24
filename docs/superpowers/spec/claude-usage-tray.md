@@ -1,5 +1,7 @@
 # Claude Usage Tray — Spec
 
+> **Amended (v0.2):** the icon design changed from a stroked progress ring to a **filled badge** for 16 px readability — see `docs/superpowers/specs/2026-07-24-icon-readability-design.md` (issue #2). Icon-geometry statements below describe the superseded v0.1 design; fill semantics (arc sweep from 12 o'clock, 5h clockwise / 7d counter-clockwise, color = severity) are unchanged.
+
 **Status:** Draft for implementation
 **Date:** 2026-07-23
 **Owner:** foellmann@wus-technik.com
