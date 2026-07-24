@@ -166,7 +166,7 @@ public sealed class TrayApp : ApplicationContext
             _fetchScheduler.RecordRateLimited(now, result.RetryAfter);
             string ra = result.RetryAfter is { } r ? $"{(int)r.TotalSeconds}s" : "none";
             _lastFetchStatus = "rate-limited (429)";
-            _log.Write(now, $"429 rate-limited: retry-after={ra}; next attempt >= 15 min");
+            _log.Write(now, $"429 rate-limited: retry-after={ra}; backing off max(Retry-After, 60s), bounded by 20/h cap");
         }
         else
         {
