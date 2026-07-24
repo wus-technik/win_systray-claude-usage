@@ -4,7 +4,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>ClaudeUsageTray</RootNamespace>
     <AssemblyName>ClaudeUsageTray</AssemblyName>
-    <Version>0.3.1</Version>
+    <Version>0.3.2</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>

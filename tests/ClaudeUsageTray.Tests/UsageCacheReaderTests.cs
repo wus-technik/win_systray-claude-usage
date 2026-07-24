@@ -102,12 +102,14 @@ public class UsageCacheReaderTests : IDisposable
             """)));
 
     [Fact]
-    public void FractionalPercent_IsInvalidForThatWindow()
+    public void FractionalPercent_IsRoundedToInt()
     {
+        // Claude Code writes the cache from the same API payload, which uses decimal utilization
+        // (e.g. 42.5). Fractional values are valid and rounded — not treated as malformed.
         var s = UsageCacheReader.TryRead(WriteFixture(
             """{ "cachedUsageUtilization": { "fetchedAtMs": 1, "utilization": { "five_hour": { "utilization": 42.5 } } } }"""));
         Assert.NotNull(s);
-        Assert.Null(s!.FiveHour);
+        Assert.Equal(43, s!.FiveHour!.Percent);
     }
 
     [Theory]

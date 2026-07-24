@@ -63,6 +63,21 @@ public class UsageApiClientTests
     }
 
     [Fact]
+    public void Success_ParsesDecimalUtilization_RoundedToInt()
+    {
+        // The live endpoint returns utilization as a JSON decimal (e.g. 11.0 / 53.6), unlike the
+        // .claude.json cache which stores integers. TryGetInt32 rejects fractional numbers, so this
+        // regressed to null windows (200 OK but no data). Must parse and round instead.
+        var body = """
+            { "five_hour": { "utilization": 11.0, "resets_at": "2026-07-24T18:39:59Z" },
+              "seven_day": { "utilization": 53.6, "resets_at": "2026-07-27T15:59:59Z" } }
+            """;
+        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        Assert.Equal(11, r.Snapshot!.FiveHour!.Percent);
+        Assert.Equal(54, r.Snapshot.SevenDay!.Percent);
+    }
+
+    [Fact]
     public void Success_MissingWindow_IsNull()
     {
         var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, """{ "five_hour": { "utilization": 7 } }"""));
