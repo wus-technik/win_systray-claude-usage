@@ -134,4 +134,152 @@ public class UsageCacheReaderTests : IDisposable
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude.json");
         Assert.Equal(expected, ConfigPath.Resolve(overridePath));
     }
+
+    // ---- scoped limits (limits[]) ----
+
+    private static string Wrap(string utilizationBody) => $$"""
+        {
+          "cachedUsageUtilization": {
+            "fetchedAtMs": 1784815176543,
+            "utilization": { {{utilizationBody}} }
+          }
+        }
+        """;
+
+    private static string Limit(string scope, int percent, bool isActive = false,
+        string group = "weekly", string resetsAt = "2026-07-27T16:00:00Z") => $$"""
+        { "group": "{{group}}", "percent": {{percent}}, "is_active": {{(isActive ? "true" : "false")}},
+          "resets_at": "{{resetsAt}}", "scope": {{scope}} }
+        """;
+
+    private const string FableScope = """{ "model": { "id": null, "display_name": "Fable" }, "surface": null }""";
+
+    [Fact]
+    public void ScopedLimit_ModelScoped_IsParsed()
+    {
+        var s = UsageCacheReader.TryRead(WriteFixture(Wrap($"""
+            "limits": [ {Limit(FableScope, 100, isActive: true)} ]
+            """)));
+
+        var limit = Assert.Single(s!.ScopedLimits);
+        Assert.Equal("Fable", limit.Label);
+        Assert.Null(limit.ModelId);
+        Assert.Equal(100, limit.Percent);
+        Assert.True(limit.IsActive);
+        Assert.Equal(new DateTimeOffset(2026, 7, 27, 16, 0, 0, TimeSpan.Zero), limit.ResetsAt);
+    }
+
+    [Fact]
+    public void ScopedLimits_NoLimitsKey_IsEmptyNotNull()
+        => Assert.Empty(UsageCacheReader.TryRead(WriteFixture(ValidJson))!.ScopedLimits);
+
+    [Fact]
+    public void ScopedLimit_SessionGroup_IsExcluded()
+        => Assert.Empty(UsageCacheReader.TryRead(WriteFixture(Wrap($"""
+            "limits": [ {Limit(FableScope, 50, group: "session")} ]
+            """)))!.ScopedLimits);
+
+    [Fact]
+    public void ScopedLimit_NullScope_IsExcluded()
+        => Assert.Empty(UsageCacheReader.TryRead(WriteFixture(Wrap($"""
+            "limits": [ {Limit("null", 90)} ]
+            """)))!.ScopedLimits);
+
+    [Fact]
+    public void ScopedLimit_NoLabelDerivable_IsExcluded()
+        => Assert.Empty(UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $"""
+            "limits": [ {Limit("""{ "model": { "id": null, "display_name": null }, "surface": null }""", 70)} ]
+            """)))!.ScopedLimits);
+
+    [Fact]
+    public void ScopedLimit_FallsBackToModelId_ForLabel()
+    {
+        var s = UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $"""
+            "limits": [ {Limit("""{ "model": { "id": "claude-fable", "display_name": null } }""", 40)} ]
+            """)));
+
+        var limit = Assert.Single(s!.ScopedLimits);
+        Assert.Equal("claude-fable", limit.Label);
+        Assert.Equal("claude-fable", limit.ModelId);
+    }
+
+    [Fact]
+    public void ScopedLimit_SurfaceOnly_IsIncludedWithUnderscoresAsSpaces()
+    {
+        var s = UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $"""
+            "limits": [ {Limit("""{ "model": null, "surface": "claude_code" }""", 100, isActive: true)} ]
+            """)));
+
+        Assert.Equal("claude code", Assert.Single(s!.ScopedLimits).Label);
+    }
+
+    [Fact]
+    public void ScopedLimit_ModelAndSurface_AreBothInTheLabel()
+    {
+        var s = UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $"""
+            "limits": [ {Limit("""{ "model": { "display_name": "Fable" }, "surface": "claude_code" }""", 60)} ]
+            """)));
+
+        Assert.Equal("Fable (claude code)", Assert.Single(s!.ScopedLimits).Label);
+    }
+
+    [Fact]
+    public void ScopedLimit_MalformedEntry_DoesNotDropItsSiblings()
+    {
+        var s = UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $$"""
+            "limits": [
+              { "group": "weekly", "percent": "not-a-number", "scope": {{FableScope}} },
+              "a bare string",
+              {{Limit("""{ "model": { "display_name": "Opus" } }""", 30)}}
+            ]
+            """)));
+
+        Assert.Equal("Opus", Assert.Single(s!.ScopedLimits).Label);
+    }
+
+    [Fact]
+    public void ScopedLimits_SameModelTwice_DedupesToHigherPercent()
+    {
+        var s = UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $$"""
+            "limits": [
+              {{Limit("""{ "model": { "id": null, "display_name": "Fable" } }""", 40)}},
+              {{Limit("""{ "model": { "id": "claude-fable", "display_name": "Fable" } }""", 90, isActive: true)}}
+            ]
+            """)));
+
+        var limit = Assert.Single(s!.ScopedLimits);
+        Assert.Equal(90, limit.Percent);
+        Assert.Equal("claude-fable", limit.ModelId);
+        Assert.True(limit.IsActive);
+    }
+
+    [Fact]
+    public void ScopedLimits_LabelsDifferingOnlyByCase_AreDeduped()
+        => Assert.Single(UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $$"""
+            "limits": [
+              {{Limit("""{ "model": { "display_name": "Fable" } }""", 10)}},
+              {{Limit("""{ "model": { "display_name": "fable" } }""", 20)}}
+            ]
+            """)))!.ScopedLimits);
+
+    [Fact]
+    public void ScopedLimits_ActiveSortsAheadOfHigherPercentInactive()
+    {
+        var s = UsageCacheReader.TryRead(WriteFixture(Wrap(
+            $$"""
+            "limits": [
+              {{Limit("""{ "model": { "display_name": "Inactive" } }""", 100)}},
+              {{Limit("""{ "model": { "display_name": "Active" } }""", 70, isActive: true)}}
+            ]
+            """)));
+
+        Assert.Equal(new[] { "Active", "Inactive" }, s!.ScopedLimits.Select(l => l.Label));
+    }
 }

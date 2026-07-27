@@ -29,12 +29,14 @@ public static class UsageCacheReader
 
             var fetchedAt = DateTimeOffset.FromUnixTimeMilliseconds(fetched.GetInt64());
             WindowUsage? five = null, seven = null;
+            IReadOnlyList<ScopedLimit> scoped = [];
             if (cached.TryGetProperty("utilization", out var u) && u.ValueKind == JsonValueKind.Object)
             {
                 five = UsageJson.ReadWindow(u, "five_hour");
                 seven = UsageJson.ReadWindow(u, "seven_day");
+                scoped = UsageJson.ReadScopedLimits(u);
             }
-            return new UsageSnapshot(fetchedAt, five, seven);
+            return new UsageSnapshot(fetchedAt, five, seven, scoped);
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException
             or FormatException or OverflowException or ArgumentOutOfRangeException)
