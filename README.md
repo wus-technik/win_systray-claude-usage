@@ -11,6 +11,7 @@ icons, plus per-model weekly caps and paid credit spend at a glance.
 [![CI](https://img.shields.io/github/actions/workflow/status/wus-technik/win_systray-claude-usage/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/wus-technik/win_systray-claude-usage/actions/workflows/ci.yml)
 [![Downloads](https://img.shields.io/github/downloads/wus-technik/win_systray-claude-usage/total?style=for-the-badge&color=2EA043)](https://github.com/wus-technik/win_systray-claude-usage/releases)
 
+[![License: MIT](https://img.shields.io/github/license/wus-technik/win_systray-claude-usage?style=flat-square&color=blue)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows_10%2F11-x64-0078D6?style=flat-square&logo=windows&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![Install](https://img.shields.io/badge/install-per--user,_no_admin-lightgrey?style=flat-square)
@@ -153,6 +154,10 @@ by the tag-triggered GitHub Actions workflow — push a `v*` tag whose version m
 </details>
 
 ---
+
+## License
+
+[MIT](LICENSE) © 2026 W&S Technik GmbH
 
 <div align="center">
 <sub>Not affiliated with Anthropic. Reads only your own local Claude Code credentials and usage data.</sub>

@@ -11,4 +11,10 @@
   <ItemGroup>
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- MIT requires the notice to ship with binaries, not just live in the repo. Copying it to
+         the publish output puts it inside the Velopack package, so the installed app directory
+         carries it — this is why neither build-release.ps1 nor release.yml needs to handle it. -->
+    <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
