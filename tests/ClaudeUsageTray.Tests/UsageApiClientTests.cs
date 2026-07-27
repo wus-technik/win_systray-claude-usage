@@ -189,4 +189,25 @@ public class UsageApiClientTests
     [Fact]
     public void ScopedLimits_AbsentFromResponse_DegradeToEmpty()
         => Assert.Empty(Fetch(_ => Json(HttpStatusCode.OK, BothWindows)).Result.Snapshot!.ScopedLimits);
+
+    [Fact]
+    public void Credits_AreReadFromTheResponseRoot()
+    {
+        const string body = """
+            { "spend": {
+                "used":  { "amount_minor": 4001, "currency": "EUR", "exponent": 2 },
+                "limit": { "amount_minor": 4000, "currency": "EUR", "exponent": 2 },
+                "percent": 100, "severity": "critical", "enabled": true
+              } }
+            """;
+
+        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+
+        Assert.Equal(4001, r.Snapshot!.Credits!.Used!.AmountMinor);
+        Assert.True(r.Snapshot.Credits.State.LimitReached);
+    }
+
+    [Fact]
+    public void Credits_AbsentFromResponse_IsNull()
+        => Assert.Null(Fetch(_ => Json(HttpStatusCode.OK, BothWindows)).Result.Snapshot!.Credits);
 }

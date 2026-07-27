@@ -282,4 +282,88 @@ public class UsageCacheReaderTests : IDisposable
 
         Assert.Equal(new[] { "Active", "Inactive" }, s!.ScopedLimits.Select(l => l.Label));
     }
+
+    // ---- credits (spend / extra_usage) ----
+
+    private const string SpendBlock = """
+        "spend": {
+          "used":  { "amount_minor": 4001, "currency": "EUR", "exponent": 2 },
+          "limit": { "amount_minor": 4000, "currency": "EUR", "exponent": 2 },
+          "percent": 100, "severity": "critical", "enabled": true, "disabled_reason": null
+        }
+        """;
+
+    private const string LegacyBlock = """
+        "extra_usage": {
+          "is_enabled": true, "monthly_limit": 4000, "used_credits": 4001, "utilization": 73,
+          "currency": "EUR", "decimal_places": 2, "disabled_reason": null,
+          "spend_limit_reached": false
+        }
+        """;
+
+    [Fact]
+    public void Credits_SpendBlock_IsParsedAsMoney()
+    {
+        var c = UsageCacheReader.TryRead(WriteFixture(Wrap(SpendBlock)))!.Credits;
+
+        Assert.Equal(4001, c!.Used!.AmountMinor);
+        Assert.Equal("EUR", c.Used.Currency);
+        Assert.Equal(2, c.Used.Exponent);
+        Assert.Equal(4000, c.Limit!.AmountMinor);
+        Assert.Equal(100, c.Percent);
+        Assert.Equal("critical", c.PayloadSeverity);
+        Assert.True(c.State.Enabled);
+    }
+
+    [Fact]
+    public void Credits_Absent_IsNull()
+        => Assert.Null(UsageCacheReader.TryRead(WriteFixture(ValidJson))!.Credits);
+
+    [Fact]
+    public void Credits_OverLimit_ReportsLimitReachedFromSpendNotTheLegacyFlag()
+    {
+        // spend says 4001 of 4000; extra_usage.spend_limit_reached says false. spend must win.
+        var c = UsageCacheReader.TryRead(WriteFixture(Wrap($"{SpendBlock}, {LegacyBlock}")))!.Credits;
+
+        Assert.True(c!.State.LimitReached);
+        Assert.Equal(100, c.Percent);          // from spend, not the legacy 73
+    }
+
+    [Fact]
+    public void Credits_ZeroLimit_IsNotReportedAsLimitReached()
+    {
+        var c = UsageCacheReader.TryRead(WriteFixture(Wrap("""
+            "spend": {
+              "used":  { "amount_minor": 0, "currency": "EUR", "exponent": 2 },
+              "limit": { "amount_minor": 0, "currency": "EUR", "exponent": 2 },
+              "percent": 0, "enabled": false, "disabled_reason": "org_spend_cap_reached"
+            }
+            """)))!.Credits;
+
+        Assert.False(c!.State.LimitReached);
+        Assert.False(c.State.Enabled);
+        Assert.Equal("org_spend_cap_reached", c.State.DisabledReason);
+    }
+
+    [Fact]
+    public void Credits_LegacyOnly_YieldsPercentWithoutAmounts()
+    {
+        var c = UsageCacheReader.TryRead(WriteFixture(Wrap(LegacyBlock)))!.Credits;
+
+        Assert.Null(c!.Used);
+        Assert.Null(c.Limit);
+        Assert.Equal(73, c.Percent);
+        Assert.True(c.State.Enabled);
+    }
+
+    [Fact]
+    public void Credits_SpendMissingAmounts_FallsBackToLegacy()
+    {
+        var c = UsageCacheReader.TryRead(WriteFixture(Wrap($$"""
+            "spend": { "percent": 99, "enabled": true }, {{LegacyBlock}}
+            """)))!.Credits;
+
+        Assert.Null(c!.Used);
+        Assert.Equal(73, c.Percent);   // legacy utilization, since spend had no money to trust
+    }
 }

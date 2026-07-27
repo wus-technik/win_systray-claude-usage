@@ -98,6 +98,61 @@ internal static class UsageJson
             .ToList();
     }
 
+    /// <summary>Credits from the authoritative money-typed `spend` block, falling back to the
+    /// legacy `extra_usage` block. The two are never merged: a payload where they disagree
+    /// yields spend's numbers.</summary>
+    internal static CreditUsage? ReadCredits(JsonElement parent)
+        => ReadSpend(parent) ?? ReadExtraUsage(parent);
+
+    private static CreditUsage? ReadSpend(JsonElement parent)
+    {
+        if (!parent.TryGetProperty("spend", out var s) || s.ValueKind != JsonValueKind.Object) return null;
+        // No trustworthy amounts means no money row — let the legacy block supply a percent instead.
+        if (ReadMoney(s, "used") is not { } used || ReadMoney(s, "limit") is not { } limit) return null;
+
+        // LimitReached comes from spend itself. Importing extra_usage.spend_limit_reached here
+        // would let the legacy block overrule the authoritative one: the observed payload is
+        // 4001 of 4000 at 100% while that flag reads false.
+        var limitReached = limit.AmountMinor > 0 && used.AmountMinor >= limit.AmountMinor;
+
+        return new CreditUsage(used, limit, ReadRoundedPercent(s, "percent") ?? 0,
+            NonEmptyString(s, "severity"),
+            new CreditState(ReadFlag(s, "enabled", whenAbsent: true),
+                NonEmptyString(s, "disabled_reason"), limitReached));
+    }
+
+    private static CreditUsage? ReadExtraUsage(JsonElement parent)
+    {
+        if (!parent.TryGetProperty("extra_usage", out var u) || u.ValueKind != JsonValueKind.Object)
+            return null;
+        if (ReadRoundedPercent(u, "utilization") is not { } percent) return null;
+
+        // used_credits/monthly_limit are deliberately not mapped to money: their units are
+        // unverified. A percent with no amount is honest; a possibly-wrong currency amount is not.
+        return new CreditUsage(null, null, percent, null,
+            new CreditState(ReadFlag(u, "is_enabled", whenAbsent: true),
+                NonEmptyString(u, "disabled_reason"),
+                ReadFlag(u, "spend_limit_reached", whenAbsent: false)));
+    }
+
+    private static Money? ReadMoney(JsonElement parent, string name)
+    {
+        if (!parent.TryGetProperty(name, out var m) || m.ValueKind != JsonValueKind.Object) return null;
+        if (!m.TryGetProperty("amount_minor", out var a) || a.ValueKind != JsonValueKind.Number
+            || !a.TryGetInt64(out var minor)) return null;
+
+        // Exponent guards against a malformed value scaling the amount into nonsense.
+        var exponent = m.TryGetProperty("exponent", out var e) && e.ValueKind == JsonValueKind.Number
+            && e.TryGetInt32(out var x) && x is >= 0 and <= 6 ? x : 2;
+        return new Money(minor, NonEmptyString(m, "currency") ?? "", exponent);
+    }
+
+    private static bool ReadFlag(JsonElement parent, string name, bool whenAbsent)
+        => parent.TryGetProperty(name, out var v)
+           && v.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? v.ValueKind == JsonValueKind.True
+            : whenAbsent;
+
     /// <summary>Keeps the higher percent so a dedup never makes usage look lower than it is; ties
     /// keep the first entry. ModelId and IsActive survive from either side — losing an active flag
     /// to a dedup would forfeit the row's exemption from the popup's row cap.</summary>
