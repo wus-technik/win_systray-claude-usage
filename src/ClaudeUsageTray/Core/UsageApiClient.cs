@@ -46,7 +46,8 @@ public static class UsageApiClient
 
             var five = UsageJson.ReadWindow(doc.RootElement, "five_hour");
             var seven = UsageJson.ReadWindow(doc.RootElement, "seven_day");
-            return new UsageFetchResult(new UsageSnapshot(now, five, seven), false, false, null);
+            var scoped = UsageJson.ReadScopedLimits(doc.RootElement);
+            return new UsageFetchResult(new UsageSnapshot(now, five, seven, scoped), false, false, null);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException
             or OperationCanceledException or JsonException)

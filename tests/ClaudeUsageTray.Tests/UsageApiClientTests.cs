@@ -162,4 +162,31 @@ public class UsageApiClientTests
         Assert.Null(r.Snapshot);
         Assert.False(r.Unauthorized);
     }
+
+    /// <summary>The API returns limits[] at the response root, where the cache nests it under
+    /// "utilization" — this proves the shared reader works at both levels. Percent arrives as a
+    /// decimal here, as the live API sends it.</summary>
+    [Fact]
+    public void ScopedLimits_AreReadFromTheResponseRoot()
+    {
+        const string body = """
+            { "five_hour": { "utilization": 11.0, "resets_at": "2026-07-24T16:00:00Z" },
+              "limits": [
+                { "group": "weekly", "percent": 99.6, "is_active": true,
+                  "resets_at": "2026-07-27T16:00:00Z",
+                  "scope": { "model": { "id": null, "display_name": "Fable" }, "surface": null } }
+              ] }
+            """;
+
+        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+
+        var limit = Assert.Single(r.Snapshot!.ScopedLimits);
+        Assert.Equal("Fable", limit.Label);
+        Assert.Equal(100, limit.Percent);
+        Assert.True(limit.IsActive);
+    }
+
+    [Fact]
+    public void ScopedLimits_AbsentFromResponse_DegradeToEmpty()
+        => Assert.Empty(Fetch(_ => Json(HttpStatusCode.OK, BothWindows)).Result.Snapshot!.ScopedLimits);
 }
