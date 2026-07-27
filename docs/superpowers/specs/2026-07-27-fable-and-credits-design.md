@@ -1,4 +1,4 @@
-# Model-scoped windows and credit usage in the popup
+# Scoped usage limits and credit usage in the popup
 
 Design for [issue #3](https://github.com/wus-technik/win_systray-claude-usage/issues/3).
 Date: 2026-07-27. Revised after adversarial review (see *Review departures* at the end).
@@ -59,9 +59,18 @@ as unquestionably real. So `is_active: false` **cannot** mean "does not apply". 
 consistent reading is that it marks the *currently binding* cap — the one limit closest to
 stopping you — which on this account is the scoped Fable entry at 100%.
 
-This is a reading, not a documented fact. The design therefore **parses and retains
-`is_active` but does not filter on it**. Filtering to `is_active == true` would have hidden
-the 90% weekly window, which is the concrete failure this observation rules out.
+This is a reading, not a documented fact — and it is under-determined. The observed payload
+proves only that `is_active: false` does **not** mean "not a real limit". It does not prove
+the flag means "currently binding". Payloads that would falsify that reading: two scoped
+entries both `is_active: true`; a scoped entry at 100% with `is_active: false` that still
+throttles; a low-percent active entry beside a higher-percent inactive one.
+
+The design therefore **parses and retains `is_active`, never filters on it, and uses it only
+where a wrong reading is cheap**: it sorts active rows first and exempts them from the row
+cap (see *Rendering*). Filtering to `is_active == true` would have hidden the 90% weekly
+window — the concrete failure this observation rules out. Drawing a "binding cap" badge would
+assert the unproven half of the reading. Sorting and cap-exemption are the two uses where
+being wrong costs only a suboptimal row order or a taller popup.
 
 ### Credits appear twice
 
@@ -115,9 +124,10 @@ its "option 2" (infer from field presence) becomes data-driven rather than a gue
 /// <summary>An amount in the payload's own money encoding: minor units + ISO code + exponent.</summary>
 public sealed record Money(long AmountMinor, string Currency, int Exponent);
 
-/// <summary>One model-scoped weekly limit from limits[] (e.g. Fable).
+/// <summary>One scoped weekly limit from limits[] — scoped to a model (e.g. Fable), a
+/// surface, or both. Label is payload-derived and is also the dedup key.
 /// IsActive is retained but never filtered on — see "What is_active appears to mean".</summary>
-public sealed record ModelLimit(
+public sealed record ScopedLimit(
     string Label, string? ModelId, int Percent, DateTimeOffset? ResetsAt, bool IsActive);
 
 /// <summary>Credit state beyond the percentage. A bool cannot express the observed case of
@@ -132,11 +142,11 @@ public sealed record UsageSnapshot(
     DateTimeOffset FetchedAt,
     WindowUsage? FiveHour,
     WindowUsage? SevenDay,
-    IReadOnlyList<ModelLimit>? ModelLimits = null,
+    IReadOnlyList<ScopedLimit>? ScopedLimits = null,
     CreditUsage? Credits = null)
 {
     /// <summary>Empty means absent. Never null to consumers, whatever the caller passed.</summary>
-    public IReadOnlyList<ModelLimit> ModelLimits { get; init; } = ModelLimits ?? [];
+    public IReadOnlyList<ScopedLimit> ScopedLimits { get; init; } = ScopedLimits ?? [];
 }
 ```
 
@@ -150,7 +160,7 @@ whole point: laxity at the boundary, a guarantee on the inside.
 If the compiler rejects the nullability mismatch between the positional parameter and the
 explicit property (records require the two to agree closely enough for the generated
 `Deconstruct`), fall back to naming the parameter differently — e.g. a `modelLimits`
-constructor parameter with a distinct `ModelLimits` property — rather than reverting to a
+constructor parameter with a distinct `ScopedLimits` property — rather than reverting to a
 nullable public surface. Verify this at implementation time; it has not been compiled.
 
 `Core/SnapshotPrecedence.cs` needs no change: it swaps whole snapshots by `FetchedAt`, so
@@ -162,38 +172,58 @@ Both new readers take the container element, so the API path (fields at the resp
 and the cache path (fields under `utilization`) share one implementation, exactly as
 `ReadWindow` does today.
 
-#### `ReadModelLimits(JsonElement parent) → IReadOnlyList<ModelLimit>`
+#### `ReadScopedLimits(JsonElement parent) → IReadOnlyList<ScopedLimit>`
 
 Returns empty when `limits` is missing or is not an array. An entry is **renderable** when
-all of these hold:
+both of these hold:
 
 1. `group == "weekly"`. Excludes `session`.
-2. `scope` is an object containing a `model` object. Excludes `weekly_all` (whose `scope` is
-   `null`), so the generic 7-day window is never duplicated as a model row.
-3. A label can be derived: `scope.model.display_name` if a non-empty string, else
-   `scope.model.id` if a non-empty string. **No label → skip the entry**, because a bar
-   captioned with nothing is worse than a missing bar.
+2. `scope` is a non-null object **and a label can be derived from it**, by the first of these
+   that yields a non-empty string:
+   - `scope.model.display_name` → label `"{model}"`
+   - `scope.model.id` → label `"{id}"`
+   - `scope.surface` → label `"{surface}"` with underscores replaced by spaces
+   When both a model and a surface are present, the label is `"{model} ({surface})"`, so a
+   model capped on one surface is not conflated with an account-wide model cap.
 
-When `scope.surface` is also a non-empty string, the label becomes `"{model} ({surface})"`
-so a model capped only on one surface is not silently conflated with an account-wide model
-cap.
+Requiring a *label* rather than a *model* is what excludes `weekly_all` (whose `scope` is
+`null`, yielding nothing), so the generic 7-day window is never duplicated as a scoped row —
+while still admitting **surface-only entries** (`scope.model` null, `scope.surface` set).
 
-**Surface-only entries (`scope.model` null, `scope.surface` set) are excluded** — rule 2
-requires a model. This is deliberate: no surface-scoped entry has been observed, the app has
-no vocabulary for surfaces, and inventing a label for an unverified shape risks presenting a
-limit the user cannot interpret. Recorded under *Out of scope*.
+An earlier draft excluded surface-only entries on the grounds that the app has no vocabulary
+for surfaces. That was wrong in the dangerous direction: combined with the row cap below, it
+gave two independent ways to hide a limit that is actively throttling the user. A row reading
+`claude code weekly — 100%` is a degraded label but a truthful one; a hidden 100% cap is
+neither. No surface-only entry has been observed, so including them costs nothing today and
+cannot hide a throttle tomorrow.
 
 `percent` is read with the same double-then-round handling as `utilization`; `resets_at` with
 the same ISO parse. A malformed entry is skipped individually; its siblings still parse.
 
-**Identity and deduplication.** Two entries can describe the same thing (same model, or the
-same model twice with and without a surface). Identity is
-`(ModelId ?? Label, Surface)`, compared case-insensitively. On a collision, **keep the entry
-with the higher `Percent`** — the more constraining figure, so a dedup never makes usage look
-lower than it is. Ties keep the first occurrence, making the result order-stable.
+**Identity and deduplication.** Identity is the **normalized label** — trimmed,
+case-insensitive — and nothing else. Because the label already embeds the surface when one is
+present, this is equivalent to keying on (model, surface) without needing to carry `Surface`
+as a field.
 
-**Ordering.** Descending `Percent`, then `Label` ascending as a stable tiebreak. The most
-constraining limit is the one worth seeing first, and it makes the row cap below meaningful.
+Keying on `ModelId ?? Label` would be broken: an entry with
+`{ id: "claude-fable", display_name: "Fable" }` and one with `{ id: null, display_name: "Fable" }`
+would produce the keys `claude-fable` and `Fable`, so both rows survive — burning one of the
+capped slots on a duplicate and possibly pushing a real limit out of view. Since `display_name`
+is the field observed to be reliably populated (and `id` the one observed null), the label is
+the sounder key.
+
+On a collision, **keep the entry with the higher `Percent`** — the more constraining figure,
+so dedup never makes usage look lower than it is; carry over the non-null `ModelId` from
+either entry. Ties keep the first occurrence, making the result order-stable.
+
+Residual limitation, accepted: an entry labelled from `display_name` ("Fable") and another
+labelled from `id` ("claude-fable") for the same model will not dedup. Closing that needs an
+id↔name map the payload does not provide.
+
+**Ordering.** `IsActive` descending **first**, then `Percent` descending, then `Label`
+ascending as a stable tiebreak. Active-first matters because of the row cap: sorting on
+percent alone could bury an active 70% cap behind four inactive rows at 80–100%, hiding the
+one limit closest to stopping the user — the exact failure this ordering exists to prevent.
 
 #### `ReadCredits(JsonElement parent) → CreditUsage?`
 
@@ -203,9 +233,15 @@ numbers, with no reconciliation attempted.
 
 `ReadSpend` requires `used.amount_minor` **and** `limit.amount_minor` to parse, else returns
 null so the fallback can run. Currency and exponent come from `used`; `Percent` from
-`spend.percent`; `PayloadSeverity` from `spend.severity`; `CreditState` from `spend.enabled`,
-`spend.disabled_reason`, and — since `spend` has no equivalent —
-`extra_usage.spend_limit_reached` when present, else false.
+`spend.percent`; `PayloadSeverity` from `spend.severity`; `Enabled` and `DisabledReason` from
+`spend.enabled` and `spend.disabled_reason`.
+
+`LimitReached` is derived **from `spend` itself** as `used.amount_minor >= limit.amount_minor`.
+An earlier draft imported `extra_usage.spend_limit_reached` here, which contradicted this
+section's own "never merged" rule and was wrong on the observed payload: `spend.used` is 4001
+against a `spend.limit` of 4000 at `percent: 100`, while `extra_usage.spend_limit_reached` is
+`false`. That would have rendered `40.01 / 40.00 EUR (100%)` with no "limit reached" line —
+the authoritative block saying over-limit and the legacy flag overruling it.
 
 `ReadExtraUsage` yields **`Used = null`, `Limit = null`**, `Percent` from `utilization`, and
 `CreditState` from `is_enabled` / `disabled_reason` / `spend_limit_reached`. It deliberately
@@ -221,7 +257,7 @@ no purchase or toggle action, so they would be unused fields (YAGNI).
 **Targeted cleanup while in this file:** percent-and-reset parsing is now needed in two
 shapes (`utilization` + `resets_at` for windows, `percent` + `resets_at` for limits). Factor
 out `ReadRoundedPercent(element, propertyName)` and `ReadResetsAt(element)` so `ReadWindow`
-and `ReadModelLimits` share them instead of duplicating the rounding and the
+and `ReadScopedLimits` share them instead of duplicating the rounding and the
 `AssumeUniversal | AdjustToUniversal` ISO parse.
 
 #### Precedence between the flat fields and `limits`
@@ -267,7 +303,7 @@ the issue predates treating the popup as the display surface.
 ```
 5-hour window — 0%
 7-day window — 90% · resets in 1h 20m
-Fable weekly — 100% · resets in 1h 20m      ← one row per ModelLimit, highest percent first
+Fable weekly — 100% · resets in 1h 20m      ← one row per ScopedLimit, active first
 Credits — 40.01 / 40.00 EUR (100%)          ← when Credits is not null
   limit reached                             ← only when CreditState says so
 Last updated 2 min ago
@@ -275,25 +311,34 @@ Last updated 2 min ago
 
 - **Extract the bar primitive, not the whole row.** `AddWindowRow` currently owns both the
   caption and the custom-drawn bar. Split out `AddBar(layout, percent, severity)` and give
-  windows, model limits, and credits their own caption logic. Model limits are *not* wrapped
+  windows, scoped limits, and credits their own caption logic. Scoped limits are *not* wrapped
   in a `WindowUsage` to reuse the row — that would discard `ModelId` and `IsActive` before
   rendering and make any later distinction between binding and non-binding caps a parsing
   change rather than a rendering one.
-- **Severity source differs by row type, on purpose.** Windows and model limits use
+- **Severity source differs by row type, on purpose.** Windows and scoped limits use
   `SeverityRules.For(percent, settings.Thresholds.Orange, settings.Thresholds.Red)` — the
   thresholds are a deliberate user-facing setting, and mixing sources would put a
   user-green 7-day bar beside a server-red Fable bar in one popup. Credits prefer
   `PayloadSeverity` when present, falling back to `SeverityRules`, because credit severity
   can encode account state that a percentage cannot express.
-- **`IsActive` is not currently rendered.** It is parsed and available, so distinguishing the
-  binding cap later is a popup-only change. Nothing is drawn from it until its semantics are
-  confirmed against more payloads.
-- **Model rows are capped at 4**, sorted by descending percent, with a `"+N more"` grey text
-  row when more exist. A row cap bounds the popup's height deterministically; the
-  alternative — a scrollable panel plus a working-area height clamp — is more machinery for a
-  case no observed payload reaches. Note `PositionNearCursor` clamps the popup's *position*
-  to the working area but not its *size*, so an unbounded row count would clip off-screen.
-- Empty `ModelLimits` and null `Credits` render nothing — no placeholder, no `0%`, no
+- **`IsActive` affects ordering and cap exemption, but draws nothing.** No badge, colour, or
+  caption derives from it, because its semantics are unconfirmed. It is used only where being
+  wrong is harmless: an unhelpful sort order and a slightly taller popup are recoverable,
+  whereas a mislabelled "binding" badge would assert something the payload has not
+  established.
+- **Scoped rows are capped at 4**, in the parser's active-first / percent-descending order,
+  with a `"+N more"` grey text row when more exist. A row cap bounds the popup's height
+  deterministically; the alternative — a scrollable panel plus a working-area height clamp —
+  is more machinery for a case no observed payload reaches. Note `PositionNearCursor` clamps
+  the popup's *position* to the working area but not its *size*, so an unbounded row count
+  would clip off-screen.
+- **`IsActive` rows are exempt from the cap.** If more than four limits are active, all of
+  them render. The cap exists to stop an unbounded list of *background* limits from growing
+  the popup off-screen; it must never be the reason the cap that is actually throttling the
+  user is invisible. `"+N more"` then counts only the hidden inactive rows. This bounds height
+  in every payload observed or plausible, while making the pathological case (many
+  simultaneously-active caps) fail toward showing too much rather than too little.
+- Empty `ScopedLimits` and null `Credits` render nothing — no placeholder, no `0%`, no
   "no data" line. This satisfies the issue's "hidden on plans without a Fable window"
   criterion with no plan detection.
 - Icon text and the display modes (`Show 5h` / `Show 7d` / `Show both`) are untouched.
@@ -317,12 +362,19 @@ and field names only — never values.
 - `session` kind: excluded by the `group == "weekly"` filter.
 - `scope.model.display_name` missing but `id` present: parsed, labelled from `id`.
 - Neither `display_name` nor `id`: skipped.
-- `scope.model` null with `scope.surface` set: excluded.
+- `scope.model` null with `scope.surface: "claude_code"`: included, labelled
+  `"claude code"`.
 - Model plus surface: labelled `"Model (surface)"`.
-- Two entries for the same model at different percents: deduped to the higher one.
-- Ordering: three limits returned highest-percent first.
+- Two entries for the same model at different percents: deduped to the higher one, and the
+  non-null `ModelId` survives from whichever entry carried it.
+- Two entries whose labels differ only by case or surrounding whitespace: deduped.
+- One entry with an `id` and one without, same `display_name`: deduped (the regression the
+  `ModelId ?? Label` key would have caused).
+- Ordering: an active entry at 70% sorts ahead of an inactive entry at 100%.
 - `is_active: false` on a scoped entry: parsed as false and **still present** in the list.
-- `spend` and `extra_usage` both present and disagreeing: `spend` wins.
+- `spend` and `extra_usage` both present and disagreeing: `spend` wins, including
+  `LimitReached` — a payload with `spend.used > spend.limit` and
+  `extra_usage.spend_limit_reached: false` must yield `LimitReached: true`.
 - `extra_usage` only: `Used`/`Limit` are null, `Percent` populated.
 - `decimal_places: 0` in an `extra_usage`-only payload: no money rendered, so no
   ambiguous-unit output.
@@ -334,9 +386,12 @@ on both paths.
 (null amounts), over-limit (percent above 100), `Enabled: false` with a `DisabledReason`, and
 `LimitReached: true`.
 
-Popup row-capping and ordering are covered at the `ModelLimits` level (parsing) rather than
+Popup row-capping and ordering are covered at the `ScopedLimits` level (parsing) rather than
 through WinForms; the cap constant and the "+N more" text are asserted against a helper that
 takes the list and returns the rows to draw, keeping the Form itself free of testable logic.
+That helper's cases: six inactive limits → four rows plus "+2 more"; six limits of which five
+are active → all five active rows render and "+1 more" counts only the inactive one; exactly
+four limits → no "+N more" row at all.
 
 Existing 5h/7d tests stay green unchanged; that is the no-regression check.
 
@@ -344,25 +399,36 @@ Existing 5h/7d tests stay green unchanged; that is the no-regression check.
 
 - [ ] Model-scoped weekly limits and credit usage parse from both the API and the
       `.claude.json` cache, degrading to empty/null when absent.
-- [ ] The popup shows one bar per model limit (capped, highest first) and a credit row, each
+- [ ] The popup shows one bar per scoped limit (capped, highest first) and a credit row, each
       hidden when its data is unavailable.
-- [ ] A model limit's label comes from the payload, so a renamed model needs no code change.
-- [ ] No model row is ever rendered as `0%` or `—` when the limit does not apply.
-- [ ] No model row duplicates the 5-hour or 7-day window.
+- [ ] A scoped limit's label comes from the payload, so a renamed model needs no code change.
+- [ ] No scoped row is ever rendered as `0%` or `—` when the limit does not apply.
+- [ ] No scoped row duplicates the 5-hour or 7-day window.
 - [ ] Credits render with the account's own currency code and exponent, not an assumed `$`,
       and render percent-only when the amount's units are unverified.
-- [ ] Credit state (disabled, limit reached) is distinguishable from ordinary usage.
-- [ ] The popup cannot grow past the row cap regardless of how many limits the payload has.
+- [ ] Credit state (disabled, limit reached) is distinguishable from ordinary usage, and
+      `LimitReached` is derived from `spend` alone — never from a legacy flag that can
+      contradict it.
+- [ ] No limit is hidden by the row cap while `is_active` is true.
+- [ ] No limit is hidden for lacking a model scope; a surface-only cap still renders.
+- [ ] Inactive rows beyond the cap are bounded, so the popup cannot grow off-screen on any
+      observed or plausible payload.
 - [ ] Tests cover: field present, field absent, malformed entry, missing label, surface-only
-      scope, duplicate models, ordering, `is_active: false` retained, legacy-only credit
-      shape, `spend`/`extra_usage` disagreement, and credit formatting.
+      scope, duplicate models (including the id/no-id pair), ordering with an active
+      low-percent entry, `is_active: false` retained, legacy-only credit shape,
+      `spend`/`extra_usage` disagreement including `LimitReached`, and credit formatting.
 - [ ] No regression to the existing 5h/7d rows, icon text, or display modes.
 
 ## Out of scope
 
 - A display mode that puts a model window or credits in the icon text.
-- Surface-scoped limits with no model (`scope.model` null). Revisit if one is ever observed.
-- Rendering `is_active` as a visual distinction, pending confirmation of its semantics.
+- Rendering `is_active` as a visual distinction, pending confirmation of its semantics. It
+  still drives ordering and cap exemption.
+- Parsing `severity` on scoped limits. It would be an unused field: scoped-limit bars colour from the
+  user's thresholds, so nothing would read it (YAGNI). Revisit if evidence appears that model
+  severity encodes state a percentage cannot express — the case already granted for credits.
+- Deduplicating two entries for one model when one is labelled from `display_name` and the
+  other from `id`; the payload provides no id↔name map.
 - Mapping `extra_usage` amounts to money, pending confirmation of its units.
 - Replacing the flat `five_hour` / `seven_day` reads with `limits`-derived values. Coherent
   long-term, but it rewrites working parse paths and risks the regression the issue forbids.
@@ -372,15 +438,36 @@ Existing 5h/7d tests stay green unchanged; that is the no-regression check.
 
 ## Review departures
 
-An adversarial review raised nine findings. Seven are applied above. Two are recorded as
+### Round 2
+
+A second adversarial pass on the revision raised four new findings; all four are applied:
+
+- **Dedup key was broken.** `ModelId ?? Label` mixed two key spaces, so `{id: "claude-fable",
+  display_name: "Fable"}` and `{id: null, display_name: "Fable"}` produced different keys and
+  both survived. Now keyed on the normalized label alone.
+- **`LimitReached` read a legacy field on the authoritative path**, contradicting this spec's
+  own "never merged" rule — and wrong on the observed payload, where `spend` is over limit
+  while `extra_usage.spend_limit_reached` is `false`. Now derived from `spend`.
+- **Percent-only ordering plus a hard cap could bury an active limit.** Now active-first, and
+  active rows are exempt from the cap.
+- **Excluding surface-only entries was the second way to hide a throttling cap.** Now
+  included with a degraded label.
+
+The round-2 suggestion to parse `severity` on scoped limits is declined as YAGNI — nothing
+would read it while scoped-limit bars colour from the user's thresholds. It is recorded under *Out of
+scope* with the condition that would reopen it.
+
+### Round 1
+
+The first adversarial review raised nine findings. Seven were applied. Two are recorded as
 deliberate departures:
 
-1. **"Filter model rows to `is_active == true`."** Not applied. The review's own cited
+1. **"Filter scoped rows to `is_active == true`."** Not applied. The review's own cited
    evidence refutes it: `weekly_all` is `is_active: false` at 90% and is a real, displayed
    limit, so filtering on the flag would hide genuine usage. The field is parsed and retained
    instead, and the reasoning is now written down rather than assumed.
 2. **"Prefer the payload's `severity` over local thresholds."** Applied for credits only, not
-   for windows or model limits. The orange/red thresholds are a user-configurable setting;
+   for windows or scoped limits. The orange/red thresholds are a user-configurable setting;
    letting server severity win for some bars and user thresholds for others would make one
    popup internally inconsistent.
 
