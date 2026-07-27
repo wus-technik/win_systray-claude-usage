@@ -2,7 +2,8 @@ using ClaudeUsageTray.Core;
 
 namespace ClaudeUsageTray.Tray;
 
-/// <summary>Compact popup near the tray: both windows as colored bars, countdowns, last-updated line.</summary>
+/// <summary>Compact popup near the tray: windows, scoped limits, and credits as colored bars with
+/// countdowns, plus a last-updated line.</summary>
 public sealed class UsagePopup : Form
 {
     public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now, string? lastFetchStatus = null)
@@ -38,6 +39,21 @@ public sealed class UsagePopup : Form
             AddWindowRow(layout, "5-hour window", snapshot.FiveHour, settings, now);
             AddWindowRow(layout, "7-day window", snapshot.SevenDay, settings, now);
 
+            var rows = PopupRows.ForScopedLimits(snapshot.ScopedLimits);
+            foreach (var limit in rows.Visible) AddScopedRow(layout, limit, settings, now);
+            if (rows.HiddenCount > 0)
+            {
+                layout.Controls.Add(new Label
+                {
+                    Text = $"+{rows.HiddenCount} more",
+                    AutoSize = true,
+                    ForeColor = SystemColors.GrayText,
+                    Margin = new Padding(0, 2, 0, 0),
+                });
+            }
+
+            if (snapshot.Credits is { } credits) AddCreditRow(layout, credits, settings);
+
             var updated = $"Last updated {RelativeTime.Ago(snapshot.FetchedAt, now)}" + (stale ? " · stale" : "");
             layout.Controls.Add(new Label
             {
@@ -71,31 +87,73 @@ public sealed class UsagePopup : Form
             layout.Controls.Add(new Label { Text = $"{title}: no data", AutoSize = true });
             return;
         }
+        var resets = usage.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
+        AddCaption(layout, $"{title} — {usage.Percent}%{resets}");
+        AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings));
+    }
 
-        var severity = SeverityRules.For(usage.Percent, settings.Thresholds.Orange, settings.Thresholds.Red);
+    /// <summary>A model- or surface-scoped weekly limit. Not routed through AddWindowRow via a
+    /// WindowUsage: that would discard ModelId and IsActive before rendering, making any later
+    /// distinction between binding and non-binding caps a parsing change rather than a drawing one.</summary>
+    private static void AddScopedRow(TableLayoutPanel layout, ScopedLimit limit,
+        Settings settings, DateTimeOffset now)
+    {
+        var resets = limit.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
+        AddCaption(layout, $"{limit.Label} weekly — {limit.Percent}%{resets}");
+        AddBar(layout, limit.Percent, SeverityFor(limit.Percent, settings));
+    }
+
+    private static void AddCreditRow(TableLayoutPanel layout, CreditUsage credits, Settings settings)
+    {
+        AddCaption(layout, $"Credits — {CreditFormat.Describe(credits)}");
+        // Credits prefer the payload's own severity: it can encode account state, such as a cap
+        // already being reached, that a percentage alone cannot express. Windows and scoped limits
+        // deliberately keep the user's configurable thresholds instead.
+        AddBar(layout, credits.Percent,
+            ParseSeverity(credits.PayloadSeverity) ?? SeverityFor(credits.Percent, settings));
+
+        if (CreditFormat.DescribeState(credits.State) is { } state)
+        {
+            layout.Controls.Add(new Label
+            {
+                Text = state,
+                AutoSize = true,
+                ForeColor = Color.Firebrick,
+                Margin = new Padding(0, 0, 0, 4),
+            });
+        }
+    }
+
+    private static void AddCaption(TableLayoutPanel layout, string text)
+        => layout.Controls.Add(new Label { Text = text, AutoSize = true, Margin = new Padding(0, 6, 0, 2) });
+
+    private static Severity SeverityFor(int percent, Settings settings)
+        => SeverityRules.For(percent, settings.Thresholds.Orange, settings.Thresholds.Red);
+
+    private static Severity? ParseSeverity(string? payloadSeverity) => payloadSeverity switch
+    {
+        "critical" => Severity.Red,
+        "warning" => Severity.Orange,
+        "normal" => Severity.Green,
+        _ => null,
+    };
+
+    /// <summary>Custom-drawn bar (ProgressBar can't be recolored per-severity).</summary>
+    private static void AddBar(TableLayoutPanel layout, int percent, Severity severity)
+    {
         var barColor = severity switch
         {
             Severity.Red => Color.FromArgb(224, 68, 68),
             Severity.Orange => Color.FromArgb(232, 150, 40),
             _ => Color.FromArgb(64, 184, 96),
         };
-        var resets = usage.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
-
-        layout.Controls.Add(new Label
-        {
-            Text = $"{title} — {usage.Percent}%{resets}",
-            AutoSize = true,
-            Margin = new Padding(0, 6, 0, 2),
-        });
-
-        // Custom-drawn bar (ProgressBar can't be recolored per-severity).
         var bar = new Panel { Width = 240, Height = 12, Margin = new Padding(0, 0, 0, 4) };
-        int percent = Math.Clamp(usage.Percent, 0, 100);
+        var filled = Math.Clamp(percent, 0, 100);
         bar.Paint += (_, e) =>
         {
             e.Graphics.FillRectangle(SystemBrushes.ControlLight, 0, 0, bar.Width, bar.Height);
             using var brush = new SolidBrush(barColor);
-            e.Graphics.FillRectangle(brush, 0, 0, bar.Width * percent / 100, bar.Height);
+            e.Graphics.FillRectangle(brush, 0, 0, bar.Width * filled / 100, bar.Height);
             e.Graphics.DrawRectangle(SystemPens.ControlDark, 0, 0, bar.Width - 1, bar.Height - 1);
         };
         layout.Controls.Add(bar);
