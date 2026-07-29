@@ -103,19 +103,26 @@ Inside the existing `Paint` handler, after the fill and before the border, when
 `elapsedFraction` is non-null:
 
 ```csharp
-var x = (int)Math.Round((bar.Width - 1) * fraction);
-e.Graphics.DrawLine(SystemPens.ControlDarkDark, x, 0, x, 2);
-e.Graphics.DrawLine(SystemPens.ControlDarkDark, x, bar.Height - 3, x, bar.Height - 1);
+var x = 1 + (int)Math.Round((bar.Width - 3) * fraction);
+e.Graphics.DrawLine(SystemPens.ControlText, x, 0, x, 2);
+e.Graphics.DrawLine(SystemPens.ControlText, x, bar.Height - 3, x, bar.Height - 1);
 ```
 
 An inset notch — 2px ticks biting in from the top and bottom edges — rather than a full-height
-line, so the fill stays visually continuous. `bar.Width - 1` keeps fraction `1.0` inside the
-border rather than one pixel past it.
+line, so the fill stays visually continuous.
 
-`SystemPens.ControlDarkDark` is a single fixed color for all cases. It carries enough contrast
-against the light unfilled background and against all three fill colors (green
-`64,184,96`, orange `232,150,40`, red `224,68,68`) that no per-side inversion is needed, and it
-keeps the draw to two calls.
+The x mapping targets the bar's *inner* region, x=1..238, not its full width. The border is
+drawn last as `DrawRectangle(0, 0, Width - 1, Height - 1)`, so its verticals own x=0 and x=239;
+a marker placed there would be computed correctly and then painted over. Since fractions of
+exactly `0.0` and `1.0` are in range and must be visible, the offset is required, not cosmetic.
+The ticks' outer endpoints at y=0 and y=Height-1 are likewise covered by the border, leaving 2
+visible pixels of each 3-pixel tick — acceptable, and the reason the ticks are 3px long.
+
+`SystemPens.ControlText` is a single fixed color for all cases. Black reaches roughly 5:1
+contrast against the worst-case red fill (`224,68,68`) and 18:1 against the `ControlLight`
+unfilled background, so no per-side inversion is needed and the draw stays at two calls.
+`ControlDarkDark` (`#696969`) was rejected: against the red fill it measures about 1.3:1, which
+would make the marker invisible on precisely the bars that matter most.
 
 The bar stays 240×12, leaving 8px of unbroken fill between the ticks.
 
@@ -132,7 +139,7 @@ The bar stays 240×12, leaving 8px of unbroken fill between the ticks.
 - `resetsAt` null → null
 - `TimeSpan.Zero` period → null
 
-Floating-point comparisons use a tolerance. The drawing itself is not tested, consistent with
+Floating-point comparisons round to 6 decimal places. The drawing itself is not tested, consistent with
 the rest of `UsagePopup`.
 
 ## Out of scope

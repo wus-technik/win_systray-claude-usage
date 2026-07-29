@@ -19,7 +19,7 @@
 - `now` is always passed in as a `DateTimeOffset` parameter. Never call `DateTimeOffset.Now`/`UtcNow` inside `Core` helpers.
 - Period lengths are 5 hours (5-hour window) and 7 days (7-day window, all scoped weekly limits). Credits get no marker.
 - Out-of-range fractions are hidden, not clamped: `null` reset time, fraction `> 1`, fraction `< 0`, and non-positive period all yield no marker. Exactly `0.0` and `1.0` are in range and do draw.
-- The bar stays 240×12. Marker ticks are 2px tall at the top and bottom edges, drawn with `SystemPens.ControlDarkDark`.
+- The bar stays 240×12. Marker ticks are drawn at the top and bottom edges with `SystemPens.ControlText`, positioned within the bar's inner region x=1..238 so the border cannot occlude them.
 - Comments explain *why*, not *what*, matching the existing density in `UsagePopup.cs` and `PopupRows.cs`. Do not add narration comments.
 - All produced text (code comments, commit messages) in English.
 - Do not add a `Co-Authored-By` trailer to commits.
@@ -104,7 +104,7 @@ public class TimeMarkerTests
 }
 ```
 
-`AssertFraction` exists because the fractions are floating-point: comparing them needs a tolerance, and each assertion also has to unwrap the `double?`. Doing both in one helper keeps the nine test bodies to one line each.
+`AssertFraction` exists because every assertion has to unwrap the `double?` and compare the result inexactly — `Assert.Equal(expected, actual, precision: 6)` compares both values rounded to 6 decimal places (it is decimal-place rounding, not an absolute tolerance), which is what makes the `5d / 7d` case pass. Doing both in one helper keeps the nine test bodies to one line each.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -159,7 +159,8 @@ git commit -m "feat: derive elapsed-period fraction for usage bar markers"
 ### Task 2: Draw the notch on the popup bars
 
 **Files:**
-- Modify: `src/ClaudeUsageTray/Tray/UsagePopup.cs` — `AddWindowRow` (lines 82–93), `AddScopedRow` (98–104), `AddCreditRow` (106–125), `AddBar` (141–160), and the two `AddWindowRow` call sites (39–40)
+- Modify: `src/ClaudeUsageTray/Tray/UsagePopup.cs` — `AddWindowRow` (lines 82–93), `AddScopedRow` (98–104), `AddBar` (141–160), and the two `AddWindowRow` call sites (39–40)
+- Do **not** modify: `AddCreditRow` (106–125). It is listed here only to be explicit that it stays untouched — credits opt out of the marker via `AddBar`'s parameter default.
 
 **Interfaces:**
 - Consumes: `TimeMarker.ElapsedFraction(DateTimeOffset? resetsAt, TimeSpan period, DateTimeOffset now)` from Task 1, returning `double?`.
@@ -240,10 +241,11 @@ Replace the `AddBar` method (currently lines 141–160) with:
             if (elapsedFraction is { } fraction)
             {
                 // Ticks inset from the edges rather than a full-height line: the fill stays visually
-                // continuous. Width - 1 keeps fraction 1.0 inside the border instead of one px past it.
-                var x = (int)Math.Round((bar.Width - 1) * fraction);
-                e.Graphics.DrawLine(SystemPens.ControlDarkDark, x, 0, x, 2);
-                e.Graphics.DrawLine(SystemPens.ControlDarkDark, x, bar.Height - 3, x, bar.Height - 1);
+                // continuous. x is mapped into the inner region (1..Width-2) because the border drawn
+                // below owns x=0 and x=Width-1 — a marker at fraction 0.0 or 1.0 would be painted over.
+                var x = 1 + (int)Math.Round((bar.Width - 3) * fraction);
+                e.Graphics.DrawLine(SystemPens.ControlText, x, 0, x, 2);
+                e.Graphics.DrawLine(SystemPens.ControlText, x, bar.Height - 3, x, bar.Height - 1);
             }
             e.Graphics.DrawRectangle(SystemPens.ControlDark, 0, 0, bar.Width - 1, bar.Height - 1);
         };
@@ -252,6 +254,14 @@ Replace the `AddBar` method (currently lines 141–160) with:
 ```
 
 The border is drawn last so it stays on top of both the fill and the ticks, exactly as before.
+That is why the x mapping is inset: with a 240px bar the border verticals sit at x=0 and x=239, so
+`1 + Math.Round(237 * fraction)` puts fraction `0.0` at x=1 and `1.0` at x=238 — both visible.
+Each tick's outer pixel (y=0, y=Height-1) is covered by the border's horizontal lines, leaving 2
+visible pixels per tick; that is intended, and why the lines span 3 pixels.
+
+`SystemPens.ControlText` rather than a mid-grey: black holds roughly 5:1 contrast against the red
+fill `(224,68,68)`, where `ControlDarkDark` (`#696969`) manages only about 1.3:1 and would vanish
+on exactly the bars the user most needs to read.
 
 - [ ] **Step 5: Build and run the full suite**
 
@@ -265,6 +275,7 @@ Then click the tray icon to open the popup and confirm:
 - The 5-hour and 7-day bars each show a notch at top and bottom, at a position consistent with their "resets in …" countdown (e.g. "resets in 1h" on the 5-hour bar puts the notch near 80%).
 - Scoped weekly rows show a notch; the Credits row shows none.
 - The notch is visible both where it falls over the colored fill and where it falls over the grey background.
+- The notch is legible over a **red** bar specifically (a limit above the red threshold). This is the worst contrast case and the reason the pen is `ControlText`; if no bar is currently red, temporarily lower `Thresholds.Red` in the settings file to force one rather than skipping this check.
 - Nothing is drawn outside the bar's border.
 
 If the tray already has a running instance, `SingleInstance` will refuse to start a second one — close the existing instance first.
