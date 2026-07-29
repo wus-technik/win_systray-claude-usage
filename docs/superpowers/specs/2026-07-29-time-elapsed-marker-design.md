@@ -103,28 +103,42 @@ Inside the existing `Paint` handler, after the fill and before the border, when
 `elapsedFraction` is non-null:
 
 ```csharp
-var x = 1 + (int)Math.Round((bar.Width - 3) * fraction);
-e.Graphics.DrawLine(SystemPens.ControlText, x, 0, x, 2);
-e.Graphics.DrawLine(SystemPens.ControlText, x, bar.Height - 3, x, bar.Height - 1);
+const int markerWidth = 2;
+var x = 1 + (int)Math.Round((bar.Width - 2 - markerWidth) * fraction);
+using var markerBrush = new SolidBrush(SystemColors.ControlText);
+e.Graphics.FillRectangle(markerBrush, x, 0, markerWidth, bar.Height);
 ```
 
-An inset notch — 2px ticks biting in from the top and bottom edges — rather than a full-height
-line, so the fill stays visually continuous.
+A 2px-wide, full-height band.
+
+**This replaced an inset notch, and the reason is worth recording.** The notch — 3px ticks biting
+in from the top and bottom edges, leaving the fill continuous through the middle — was the
+original choice and looked right when inspected at 6× magnification. At 1:1 on a 96-DPI display
+it was barely visible, because the border overdraws the outer row of anything touching an edge:
+each 3px tick showed only 2px, giving 4 black pixels per marker, and a mark that thin reads as
+grey no matter how dark the ink. Rendering six weight variants at true size showed tick *length*
+mattered more than pen width for exactly this reason, and that only a full-height band was
+unambiguous over the red fill. The lesson generalises: verify small-scale drawing at 1:1, since
+magnified previews flatter thin marks.
 
 The x mapping targets the bar's *inner* region, x=1..238, not its full width. The border is
 drawn last as `DrawRectangle(0, 0, Width - 1, Height - 1)`, so its verticals own x=0 and x=239;
 a marker placed there would be computed correctly and then painted over. Since fractions of
 exactly `0.0` and `1.0` are in range and must be visible, the offset is required, not cosmetic.
-The ticks' outer endpoints at y=0 and y=Height-1 are likewise covered by the border, leaving 2
-visible pixels of each 3-pixel tick — acceptable, and the reason the ticks are 3px long.
+Subtracting `markerWidth` as well keeps the rightmost column inside that region: with a 240px
+bar, x lands in 1..237 and the band occupies 237..238 at fraction `1.0`.
 
-`SystemPens.ControlText` is a single fixed color for all cases. Black reaches roughly 5:1
+The band is filled as a rectangle rather than stroked with a 2px pen because GDI+ centres pen
+strokes on the coordinate, which would place one column outside the checked range.
+
+`SystemColors.ControlText` is a single fixed color for all cases. Black reaches roughly 5:1
 contrast against the worst-case red fill (`224,68,68`) and 18:1 against the `ControlLight`
-unfilled background, so no per-side inversion is needed and the draw stays at two calls.
-`ControlDarkDark` (`#696969`) was rejected: against the red fill it measures about 1.3:1, which
-would make the marker invisible on precisely the bars that matter most.
+unfilled background, so no per-side inversion is needed. `ControlDarkDark` (`#696969`) was
+rejected: against the red fill it measures about 1.3:1, which would make the marker invisible on
+precisely the bars that matter most.
 
-The bar stays 240×12, leaving 8px of unbroken fill between the ticks.
+The bar stays 240×12. The band's top and bottom rows fall under the border's horizontals,
+leaving 10 visible rows.
 
 ## Testing
 

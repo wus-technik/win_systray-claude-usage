@@ -161,12 +161,17 @@ public sealed class UsagePopup : Form
             e.Graphics.FillRectangle(brush, 0, 0, bar.Width * filled / 100, bar.Height);
             if (elapsedFraction is { } fraction)
             {
-                // Ticks inset from the edges rather than a full-height line: the fill stays visually
-                // continuous. x is mapped into the inner region (1..Width-2) because the border drawn
-                // below owns x=0 and x=Width-1 — a marker at fraction 0.0 or 1.0 would be painted over.
-                var x = 1 + (int)Math.Round((bar.Width - 3) * fraction);
-                e.Graphics.DrawLine(SystemPens.ControlText, x, 0, x, 2);
-                e.Graphics.DrawLine(SystemPens.ControlText, x, bar.Height - 3, x, bar.Height - 1);
+                // A full-height band, not the inset notch this started as: the border overdraws the
+                // outer row of anything touching an edge, so 3px ticks left just 4 black pixels, which
+                // read as grey at 1:1 on a 96-DPI screen however dark the pen. Width is filled as a
+                // rectangle rather than stroked with a wide pen because GDI+ centres pen strokes on the
+                // coordinate, which would put a column outside the range checked below.
+                const int markerWidth = 2;
+                // Span markerWidth columns inside 1..Width-2: the border drawn below owns x=0 and
+                // x=Width-1 and would otherwise swallow the marker at fraction 0.0 and 1.0.
+                var x = 1 + (int)Math.Round((bar.Width - 2 - markerWidth) * fraction);
+                using var markerBrush = new SolidBrush(SystemColors.ControlText);
+                e.Graphics.FillRectangle(markerBrush, x, 0, markerWidth, bar.Height);
             }
             e.Graphics.DrawRectangle(SystemPens.ControlDark, 0, 0, bar.Width - 1, bar.Height - 1);
         };
