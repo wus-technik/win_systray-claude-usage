@@ -16,6 +16,11 @@ public class TimeMarkerTests
         => AssertFraction(5d / 7d, TimeMarker.ElapsedFraction(Now.AddDays(2), TimeSpan.FromDays(7), Now));
 
     [Fact]
+    public void ResetTimeInADifferentOffsetIsNormalizedToUtc()
+        => AssertFraction(0.4, TimeMarker.ElapsedFraction(
+            new DateTimeOffset(2026, 7, 29, 17, 0, 0, TimeSpan.FromHours(2)), TimeSpan.FromHours(5), Now));
+
+    [Fact]
     public void ResetDueNowIsFullyElapsed()
         => AssertFraction(1.0, TimeMarker.ElapsedFraction(Now, TimeSpan.FromHours(5), Now));
 
