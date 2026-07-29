@@ -41,6 +41,7 @@ and how much paid credit you've burned this month.
 | 🎯 **Per-model caps** | Weekly limits scoped to a model (e.g. Fable) or surface — the cap that usually bites first |
 | 💳 **Credit spend** | Paid extra-usage against your limit, in **your** account's currency |
 | ⏱️ **Reset countdowns** | "resets in 3h 58m", on hover and in the popup |
+| 📈 **Pace marker** | A line on each bar marking where the *clock* is in the period — fill past it means you're on track to hit the cap early |
 | 🔄 **Live + offline** | Polls Anthropic's usage API every 5 min; falls back to Claude Code's local cache |
 | 🚀 **Zero-friction** | Per-user install, no admin, auto-updates, starts at login |
 
