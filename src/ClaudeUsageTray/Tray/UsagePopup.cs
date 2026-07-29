@@ -36,8 +36,8 @@ public sealed class UsagePopup : Form
         else
         {
             bool stale = now - snapshot.FetchedAt > TimeSpan.FromMinutes(settings.StalenessMinutes);
-            AddWindowRow(layout, "5-hour window", snapshot.FiveHour, settings, now);
-            AddWindowRow(layout, "7-day window", snapshot.SevenDay, settings, now);
+            AddWindowRow(layout, "5-hour window", snapshot.FiveHour, TimeSpan.FromHours(5), settings, now);
+            AddWindowRow(layout, "7-day window", snapshot.SevenDay, TimeSpan.FromDays(7), settings, now);
 
             var rows = PopupRows.ForScopedLimits(snapshot.ScopedLimits);
             foreach (var limit in rows.Visible) AddScopedRow(layout, limit, settings, now);
@@ -80,7 +80,7 @@ public sealed class UsagePopup : Form
     }
 
     private static void AddWindowRow(TableLayoutPanel layout, string title, WindowUsage? usage,
-        Settings settings, DateTimeOffset now)
+        TimeSpan period, Settings settings, DateTimeOffset now)
     {
         if (usage is null)
         {
@@ -89,7 +89,8 @@ public sealed class UsagePopup : Form
         }
         var resets = usage.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
         AddCaption(layout, $"{title} — {usage.Percent}%{resets}");
-        AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings));
+        AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings),
+            TimeMarker.ElapsedFraction(usage.ResetsAt, period, now));
     }
 
     /// <summary>A model- or surface-scoped weekly limit. Not routed through AddWindowRow via a
@@ -100,7 +101,8 @@ public sealed class UsagePopup : Form
     {
         var resets = limit.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
         AddCaption(layout, $"{limit.Label} weekly — {limit.Percent}%{resets}");
-        AddBar(layout, limit.Percent, SeverityFor(limit.Percent, settings));
+        AddBar(layout, limit.Percent, SeverityFor(limit.Percent, settings),
+            TimeMarker.ElapsedFraction(limit.ResetsAt, TimeSpan.FromDays(7), now));
     }
 
     private static void AddCreditRow(TableLayoutPanel layout, CreditUsage credits, Settings settings)
@@ -138,8 +140,11 @@ public sealed class UsagePopup : Form
         _ => null,
     };
 
-    /// <summary>Custom-drawn bar (ProgressBar can't be recolored per-severity).</summary>
-    private static void AddBar(TableLayoutPanel layout, int percent, Severity severity)
+    /// <summary>Custom-drawn bar (ProgressBar can't be recolored per-severity). elapsedFraction, when
+    /// non-null, marks how far the clock has moved through the limit's reset period: fill short of the
+    /// marker is burning slower than the clock, fill past it is on track to hit the cap early.</summary>
+    private static void AddBar(TableLayoutPanel layout, int percent, Severity severity,
+        double? elapsedFraction = null)
     {
         var barColor = severity switch
         {
@@ -154,6 +159,15 @@ public sealed class UsagePopup : Form
             e.Graphics.FillRectangle(SystemBrushes.ControlLight, 0, 0, bar.Width, bar.Height);
             using var brush = new SolidBrush(barColor);
             e.Graphics.FillRectangle(brush, 0, 0, bar.Width * filled / 100, bar.Height);
+            if (elapsedFraction is { } fraction)
+            {
+                // Ticks inset from the edges rather than a full-height line: the fill stays visually
+                // continuous. x is mapped into the inner region (1..Width-2) because the border drawn
+                // below owns x=0 and x=Width-1 — a marker at fraction 0.0 or 1.0 would be painted over.
+                var x = 1 + (int)Math.Round((bar.Width - 3) * fraction);
+                e.Graphics.DrawLine(SystemPens.ControlText, x, 0, x, 2);
+                e.Graphics.DrawLine(SystemPens.ControlText, x, bar.Height - 3, x, bar.Height - 1);
+            }
             e.Graphics.DrawRectangle(SystemPens.ControlDark, 0, 0, bar.Width - 1, bar.Height - 1);
         };
         layout.Controls.Add(bar);
