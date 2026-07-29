@@ -19,9 +19,10 @@ icons, plus per-model weekly caps and paid credit spend at a glance.
 
 <br>
 
-<img src="docs/screenshot-popup.png" alt="The Claude Usage Tray popup showing the 5-hour window at 4%, the 7-day window at 1%, a Fable weekly row at 0%, and credits at 40.01 of 60.00 EUR" width="360">
+<img src="docs/screenshot-popup.png" alt="The Claude Usage Tray popup showing the 5-hour window at 39% resetting in 1h 3m, the 7-day window at 58% resetting in 4d 16h, a Fable weekly row at 32%, and credits at 40.01 of 60.00 EUR. A dark vertical marker on each usage bar shows how far the clock has moved through that limit's period." width="360">
 
-<sub>Left-click the tray icon for the full picture. Every bar is colour-coded by severity.</sub>
+<sub>Left-click the tray icon for the full picture. Every bar is colour-coded by severity, and the
+marker line shows where the clock is: fill short of it means you're burning slower than the clock.</sub>
 
 </div>
 
