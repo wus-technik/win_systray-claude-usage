@@ -185,8 +185,10 @@ public sealed class TrayApp : ApplicationContext
         bool stale = _snapshot is not null
             && now - _snapshot.FetchedAt > TimeSpan.FromMinutes(_settings.StalenessMinutes);
 
-        if (_iconFive is not null) Apply(_iconFive, '5', _snapshot?.FiveHour, "5h", clockwise: true, stale, now);
-        if (_iconSeven is not null) Apply(_iconSeven, '7', _snapshot?.SevenDay, "7d", clockwise: false, stale, now);
+        if (_iconFive is not null)
+            Apply(_iconFive, '5', _snapshot?.FiveHour, "5h", TimeSpan.FromHours(5), clockwise: true, stale, now);
+        if (_iconSeven is not null)
+            Apply(_iconSeven, '7', _snapshot?.SevenDay, "7d", TimeSpan.FromDays(7), clockwise: false, stale, now);
 
         _updatedItem.Text = _settingsSaveFailed
             ? "Settings could not be saved"
@@ -197,8 +199,8 @@ public sealed class TrayApp : ApplicationContext
         _restartToUpdateItem.Enabled = UpdateCheck.IsUpdateReady;
     }
 
-    private void Apply(NotifyIcon icon, char digit, WindowUsage? usage, string label, bool clockwise,
-        bool stale, DateTimeOffset now)
+    private void Apply(NotifyIcon icon, char digit, WindowUsage? usage, string label, TimeSpan period,
+        bool clockwise, bool stale, DateTimeOffset now)
     {
         int size = IconRenderer.SystemTrayIconSize();
         var old = icon.Icon;
@@ -210,16 +212,27 @@ public sealed class TrayApp : ApplicationContext
         }
         else
         {
-            var severity = SeverityRules.For(usage.Percent, _settings.Thresholds.Orange, _settings.Thresholds.Red);
+            // No hysteresis: fetches are minutes apart and the ratio only moves fast early in a
+            // period, which SeverityRules' dead zone already keeps out of the badge.
+            var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
+            var severity = _settings.PaceColors
+                ? SeverityRules.ForPace(usage.Percent, elapsed, _settings.Thresholds.Orange, _settings.Thresholds.Red)
+                : SeverityRules.For(usage.Percent, _settings.Thresholds.Orange, _settings.Thresholds.Red);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise, dimmed: stale, size);
-            icon.Text = TrimTooltip(BuildTooltip(label, usage, stale, now));
+            icon.Text = TrimTooltip(BuildTooltip(label, usage, elapsed, stale, now));
         }
         old?.Dispose();
     }
 
-    private string BuildTooltip(string label, WindowUsage usage, bool stale, DateTimeOffset now)
+    private string BuildTooltip(string label, WindowUsage usage, double? elapsedFraction, bool stale,
+        DateTimeOffset now)
     {
         var parts = new List<string> { label, $"{usage.Percent}%" };
+        // Only when pace decided the colour — otherwise the badge means percent and needs no gloss.
+        if (_settings.PaceColors
+            && PaceFormat.Describe(SeverityRules.PaceRatio(
+                usage.Percent, elapsedFraction, _settings.Thresholds.Red)) is { Length: > 0 } pace)
+            parts.Add(pace);
         if (usage.ResetsAt is { } resetsAt)
         {
             parts.Add($"resets in {RelativeTime.In(resetsAt, now)}");

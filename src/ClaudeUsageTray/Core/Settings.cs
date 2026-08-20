@@ -17,6 +17,10 @@ public sealed class Settings
     public Thresholds Thresholds { get; set; } = new();
     public int StalenessMinutes { get; set; } = 15;
     public bool RunAtStartup { get; set; } = true;
+
+    /// <summary>Colour bars and badges by usage against elapsed time rather than by raw percent.
+    /// Off falls back to the pure Thresholds comparison everywhere.</summary>
+    public bool PaceColors { get; set; } = true;
     public string? ConfigPathOverride { get; set; }
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)

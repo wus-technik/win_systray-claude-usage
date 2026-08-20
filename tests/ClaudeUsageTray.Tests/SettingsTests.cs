@@ -20,6 +20,7 @@ public class SettingsTests : IDisposable
             Thresholds = new Thresholds { Orange = 30, Red = 60 },
             StalenessMinutes = 5,
             RunAtStartup = false,
+            PaceColors = false,
             ConfigPathOverride = @"C:\alt\.claude.json",
         };
         original.Save(path);
@@ -30,6 +31,7 @@ public class SettingsTests : IDisposable
         Assert.Equal(60, loaded.Thresholds.Red);
         Assert.Equal(5, loaded.StalenessMinutes);
         Assert.False(loaded.RunAtStartup);
+        Assert.False(loaded.PaceColors);
         Assert.Equal(@"C:\alt\.claude.json", loaded.ConfigPathOverride);
     }
 
@@ -44,6 +46,7 @@ public class SettingsTests : IDisposable
         Assert.Contains("\"red\": 85", json);
         Assert.Contains("\"stalenessMinutes\": 15", json);
         Assert.Contains("\"runAtStartup\": true", json);
+        Assert.Contains("\"paceColors\": true", json);
     }
 
     [Fact]
@@ -55,6 +58,7 @@ public class SettingsTests : IDisposable
         Assert.Equal(85, s.Thresholds.Red);
         Assert.Equal(15, s.StalenessMinutes);
         Assert.True(s.RunAtStartup);
+        Assert.True(s.PaceColors);
         Assert.Null(s.ConfigPathOverride);
     }
 
@@ -68,6 +72,18 @@ public class SettingsTests : IDisposable
         Assert.Equal(50, s.Thresholds.Orange);  // default
         Assert.Equal(15, s.StalenessMinutes);   // default
         Assert.True(s.RunAtStartup);            // default
+        Assert.True(s.PaceColors);              // default
+    }
+
+    [Fact]
+    public void Load_ConfigWithoutPaceColors_KeepsPaceColouringOn()
+    {
+        // A settings.json written before pace colouring existed must not opt out of it.
+        var path = PathFor("pre-pace.json");
+        File.WriteAllText(path, """{ "thresholds": { "orange": 30, "red": 60 }, "stalenessMinutes": 5 }""");
+        var s = Settings.Load(path);
+        Assert.True(s.PaceColors);
+        Assert.Equal(30, s.Thresholds.Orange);
     }
 
     [Fact]

@@ -88,9 +88,9 @@ public sealed class UsagePopup : Form
             return;
         }
         var resets = usage.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
-        AddCaption(layout, $"{title} — {usage.Percent}%{resets}");
-        AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings),
-            TimeMarker.ElapsedFraction(usage.ResetsAt, period, now));
+        var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
+        AddCaption(layout, $"{title} — {usage.Percent}%{resets}{PaceSuffix(usage.Percent, elapsed, settings)}");
+        AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings, elapsed), elapsed);
     }
 
     /// <summary>A model- or surface-scoped weekly limit. Not routed through AddWindowRow via a
@@ -100,9 +100,9 @@ public sealed class UsagePopup : Form
         Settings settings, DateTimeOffset now)
     {
         var resets = limit.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
-        AddCaption(layout, $"{limit.Label} weekly — {limit.Percent}%{resets}");
-        AddBar(layout, limit.Percent, SeverityFor(limit.Percent, settings),
-            TimeMarker.ElapsedFraction(limit.ResetsAt, TimeSpan.FromDays(7), now));
+        var elapsed = TimeMarker.ElapsedFraction(limit.ResetsAt, TimeSpan.FromDays(7), now);
+        AddCaption(layout, $"{limit.Label} weekly — {limit.Percent}%{resets}{PaceSuffix(limit.Percent, elapsed, settings)}");
+        AddBar(layout, limit.Percent, SeverityFor(limit.Percent, settings, elapsed), elapsed);
     }
 
     private static void AddCreditRow(TableLayoutPanel layout, CreditUsage credits, Settings settings)
@@ -129,8 +129,20 @@ public sealed class UsagePopup : Form
     private static void AddCaption(TableLayoutPanel layout, string text)
         => layout.Controls.Add(new Label { Text = text, AutoSize = true, Margin = new Padding(0, 6, 0, 2) });
 
-    private static Severity SeverityFor(int percent, Settings settings)
-        => SeverityRules.For(percent, settings.Thresholds.Orange, settings.Thresholds.Red);
+    private static Severity SeverityFor(int percent, Settings settings, double? elapsedFraction = null)
+        => settings.PaceColors
+            ? SeverityRules.ForPace(percent, elapsedFraction, settings.Thresholds.Orange, settings.Thresholds.Red)
+            : SeverityRules.For(percent, settings.Thresholds.Orange, settings.Thresholds.Red);
+
+    /// <summary>Names the number behind the colour, but only when pace is what decided it: a colour
+    /// that no longer means "percent used" reads as a bug unless the caption says so.</summary>
+    private static string PaceSuffix(int percent, double? elapsedFraction, Settings settings)
+    {
+        if (!settings.PaceColors) return "";
+        var described = PaceFormat.Describe(
+            SeverityRules.PaceRatio(percent, elapsedFraction, settings.Thresholds.Red));
+        return described.Length == 0 ? "" : $" · {described}";
+    }
 
     private static Severity? ParseSeverity(string? payloadSeverity) => payloadSeverity switch
     {
