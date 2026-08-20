@@ -43,6 +43,7 @@ and how much paid credit you've burned this month.
 | 💳 **Credit spend** | Paid extra-usage against your limit, in **your** account's currency |
 | ⏱️ **Reset countdowns** | "resets in 3h 58m", on hover and in the popup |
 | 📈 **Pace marker** | A line on each bar marking where the *clock* is in the period — fill past it means you're on track to hit the cap early |
+| 🚦 **Pace colours** | Colour follows usage *against the clock*, not raw percent: 60 % with 5½ of 7 days gone stays green, 40 % in the first hour of a 5-hour window goes red |
 | 🔄 **Live + offline** | Polls Anthropic's usage API every 5 min; falls back to Claude Code's local cache |
 | 🚀 **Zero-friction** | Per-user install, no admin, auto-updates, starts at login |
 
@@ -63,11 +64,19 @@ and run it.
 
 | What you see | What it means |
 |---|---|
-| 🟢 Green badge | Under 50 % |
-| 🟠 Orange badge | 50 – 85 % |
-| 🔴 Red badge | Over 85 % |
+| 🟢 Green badge | On or under the pace the clock sets for the period |
+| 🟠 Orange badge | Burning ≥ 1.1× the clock — the cap arrives before the reset |
+| 🔴 Red badge | Burning ≥ 1.75× the clock, **or** over 85 % used whatever the pace |
 | Dimmed | Stale data (cache older than 15 min) |
 | Grey `—` | No data yet — run Claude Code once |
+
+The pace ratio is `percent used ÷ percent of the period elapsed` — the same comparison the marker
+line makes visually. When it is what decided the colour, the popup caption and the hover tooltip name
+it (`· 1.4× pace`). Two guards override it: below 20 % used, or in the first 10 % of a period, a huge
+ratio over a trivial number means nothing and the plain `thresholds` percentages decide instead; and
+past `thresholds.red` the badge is red however calm the pace, because running out is running out.
+Without a trustworthy reset time the plain percentages decide too. Set `paceColors` to `false` for the
+old percent-only behaviour.
 
 ### Interactions
 
@@ -123,7 +132,8 @@ Hand-edit `%APPDATA%\ClaudeUsageTray\settings.json` — there's no settings UI y
 | Key | Meaning | Default |
 |---|---|---|
 | `displayMode` | `"fiveHour"` \| `"sevenDay"` \| `"both"` | `"both"` |
-| `thresholds` | `{ "orange": 50, "red": 85 }` severity boundaries (%) | as shown |
+| `thresholds` | `{ "orange": 50, "red": 85 }` severity boundaries (%) — with `paceColors` on, the red value is the absolute ceiling and both are the fallback | as shown |
+| `paceColors` | colour by usage against elapsed time instead of raw percent | `true` |
 | `stalenessMinutes` | minutes before data is flagged stale | `15` |
 | `runAtStartup` | applied to the HKCU `Run` key at every installed launch | `true` |
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests) | unset |
