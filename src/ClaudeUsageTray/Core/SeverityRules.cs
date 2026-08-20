@@ -49,4 +49,11 @@ public static class SeverityRules
         if (percent < Floor) return null;
         return percent / (elapsed * 100);
     }
+
+    /// <summary>The one entry point every call site uses, so the badge, the popup rows and the
+    /// settings preview cannot end up colouring the same number differently.</summary>
+    public static Severity ForSettings(Settings settings, int percent, double? elapsedFraction)
+        => settings.PaceColors
+            ? ForPace(percent, elapsedFraction, settings.Thresholds.Orange, settings.Thresholds.Red)
+            : For(percent, settings.Thresholds.Orange, settings.Thresholds.Red);
 }

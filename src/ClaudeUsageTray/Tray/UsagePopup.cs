@@ -130,9 +130,7 @@ public sealed class UsagePopup : Form
         => layout.Controls.Add(new Label { Text = text, AutoSize = true, Margin = new Padding(0, 6, 0, 2) });
 
     private static Severity SeverityFor(int percent, Settings settings, double? elapsedFraction = null)
-        => settings.PaceColors
-            ? SeverityRules.ForPace(percent, elapsedFraction, settings.Thresholds.Orange, settings.Thresholds.Red)
-            : SeverityRules.For(percent, settings.Thresholds.Orange, settings.Thresholds.Red);
+        => SeverityRules.ForSettings(settings, percent, elapsedFraction);
 
     /// <summary>Names the number behind the colour, but only when pace is what decided it: a colour
     /// that no longer means "percent used" reads as a bug unless the caption says so.</summary>
@@ -152,41 +150,16 @@ public sealed class UsagePopup : Form
         _ => null,
     };
 
-    /// <summary>Custom-drawn bar (ProgressBar can't be recolored per-severity). elapsedFraction, when
-    /// non-null, marks how far the clock has moved through the limit's reset period: fill short of the
-    /// marker is burning slower than the clock, fill past it is on track to hit the cap early.</summary>
     private static void AddBar(TableLayoutPanel layout, int percent, Severity severity,
         double? elapsedFraction = null)
     {
-        var barColor = severity switch
+        var bar = new Panel
         {
-            Severity.Red => Color.FromArgb(224, 68, 68),
-            Severity.Orange => Color.FromArgb(232, 150, 40),
-            _ => Color.FromArgb(64, 184, 96),
+            Width = UsageBar.DefaultWidth,
+            Height = UsageBar.DefaultHeight,
+            Margin = new Padding(0, 0, 0, 4),
         };
-        var bar = new Panel { Width = 240, Height = 12, Margin = new Padding(0, 0, 0, 4) };
-        var filled = Math.Clamp(percent, 0, 100);
-        bar.Paint += (_, e) =>
-        {
-            e.Graphics.FillRectangle(SystemBrushes.ControlLight, 0, 0, bar.Width, bar.Height);
-            using var brush = new SolidBrush(barColor);
-            e.Graphics.FillRectangle(brush, 0, 0, bar.Width * filled / 100, bar.Height);
-            if (elapsedFraction is { } fraction)
-            {
-                // A full-height band, not the inset notch this started as: the border overdraws the
-                // outer row of anything touching an edge, so 3px ticks left just 4 black pixels, which
-                // read as grey at 1:1 on a 96-DPI screen however dark the pen. Width is filled as a
-                // rectangle rather than stroked with a wide pen because GDI+ centres pen strokes on the
-                // coordinate, which would put a column outside the range checked below.
-                const int markerWidth = 2;
-                // Span markerWidth columns inside 1..Width-2: the border drawn below owns x=0 and
-                // x=Width-1 and would otherwise swallow the marker at fraction 0.0 and 1.0.
-                var x = 1 + (int)Math.Round((bar.Width - 2 - markerWidth) * fraction);
-                using var markerBrush = new SolidBrush(SystemColors.ControlText);
-                e.Graphics.FillRectangle(markerBrush, x, 0, markerWidth, bar.Height);
-            }
-            e.Graphics.DrawRectangle(SystemPens.ControlDark, 0, 0, bar.Width - 1, bar.Height - 1);
-        };
+        bar.Paint += (_, e) => UsageBar.Paint(e.Graphics, bar.Width, bar.Height, percent, severity, elapsedFraction);
         layout.Controls.Add(bar);
     }
 

@@ -95,4 +95,35 @@ public class SeverityRulesTests
     [Fact]
     public void PaceRatioIsNullWithoutAFraction()
         => Assert.Null(SeverityRules.PaceRatio(50, null));
+
+    // ---- the one rule every call site shares ----
+
+    [Fact]
+    public void ForSettings_WithPaceColors_UsesThePaceVerdict()
+    {
+        // 60% used with 5.5 of 7 days elapsed: absolute says orange, pace says fine.
+        var settings = new Settings { PaceColors = true };
+        Assert.Equal(Severity.Green, SeverityRules.ForSettings(settings, 60, 0.7857));
+    }
+
+    [Fact]
+    public void ForSettings_WithoutPaceColors_IgnoresTheFraction()
+    {
+        var settings = new Settings { PaceColors = false };
+        Assert.Equal(Severity.Orange, SeverityRules.ForSettings(settings, 60, 0.7857));
+    }
+
+    [Fact]
+    public void ForSettings_HonoursTheConfiguredThresholds()
+    {
+        var settings = new Settings { PaceColors = false, Thresholds = new Thresholds { Orange = 30, Red = 60 } };
+        Assert.Equal(Severity.Red, SeverityRules.ForSettings(settings, 61, elapsedFraction: null));
+    }
+
+    [Fact]
+    public void ForSettings_WithoutAFraction_FallsBackToAbsolute()
+    {
+        var settings = new Settings { PaceColors = true };
+        Assert.Equal(Severity.Orange, SeverityRules.ForSettings(settings, 60, elapsedFraction: null));
+    }
 }
