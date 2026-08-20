@@ -28,14 +28,14 @@ public sealed class TrayApp : ApplicationContext
     private string _lastFetchStatus = "no fetch yet";
 
     private readonly ContextMenuStrip _menu;
-    private ToolStripMenuItem _modeFive = null!, _modeSeven = null!, _modeBoth = null!;
-    private ToolStripMenuItem _startupItem = null!, _updatedItem = null!, _restartToUpdateItem = null!;
+    private ToolStripMenuItem _updatedItem = null!, _restartToUpdateItem = null!;
 
     private NotifyIcon? _iconFive;
     private NotifyIcon? _iconSeven;
     private UsageSnapshot? _snapshot;
     private bool _settingsSaveFailed;
     private UsagePopup? _popup;
+    private SettingsDialog? _settingsDialog;
 
     public TrayApp(Settings settings, string settingsPath, bool isVelopackInstalled)
     {
@@ -258,10 +258,6 @@ public sealed class TrayApp : ApplicationContext
         if (!wantSeven) DisposeNotifyIcon(ref _iconSeven);
         if (wantFive && _iconFive is null) _iconFive = CreateIcon();
         if (wantSeven && _iconSeven is null) _iconSeven = CreateIcon();
-
-        _modeFive.Checked = _settings.DisplayMode == DisplayMode.FiveHour;
-        _modeSeven.Checked = _settings.DisplayMode == DisplayMode.SevenDay;
-        _modeBoth.Checked = _settings.DisplayMode == DisplayMode.Both;
     }
 
     private NotifyIcon CreateIcon()
@@ -284,35 +280,6 @@ public sealed class TrayApp : ApplicationContext
 
     private ContextMenuStrip BuildMenu()
     {
-        _modeFive = new ToolStripMenuItem("Show 5h", null, (_, _) => SetDisplayMode(DisplayMode.FiveHour)) { CheckOnClick = true };
-        _modeSeven = new ToolStripMenuItem("Show 7d", null, (_, _) => SetDisplayMode(DisplayMode.SevenDay)) { CheckOnClick = true };
-        _modeBoth = new ToolStripMenuItem("Show both", null, (_, _) => SetDisplayMode(DisplayMode.Both)) { CheckOnClick = true };
-
-        _startupItem = new ToolStripMenuItem("Run at startup")
-        {
-            Checked = _isVelopackInstalled && TryIsStartupEnabled(),
-            Enabled = _isVelopackInstalled,
-            ToolTipText = _isVelopackInstalled ? "" : "Available only in the installed app.",
-        };
-        _startupItem.Click += (_, _) =>
-        {
-            try
-            {
-                if (StartupRegistration.IsEnabled()) StartupRegistration.Disable();
-                else StartupRegistration.Enable();
-                _startupItem.Checked = StartupRegistration.IsEnabled();
-                _settings.RunAtStartup = _startupItem.Checked;
-                PersistSettings();
-            }
-            catch
-            {
-                // Startup registration is best-effort (e.g. GPO-locked HKCU). The checkbox must
-                // never lie about a state it failed to change, so re-read the actual state.
-                _startupItem.Checked = TryIsStartupEnabled();
-            }
-            Render();
-        };
-
         _updatedItem = new ToolStripMenuItem("Updated —") { Enabled = false };
 
         // Disabled until a staged update is downloaded (see Render()). ApplyUpdatesAndRestart
@@ -330,11 +297,8 @@ public sealed class TrayApp : ApplicationContext
         }) { Enabled = false };
 
         var menu = new ContextMenuStrip();
-        menu.Items.Add(_modeFive);
-        menu.Items.Add(_modeSeven);
-        menu.Items.Add(_modeBoth);
+        menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(_startupItem);
         menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => { Refresh(); StartApiFetch(); }));
         menu.Items.Add(_restartToUpdateItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -350,12 +314,61 @@ public sealed class TrayApp : ApplicationContext
         return menu;
     }
 
-    private void SetDisplayMode(DisplayMode mode)
+    // ---- settings ----
+
+    /// <summary>Modeless and single-instance: a second click re-activates the open window rather than
+    /// stacking another one, and the tray menu stays usable while it is up.</summary>
+    private void ShowSettings()
     {
-        _settings.DisplayMode = mode;
+        if (_settingsDialog is { IsDisposed: false })
+        {
+            if (_settingsDialog.WindowState == FormWindowState.Minimized)
+                _settingsDialog.WindowState = FormWindowState.Normal;
+            _settingsDialog.Activate();
+            return;
+        }
+        _settingsDialog = new SettingsDialog(_settings, _isVelopackInstalled, TryIsStartupEnabled(),
+            ApplySettings);
+        _settingsDialog.FormClosed += (_, _) => _settingsDialog = null;
+        _settingsDialog.Show();
+        _settingsDialog.Activate();
+    }
+
+    /// <summary>Copies an edited draft onto the live settings and repaints everything at once, so the
+    /// badges and any open popup follow immediately with no restart. Returns false when persisting
+    /// failed, which the dialog reports instead of closing.</summary>
+    private bool ApplySettings(Settings edited)
+    {
+        // Startup registration is the one setting that lives outside the file, so it is applied here
+        // rather than on every keystroke — Cancel must leave the registry untouched too.
+        if (_isVelopackInstalled && edited.RunAtStartup != TryIsStartupEnabled())
+        {
+            try
+            {
+                if (edited.RunAtStartup) StartupRegistration.Enable();
+                else StartupRegistration.Disable();
+            }
+            catch
+            {
+                // Best-effort (e.g. GPO-locked HKCU). Never record a preference we failed to apply:
+                // re-read the actual state so the saved value cannot lie about the registry.
+            }
+            edited.RunAtStartup = TryIsStartupEnabled();
+        }
+
+        _settings.DisplayMode = edited.DisplayMode;
+        _settings.Thresholds = edited.Thresholds;
+        _settings.StalenessMinutes = edited.StalenessMinutes;
+        _settings.PaceColors = edited.PaceColors;
+        _settings.RunAtStartup = edited.RunAtStartup;
+
         PersistSettings();
         ApplyDisplayMode();
-        Render();
+        Refresh();
+        // The popup closes when it loses focus, so it is normally already gone by the time Save is
+        // clicked; rebuild it only if it somehow survived, so it cannot keep showing the old colours.
+        if (_popup is { IsDisposed: false, Visible: true }) ShowPopup();
+        return !_settingsSaveFailed;
     }
 
     private void PersistSettings()
@@ -395,6 +408,7 @@ public sealed class TrayApp : ApplicationContext
         {
             DisposeNotifyIcon(ref _iconFive);
             DisposeNotifyIcon(ref _iconSeven);
+            _settingsDialog?.Dispose();
             _watcher?.Dispose();
             _debounce.Dispose();
             _retry.Dispose();

@@ -82,8 +82,7 @@ old percent-only behaviour.
 
 - **Hover** → exact percentage and reset countdown
 - **Left-click** → the popup above: both windows, any scoped weekly caps, credit spend
-- **Right-click** → `Show 5h` / `Show 7d` / `Show both`, run-at-startup, `Refresh now`,
-  `Restart to update`, `Quit`
+- **Right-click** → `Settings…`, `Refresh now`, `Restart to update`, `Quit`
 
 <details>
 <summary><b>How the popup decides what to show</b></summary>
@@ -127,7 +126,14 @@ percentages only — **never** money amounts, currency, or account-specific mode
 
 ## Settings
 
-Hand-edit `%APPDATA%\ClaudeUsageTray\settings.json` — there's no settings UI yet.
+**Right-click → `Settings…`** covers everything except `configPathOverride`: which icons to show,
+run-at-startup, the two colour thresholds, pace colouring, and the staleness cutoff. Saving applies
+at once — the badges and the popup repaint, no restart. A preview bar shows where the thresholds land
+before you commit them, and the two spinners constrain each other so `orange` can never reach `red`.
+
+Everything is also readable and editable in `%APPDATA%\ClaudeUsageTray\settings.json`. An invalid
+value there falls back to its default on load — the pair `orange`/`red` resets together, since the
+file gives no way to tell which of the two was meant.
 
 | Key | Meaning | Default |
 |---|---|---|
@@ -136,7 +142,7 @@ Hand-edit `%APPDATA%\ClaudeUsageTray\settings.json` — there's no settings UI y
 | `paceColors` | colour by usage against elapsed time instead of raw percent | `true` |
 | `stalenessMinutes` | minutes before data is flagged stale | `15` |
 | `runAtStartup` | applied to the HKCU `Run` key at every installed launch | `true` |
-| `configPathOverride` | explicit path to `.claude.json` (mainly for tests) | unset |
+| `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
 
 ## Development
 
