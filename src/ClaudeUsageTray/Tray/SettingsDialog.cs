@@ -35,6 +35,12 @@ public sealed class SettingsDialog : Form
     private readonly Panel _preview = new() { Name = "preview", Width = UsageBar.DefaultWidth, Height = UsageBar.DefaultHeight };
     private readonly Label _previewCaption = new() { Name = "previewCaption", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Label _error = new() { Name = "error", AutoSize = true, ForeColor = Color.Firebrick, Visible = false };
+    private readonly Label _installedVersion = new() { Name = "installedVersion", AutoSize = true };
+    private readonly Label _updateStatus = new() { Name = "updateStatus", AutoSize = true, ForeColor = SystemColors.GrayText };
+    private readonly Button _updateNow = new() { Name = "updateNow", Text = "Update now", AutoSize = true };
+    private readonly UpdateOptions _updates;
+    private UpdateAvailability _updateState;
+    private string? _latestVersion;
     private bool _suspendSync;
 
     /// <param name="settings">The live settings. Cloned immediately; never mutated by this form.</param>
@@ -44,12 +50,16 @@ public sealed class SettingsDialog : Form
     /// in the file, and the checkbox must not claim a state it never reached.</param>
     /// <param name="save">Applies the edited settings, returning false if persisting them failed — the
     /// dialog then stays open and says so rather than closing on a read-only profile.</param>
+    /// <param name="updates">Version and update state; see <see cref="UpdateOptions"/>.</param>
     public SettingsDialog(Settings settings, bool canRunAtStartup, bool runAtStartup,
-        Func<Settings, bool> save)
+        Func<Settings, bool> save, UpdateOptions updates)
     {
         _draft = Clone(settings);
         _canRunAtStartup = canRunAtStartup;
         _save = save;
+        _updates = updates;
+        _updateState = updates.InitialState;
+        _latestVersion = updates.LatestVersion;
 
         Text = "Claude Usage — Settings";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -64,6 +74,7 @@ public sealed class SettingsDialog : Form
         Controls.Add(BuildLayout());
         LoadFrom(_draft, _canRunAtStartup && runAtStartup);
         WireLiveSync();
+        RefreshUpdateSection();
     }
 
     // ---- layout ----
@@ -103,6 +114,9 @@ public sealed class SettingsDialog : Form
 
         layout.Controls.Add(Heading("Refresh"));
         layout.Controls.Add(Spinners(("Treat data as stale after", _staleness, "minutes")));
+
+        layout.Controls.Add(Heading("About"));
+        layout.Controls.Add(BuildAbout());
 
         layout.Controls.Add(_error);
         layout.Controls.Add(BuildButtons());
@@ -152,6 +166,72 @@ public sealed class SettingsDialog : Form
             }, 2, row);
         }
         return grid;
+    }
+
+    /// <summary>Version, update state and the one button that acts on it, in a single grid so the two
+    /// values line up under each other.</summary>
+    private Control BuildAbout()
+    {
+        _installedVersion.Text = _updates.InstalledVersion;
+        _updateNow.Click += async (_, _) => await CheckForUpdatesAsync();
+
+        var grid = new TableLayoutPanel
+        {
+            ColumnCount = 3,
+            RowCount = 2,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(16, 0, 0, 2),
+        };
+        grid.Controls.Add(new Label { Text = "Installed", AutoSize = true, Margin = new Padding(0, 3, 8, 2) }, 0, 0);
+        grid.Controls.Add(_installedVersion, 1, 0);
+        grid.Controls.Add(new Label { Text = "Updates", AutoSize = true, Margin = new Padding(0, 3, 8, 0) }, 0, 1);
+        _updateStatus.Margin = new Padding(0, 3, 8, 0);
+        grid.Controls.Add(_updateStatus, 1, 1);
+        grid.Controls.Add(_updateNow, 2, 1);
+        return grid;
+    }
+
+    /// <summary>One check, then act on what it found. Runs on the UI thread up to the await and back on
+    /// it afterwards, so the labels are only ever touched from one thread.</summary>
+    private async Task CheckForUpdatesAsync()
+    {
+        if (!VersionDisplay.CanCheck(_updateState, _updates.IsInstalled)) return;
+
+        _updateState = UpdateAvailability.Checking;
+        _latestVersion = null;
+        RefreshUpdateSection();
+
+        var (state, latest) = await _updates.CheckNow();
+        if (IsDisposed || Disposing) return; // closed while the feed was answering
+
+        _updateState = state;
+        _latestVersion = latest;
+        RefreshUpdateSection();
+
+        if (state != UpdateAvailability.UpdateReady) return;
+        var question = _latestVersion is { Length: > 0 } version
+            ? $"Version {version} is ready. Restart now to install it?"
+            : "An update is ready. Restart now to install it?";
+        if (!_updates.Confirm(question)) return; // stays staged; the menu can still apply it
+
+        // Save first: the restart does not come back, and throwing away half-finished edits to install
+        // an update would be a nasty surprise. A failed save cancels the restart rather than losing them.
+        if (!Commit(closeOnSuccess: false)) return;
+        _updates.RestartToApply();
+    }
+
+    private void RefreshUpdateSection()
+    {
+        _updateStatus.Text = VersionDisplay.Describe(_updateState, _latestVersion);
+        _updateNow.Enabled = VersionDisplay.CanCheck(_updateState, _updates.IsInstalled);
+        // Grey means "nothing to do here", which is wrong for something waiting to be installed.
+        _updateStatus.ForeColor = _updateState switch
+        {
+            UpdateAvailability.UpdateReady => SystemColors.ControlText,
+            UpdateAvailability.Failed => Color.Firebrick,
+            _ => SystemColors.GrayText,
+        };
     }
 
     private Control BuildButtons()
@@ -267,16 +347,20 @@ public sealed class SettingsDialog : Form
         return draft;
     }
 
-    private void Commit()
+    /// <summary>Persists the draft, reporting whether it stuck. The update path saves without closing,
+    /// since it is about to restart the app instead.</summary>
+    private bool Commit(bool closeOnSuccess = true)
     {
         if (_save(Draft()))
         {
-            Close();
-            return;
+            _error.Visible = false;
+            if (closeOnSuccess) Close();
+            return true;
         }
         // Same wording as the tray menu's own failure line, so the two never disagree.
         _error.Text = "Settings could not be saved.";
         _error.Visible = true;
+        return false;
     }
 
     // ---- preview ----

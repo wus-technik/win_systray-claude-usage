@@ -131,6 +131,11 @@ run-at-startup, the two colour thresholds, pace colouring, and the staleness cut
 at once — the badges and the popup repaint, no restart. A preview bar shows where the thresholds land
 before you commit them, and the two spinners constrain each other so `orange` can never reach `red`.
 
+Its **About** section names the running version and, on `Update now`, checks GitHub Releases straight
+away rather than waiting for the six-hourly background check. If something newer is there it is
+downloaded and you are asked before the restart, and any edits still open in the dialog are saved
+first. Outside the installed app there is nothing to update, so the button is disabled.
+
 Everything is also readable and editable in `%APPDATA%\ClaudeUsageTray\settings.json`. An invalid
 value there falls back to its default on load — the pair `orange`/`red` resets together, since the
 file gives no way to tell which of the two was meant.

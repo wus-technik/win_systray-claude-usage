@@ -328,11 +328,37 @@ public sealed class TrayApp : ApplicationContext
             return;
         }
         _settingsDialog = new SettingsDialog(_settings, _isVelopackInstalled, TryIsStartupEnabled(),
-            ApplySettings);
+            ApplySettings, BuildUpdateOptions());
         _settingsDialog.FormClosed += (_, _) => _settingsDialog = null;
         _settingsDialog.Show();
         _settingsDialog.Activate();
     }
+
+    /// <summary>What the dialog shows and does about updates. The staged-update state comes from the
+    /// background loop, so a check that already ran is visible without pressing anything.</summary>
+    private UpdateOptions BuildUpdateOptions() => new(
+        InstalledVersion: UpdateCheck.InstalledVersion,
+        IsInstalled: _isVelopackInstalled,
+        InitialState: !_isVelopackInstalled ? UpdateAvailability.NotInstalled
+            : UpdateCheck.IsUpdateReady ? UpdateAvailability.UpdateReady
+            : UpdateAvailability.Unknown,
+        LatestVersion: UpdateCheck.LatestKnownVersion,
+        CheckNow: UpdateCheck.CheckNowAsync,
+        Confirm: question => MessageBox.Show(_settingsDialog, question, "Claude Usage — Update",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes,
+        RestartToApply: () =>
+        {
+            // ApplyUpdatesAndRestart terminates the process, so both NotifyIcons must go first or the
+            // tray keeps ghost entries until the user mouses over them.
+            DisposeNotifyIcon(ref _iconFive);
+            DisposeNotifyIcon(ref _iconSeven);
+            try { UpdateCheck.RestartToApply(); }
+            catch { /* apply failed; recover below */ }
+            // Still here means the apply did not restart us. Put the icons back so the app stays
+            // reachable, exactly as the menu item does.
+            ApplyDisplayMode();
+            Render();
+        });
 
     /// <summary>Copies an edited draft onto the live settings and repaints everything at once, so the
     /// badges and any open popup follow immediately with no restart. Returns false when persisting

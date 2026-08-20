@@ -19,7 +19,8 @@ public class SettingsDialogTests : IDisposable
     private SettingsDialog Dialog(Settings settings, Func<Settings, bool>? save = null,
         bool runAtStartup = true)
     {
-        var dialog = new SettingsDialog(settings, canRunAtStartup: true, runAtStartup, save ?? (_ => true));
+        var dialog = new SettingsDialog(settings, canRunAtStartup: true, runAtStartup,
+            save ?? (_ => true), TestUpdateOptions.Inert());
         _open.Add(dialog);
         dialog.StartPosition = FormStartPosition.Manual;
         dialog.Location = new System.Drawing.Point(-4000, -4000);

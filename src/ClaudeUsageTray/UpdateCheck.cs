@@ -1,3 +1,5 @@
+using System.Reflection;
+using ClaudeUsageTray.Core;
 using Velopack;
 using Velopack.Sources;
 
@@ -10,6 +12,34 @@ public static class UpdateCheck
     private static readonly object Gate = new();
     private static UpdateManager? _manager;
     private static UpdateInfo? _stagedUpdate;
+    private static string? _latestKnownVersion;
+
+    /// <summary>The running version. Velopack's own record when installed — it is the version the
+    /// updater compares against — falling back to the assembly's for `dotnet run` and portable
+    /// builds, where Velopack knows nothing about an install.</summary>
+    public static string InstalledVersion
+    {
+        get
+        {
+            try
+            {
+                var manager = CreateManager();
+                if (manager.IsInstalled && manager.CurrentVersion is { } version)
+                    return VersionDisplay.Short(version.ToString());
+            }
+            catch { /* fall through to the assembly's own version */ }
+
+            return VersionDisplay.Short(Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+        }
+    }
+
+    /// <summary>The newest version the last check saw, so the UI can show something before the user
+    /// asks for a fresh one. Null until a check has completed.</summary>
+    public static string? LatestKnownVersion
+    {
+        get { lock (Gate) return _latestKnownVersion; }
+    }
 
     public static bool IsInstalled
     {
@@ -22,8 +52,11 @@ public static class UpdateCheck
 
     public static bool IsUpdateReady
     {
-        get { lock (Gate) return _manager?.UpdatePendingRestart is not null || _stagedUpdate is not null; }
+        get { lock (Gate) return IsUpdateReadyUnlocked(); }
     }
+
+    private static bool IsUpdateReadyUnlocked()
+        => _manager?.UpdatePendingRestart is not null || _stagedUpdate is not null;
 
     /// <summary>Check on launch and every 6 h; download only. Never terminate the tray process.</summary>
     public static async Task RunPeriodicAsync()
@@ -33,6 +66,30 @@ public static class UpdateCheck
             try { await CheckOnceAsync(); }
             catch { /* update failures must never disturb the tray */ }
             await Task.Delay(TimeSpan.FromHours(6));
+        }
+    }
+
+    /// <summary>One check on demand, for the Settings dialog's "Update now". Shares its body with the
+    /// periodic check so there is a single definition of "check and stage", and reports the outcome
+    /// instead of swallowing it — a user who pressed a button is owed an answer, unlike the background
+    /// loop, whose failures must stay silent.</summary>
+    public static async Task<(UpdateAvailability State, string? LatestVersion)> CheckNowAsync()
+    {
+        try
+        {
+            if (!CreateManager().IsInstalled) return (UpdateAvailability.NotInstalled, null);
+            await CheckOnceAsync();
+        }
+        catch
+        {
+            return (UpdateAvailability.Failed, null);
+        }
+
+        lock (Gate)
+        {
+            return IsUpdateReadyUnlocked()
+                ? (UpdateAvailability.UpdateReady, _latestKnownVersion)
+                : (UpdateAvailability.UpToDate, _latestKnownVersion);
         }
     }
 
@@ -50,6 +107,11 @@ public static class UpdateCheck
             // Best-effort cache only; manager.UpdatePendingRestart (checked via IsUpdateReady/
             // RestartToApply) is the source of truth for whether an update is actually staged.
             _stagedUpdate = updates;
+            // Null when nothing newer is offered. Only the UpdateReady wording names a version, so a
+            // clear here cannot make a settled "up to date" look uncertain.
+            _latestKnownVersion = updates?.TargetFullRelease?.Version?.ToString() is { } target
+                ? VersionDisplay.Short(target)
+                : null;
         }
     }
 
