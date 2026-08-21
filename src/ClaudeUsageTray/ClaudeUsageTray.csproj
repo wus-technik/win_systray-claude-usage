@@ -4,7 +4,17 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>ClaudeUsageTray</RootNamespace>
     <AssemblyName>ClaudeUsageTray</AssemblyName>
-    <Version>0.6.1</Version>
+    <Version>0.6.2</Version>
+    <!-- Authorship. Set here rather than at the vpk call sites so the exe's file properties, the
+         Windows apps list and anything else reading assembly metadata pick it up for free. The
+         ampersand is written as an XML entity; MSBuild would reject a bare & . -->
+    <Company>W&amp;S Technik GmbH</Company>
+    <Authors>W&amp;S Technik GmbH</Authors>
+    <Product>Claude Usage Tray</Product>
+    <!-- Explorer's Details tab shows AssemblyTitle as "Description"; left unset it falls back to the
+         assembly name and reads "ClaudeUsageTray". -->
+    <AssemblyTitle>Claude Usage Tray</AssemblyTitle>
+    <Copyright>Copyright (c) 2026 W&amp;S Technik GmbH</Copyright>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>

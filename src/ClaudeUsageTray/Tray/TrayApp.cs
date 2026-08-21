@@ -344,7 +344,7 @@ public sealed class TrayApp : ApplicationContext
             : UpdateAvailability.Unknown,
         LatestVersion: UpdateCheck.LatestKnownVersion,
         CheckNow: UpdateCheck.CheckNowAsync,
-        Confirm: question => MessageBox.Show(_settingsDialog, question, "Claude Usage — Update",
+        Confirm: question => MessageBox.Show(_settingsDialog, question, AppInfo.Window("Update"),
             MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes,
         RestartToApply: () =>
         {

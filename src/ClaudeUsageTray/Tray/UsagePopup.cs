@@ -9,7 +9,7 @@ public sealed class UsagePopup : Form
     public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now, string? lastFetchStatus = null)
     {
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
-        Text = "Claude Usage";
+        Text = AppInfo.Name;
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
