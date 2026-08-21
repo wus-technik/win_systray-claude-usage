@@ -35,6 +35,7 @@ public sealed class SettingsDialog : Form
     private readonly Panel _preview = new() { Name = "preview", Width = UsageBar.DefaultWidth, Height = UsageBar.DefaultHeight };
     private readonly Label _previewCaption = new() { Name = "previewCaption", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Label _error = new() { Name = "error", AutoSize = true, ForeColor = Color.Firebrick, Visible = false };
+    private readonly Label _creator = new() { Name = "creator", AutoSize = true };
     private readonly Label _installedVersion = new() { Name = "installedVersion", AutoSize = true };
     private readonly Label _updateStatus = new() { Name = "updateStatus", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Button _updateNow = new() { Name = "updateNow", Text = "Update now", AutoSize = true };
@@ -61,7 +62,7 @@ public sealed class SettingsDialog : Form
         _updateState = updates.InitialState;
         _latestVersion = updates.LatestVersion;
 
-        Text = "Claude Usage — Settings";
+        Text = AppInfo.Window("Settings");
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -168,27 +169,30 @@ public sealed class SettingsDialog : Form
         return grid;
     }
 
-    /// <summary>Version, update state and the one button that acts on it, in a single grid so the two
-    /// values line up under each other.</summary>
+    /// <summary>Creator, version, update state and the one button that acts on it, in a single grid so
+    /// the three values line up under each other.</summary>
     private Control BuildAbout()
     {
         _installedVersion.Text = _updates.InstalledVersion;
+        _creator.Text = AppInfo.CreatorForLabel;
         _updateNow.Click += async (_, _) => await CheckForUpdatesAsync();
 
         var grid = new TableLayoutPanel
         {
             ColumnCount = 3,
-            RowCount = 2,
+            RowCount = 3,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Margin = new Padding(16, 0, 0, 2),
         };
-        grid.Controls.Add(new Label { Text = "Installed", AutoSize = true, Margin = new Padding(0, 3, 8, 2) }, 0, 0);
-        grid.Controls.Add(_installedVersion, 1, 0);
-        grid.Controls.Add(new Label { Text = "Updates", AutoSize = true, Margin = new Padding(0, 3, 8, 0) }, 0, 1);
+        grid.Controls.Add(new Label { Text = "Created by", AutoSize = true, Margin = new Padding(0, 3, 8, 2) }, 0, 0);
+        grid.Controls.Add(_creator, 1, 0);
+        grid.Controls.Add(new Label { Text = "Installed", AutoSize = true, Margin = new Padding(0, 3, 8, 2) }, 0, 1);
+        grid.Controls.Add(_installedVersion, 1, 1);
+        grid.Controls.Add(new Label { Text = "Updates", AutoSize = true, Margin = new Padding(0, 3, 8, 0) }, 0, 2);
         _updateStatus.Margin = new Padding(0, 3, 8, 0);
-        grid.Controls.Add(_updateStatus, 1, 1);
-        grid.Controls.Add(_updateNow, 2, 1);
+        grid.Controls.Add(_updateStatus, 1, 2);
+        grid.Controls.Add(_updateNow, 2, 2);
         return grid;
     }
 

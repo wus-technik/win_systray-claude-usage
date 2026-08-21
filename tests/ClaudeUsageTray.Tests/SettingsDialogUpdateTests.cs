@@ -47,6 +47,17 @@ public class SettingsDialogUpdateTests : IDisposable
         => (Button)dialog.Controls.Find("updateNow", searchAllChildren: true).Single();
 
     [Fact]
+    public void TheCreatorIsNamed()
+    {
+        // Doubled ampersand: the label would otherwise draw "WS Technik GmbH" with the S underlined.
+        Assert.Equal("W&&S Technik GmbH", Label(Dialog(Options()), "creator").Text);
+    }
+
+    [Fact]
+    public void TheWindowIsTitledLikeTheRestOfTheApp()
+        => Assert.Equal("Claude Usage — Settings", Dialog(Options()).Text);
+
+    [Fact]
     public void TheRunningVersionIsShown()
         => Assert.Equal("0.6.0", Label(Dialog(Options()), "installedVersion").Text);
 
