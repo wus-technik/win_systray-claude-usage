@@ -16,9 +16,9 @@ written for the person deciding whether to install it — not for the person who
   the feed and only checks it; **Update now** stays disabled until a check has actually found
   something. Previously a single "Update now" button did the checking and then offered to restart,
   so there was no way to see which version was waiting before committing to it.
-- Choosing **Update now** shows what is changing — the release notes packed with that version — with
-  *Update and restart* and *Later*. Updates published before this release carry no notes and fall
-  back to the previous plain confirmation.
+- Choosing **Update now** shows what is changing — the release notes packed with that version — in a
+  scrollable window with *Update and restart* and *Later*. Updates published before this release
+  carry no notes and fall back to the previous plain confirmation.
 
 ### Added
 

@@ -12,7 +12,7 @@ public sealed class ReleaseNotesDialog : Form
         return dialog.ShowDialog(owner) == DialogResult.OK;
     }
 
-    private ReleaseNotesDialog(string title, string question, string notes)
+    internal ReleaseNotesDialog(string title, string question, string notes)
     {
         Text = title;
         FormBorderStyle = FormBorderStyle.Sizable;
@@ -24,12 +24,24 @@ public sealed class ReleaseNotesDialog : Form
         ClientSize = new Size(520, 380);
         Padding = new Padding(12);
 
+        // Three rows in a grid rather than Top/Fill/Bottom docking: with docking, the Fill control
+        // is laid out first and covers the other two, which is exactly the bug this replaced — a
+        // window showing its notes and neither the question nor the buttons.
+        var layout = new TableLayoutPanel
+        {
+            ColumnCount = 1,
+            RowCount = 3,
+            Dock = DockStyle.Fill,
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
         var prompt = new Label
         {
             Name = "question",
             Text = question,
             AutoSize = true,
-            Dock = DockStyle.Top,
             Margin = new Padding(0, 0, 0, 8),
         };
 
@@ -66,7 +78,7 @@ public sealed class ReleaseNotesDialog : Form
         var buttons = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.RightToLeft,
-            Dock = DockStyle.Bottom,
+            Dock = DockStyle.Fill,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Padding = new Padding(0, 8, 0, 0),
@@ -74,13 +86,19 @@ public sealed class ReleaseNotesDialog : Form
         buttons.Controls.Add(install);
         buttons.Controls.Add(later);
 
-        // Order matters for Dock: the fill control is added last so it takes what the others leave.
-        Controls.Add(prompt);
-        Controls.Add(buttons);
-        Controls.Add(body);
+        layout.Controls.Add(prompt, 0, 0);
+        layout.Controls.Add(body, 0, 1);
+        layout.Controls.Add(buttons, 0, 2);
+        Controls.Add(layout);
 
         AcceptButton = install;
         // Escape closes without installing — the same answer as Later.
         CancelButton = later;
+
+        // A focused multiline TextBox selects everything it holds, which paints the notes as a block
+        // of inverted blue. The button that answers the question is the better place for focus.
+        ActiveControl = install;
+        body.SelectionStart = 0;
+        body.SelectionLength = 0;
     }
 }
