@@ -40,6 +40,12 @@ jobs:
           Write-Host "Tag '$tag' matches project version '$version'."
           Add-Content -Path $env:GITHUB_ENV -Value "VERSION=$version"
 
+      - name: Extract release notes from CHANGELOG.md
+        shell: pwsh
+        # A release whose version has no changelog section fails here rather than shipping an update
+        # nobody can read the changes for. Same spirit as the tag/version check above.
+        run: ./build/changelog-section.ps1 -Version $env:VERSION -OutFile artifacts/release-notes.md
+
       - name: Restore
         run: dotnet restore
 
@@ -77,7 +83,7 @@ jobs:
         shell: pwsh
         # --packAuthors lands in the package's nuspec verbatim, so the ampersand must arrive already
         # XML-escaped or vpk fails with an XmlException. It reads back as "W&S Technik GmbH".
-        run: dnx --yes vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $env:VERSION --packDir artifacts\publish --mainExe ClaudeUsageTray.exe
+        run: dnx --yes vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $env:VERSION --packDir artifacts/publish --mainExe ClaudeUsageTray.exe --releaseNotes artifacts/release-notes.md
 
       - name: Upload and publish release
         shell: pwsh

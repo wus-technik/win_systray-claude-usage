@@ -135,10 +135,15 @@ run-at-startup, the two colour thresholds, pace colouring, and the staleness cut
 at once — the badges and the popup repaint, no restart. A preview bar shows where the thresholds land
 before you commit them, and the two spinners constrain each other so `orange` can never reach `red`.
 
-Its **About** section names the running version and, on `Update now`, checks GitHub Releases straight
-away rather than waiting for the six-hourly background check. If something newer is there it is
-downloaded and you are asked before the restart, and any edits still open in the dialog are saved
-first. Outside the installed app there is nothing to update, so the button is disabled.
+Its **About** section names the running version and splits updating into the two decisions it
+actually is. The **⟳** button checks GitHub Releases straight away rather than waiting for the
+six-hourly background check, and reports what it found — `0.7.1 ready to install`, `up to date`, or
+`check failed`. **Update now** stays disabled until a check has staged something, then shows that
+version's changelog with *Update and restart* or *Later*, so you can read what changes before
+committing to the restart. Any edits still open in the dialog are saved first, and a failed save
+cancels the restart rather than losing them. Updates published before 0.7.1 carry no changelog and
+fall back to a plain confirmation. Outside the installed app there is nothing to update, so both
+controls are disabled.
 
 Everything is also readable and editable in `%APPDATA%\ClaudeUsageTray\settings.json`. An invalid
 value there falls back to its default on load — the pair `orange`/`red` resets together, since the
