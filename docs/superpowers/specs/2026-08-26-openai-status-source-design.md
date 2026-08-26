@@ -62,9 +62,14 @@ public sealed record StatusSource(
     IReadOnlyList<string> DefaultComponents);   // filter used when settings omit the key
 ```
 
-`StatusSources.Claude`, `StatusSources.OpenAi`, `StatusSources.All`, `StatusSources.ById(string)`.
+`StatusSources.Claude`, `StatusSources.OpenAi`, `StatusSources.All`, and
+`StatusSources.ById(string id)` — which matches ids with `StringComparer.OrdinalIgnoreCase` and
+returns `null` for anything unknown, because settings normalization depends on that answer.
+
 No user-supplied URLs: the app never fetches a host it does not ship, and every payload shape it
-parses is one that was verified by hand.
+parses is one that was verified by hand. The registry is generic so that `RaisesBadge` and the
+watch filter are *data a test can assert* rather than branches inside `UpdateIcons` — not because a
+third source is planned. Exactly Claude and OpenAI are supported, accepted, and tested here.
 
 `RaisesBadge` being a *field of the source* is the load-bearing part. "An OpenAI outage never marks
 the tray icon" becomes a value a test asserts, not an `if` inside `UpdateIcons`.
@@ -115,9 +120,18 @@ bool BadgeDegraded(DateTimeOffset now);                                   // Rai
 void ApplyEnabled(IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)> enabled);
 ```
 
-The monitor holds the filters because `BadgeDegraded` needs them: a Claude filter has to gate the
-badge by the same relevance rule that gates the tooltip. `SourceView` is what the popup and the
-tooltip builder consume, so neither of them reaches back into `Settings`.
+`SourceView` is what the popup and the tooltip builder consume, so neither of them reaches back into
+`Settings`. The monitor holds the filters because the tooltip needs them; `BadgeDegraded` does
+**not** consult them (see **Component filter**).
+
+Two contracts that are easy to leave implicit and expensive to get wrong:
+
+- **`Accept` validates the id.** A result whose `SourceId` disagrees with the `sourceId` argument is
+  dropped and logged, never stored. The id comes from `TakeDue`, so this should be unreachable —
+  which is exactly why it must not silently file an OpenAI outage under Claude if it ever happens.
+- **`Accept` for a source that is no longer enabled is discarded**, including its in-flight flag and
+  scheduler state. `ApplyEnabled` can run (dialog closed) while a fetch is outstanding, and a late
+  completion must not resurrect a removed source's entry.
 
 `TakeDue` is named for its mutation on purpose. A pure `DueSources` query paired with a separate
 `RecordAttempt` is a call that can be forgotten, and forgetting it means hammering a public endpoint.
@@ -157,24 +171,50 @@ Per-source, not an OpenAI special case:
   relevant. The field exists there for symmetry and costs nothing.
 - The OpenAI list above is `DefaultComponents`, used when the settings key is absent.
 
+**Token normalization**, specified so the implementation has nothing left to decide: split the
+dialog's text on commas, `Trim()` each token, drop empty and whitespace-only tokens, de-duplicate
+with `StringComparer.OrdinalIgnoreCase`. A list that normalizes to zero tokens *is* the empty list
+and therefore watches everything. Matching is
+`name.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0` — ordinal, never culture-sensitive,
+because these are product names from a US-English page and a Turkish locale must not change what
+`"login"` matches.
+
+### Relevance
+
 The banner is page-wide, so the filter must decide *relevance*, not merely which rows to draw —
-otherwise a Sora-only outage paints a coloured "Partial outage" header above zero rows:
+otherwise a Sora-only outage paints a coloured "Partial outage" header above zero rows. Three
+states, not two:
 
-| Page state | Watched component affected | Popup | Tooltip |
-|---|---|---|---|
-| `none` | — | grey banner, verbatim | nothing |
-| degraded | yes | coloured banner + rows for watched components only | suffix appears |
-| degraded | no | grey banner + `· outside your watched components` | nothing |
+| Page state | Affected components identifiable? | Watched one affected? | Popup | Tooltip |
+|---|---|---|---|---|
+| `none` | — | — | grey banner, verbatim | nothing |
+| degraded | yes | yes | coloured banner + rows for watched items only | suffix appears |
+| degraded | yes | no | grey banner + `· outside your watched components` | nothing |
+| degraded | **no** | — | **coloured banner**, no rows | **suffix appears** |
 
-A filter never suppresses the page's own words: the user still sees that something is wrong, and the
-"no rows" case explains itself instead of looking like a parse failure.
+The fourth row is the one that matters. A page can report a disruption while every component still
+reads `operational` and no incident names a component — incident.io banners do not have to be mapped
+to components at all. Classifying that as "outside your watched components" would hide a real outage
+behind a filter the user set for noise reduction. **Unclassifiable degradation is always relevant**,
+which is the same "fail towards visible" rule the original spec applies to unknown indicators.
 
-When incidents *are* present, they are matched by their own `components[]`. **An incident naming no
-components counts as watched** — "unclassified" must not mean "invisible".
+`IsRelevant` therefore returns true when the filter is empty, when a watched component is affected,
+or when the page is degraded and nothing identifies what it affects.
 
-`RaisesBadge` is unaffected, so this filter never touches the icon for OpenAI. For Claude with a
-non-empty filter, the badge follows the same relevance rule as the tooltip; otherwise icon and
-tooltip would disagree about the same outage.
+Incidents are matched by their own `components[]`. **An incident naming no components counts as
+watched** — "unclassified" must not mean "invisible".
+
+### The filter never gates the badge
+
+`BadgeDegraded` is `RaisesBadge && Degraded`, full stop. It does not consult the filter for any
+source.
+
+For OpenAI this is moot (`RaisesBadge: false`). For Claude it is a deliberate asymmetry with the
+tooltip: the Claude filter has no dialog control, so letting it gate the badge would mean a
+README-only JSON key could silently disarm the tray's single most important warning. A narrower
+tooltip is a preference; an unmarked icon during a Claude outage is a defect. The cost is that a
+filtered Claude source can show a warning badge whose tooltip says nothing about status — acceptable,
+and it only occurs for a user who hand-edited JSON to ask for exactly that.
 
 ### Display — `Core/StatusDetail.cs`
 
@@ -194,10 +234,16 @@ static bool IsRelevant(PlatformStatus status, IReadOnlyList<string> filter);
 `DescribeIncident` and the take-3 rule move here verbatim from `UsagePopup`, which shrinks to
 turning rows into labels.
 
-**Row precedence per source:** incidents when the page sent any (today's rows, with the `Details`
-shortlink), otherwise non-operational components (`Responses — Degraded performance`; snake_case
-unfolded, page vocabulary kept), otherwise header only. Claude keeps its richer output, OpenAI gets
-components, and neither path is source-specific code.
+**Row precedence per source — applied *after* filtering, not before:** incidents that survive the
+filter (today's rows, with the `Details` shortlink), otherwise watched non-operational components
+(`Responses — Degraded performance`; snake_case unfolded, page vocabulary kept), otherwise header
+only. Claude keeps its richer output, OpenAI gets components, and neither path is source-specific
+code.
+
+Filtering first is what makes the precedence correct: a page can carry incidents that all fall
+outside the watch list while a watched component *is* non-operational. Choosing the list before
+filtering would show that source as degraded with zero rows — the same empty-header failure the
+relevance rule exists to prevent.
 
 **Popup layout:** one block per enabled source, registry order, Claude first. Headers read
 `Claude status: …` / `OpenAI status: …`. Two healthy sources means two grey lines above the usage
@@ -205,9 +251,14 @@ rows. Collapsing healthy sources into one combined line was rejected: each banne
 from its page, and merging two pages' wording invents a sentence neither page wrote.
 
 **Tooltip:** relevant-degraded sources append in order, `RaisesBadge` first —
-`… · Claude: Partial outage · OpenAI: Minor service disruption`. That ordering is the mitigation for
-the 127-character `NotifyIcon.Text` limit: when both are down and the text overflows, `TrimTooltip`
-eats the OpenAI suffix and never the Claude one.
+`… · Claude: Partial outage · OpenAI: Minor service disruption`.
+
+Ordering alone does **not** protect the Claude suffix from the 127-character `NotifyIcon.Text` limit:
+`TrimTooltip` cuts the finished string, so a long usage tooltip plus two suffixes can truncate both.
+The rule is therefore a drop, not a trim — **if appending the non-badge suffixes would exceed the
+limit, they are omitted entirely** before `TrimTooltip` runs. A half-cut `· OpenAI: Minor serv…` is
+worse than no suffix, and the badge-raising source's suffix must survive because it is the text that
+explains the marker on the icon.
 
 **Badge:** `IconRenderer.Render(warning: monitor.BadgeDegraded(now))`. `IconRenderer` does not
 change; the warning marker keeps meaning "Claude is degraded, which is why your numbers may have
@@ -225,14 +276,29 @@ public sealed class StatusSourceSettings
 public Dictionary<string, StatusSourceSettings> StatusSources { get; set; } = new();
 ```
 
-`NormalizeFields` follows the existing per-field fallback rule: unknown ids are dropped, missing ids
-are filled from the registry defaults (`claude` enabled, `openai` disabled), and a malformed entry
-resets that entry alone. An existing `settings.json` with no `statusSources` key therefore keeps
-today's behaviour exactly — Claude watched, OpenAI off, badge unchanged.
+Per-entry fallback needs a tolerant read; plain deserialization cannot deliver it.
+`Settings.Load` catches `JsonException` and returns *full* defaults, so with a straight
+`Dictionary<string, StatusSourceSettings>` a single bad `components` value would also reset
+thresholds, display mode and staleness. The property is therefore deserialized as
+`Dictionary<string, JsonElement>` and normalized entry by entry:
+
+- Unknown ids (no `StatusSources.ById` match) are dropped.
+- Missing ids are filled from the registry defaults: `claude` enabled with an empty filter, `openai`
+  disabled with `DefaultComponents`.
+- An entry whose `enabled` or `components` value has the wrong shape resets **that entry** to its
+  registry default; the other entry and every unrelated setting survive.
+
+An existing `settings.json` with no `statusSources` key keeps today's runtime behaviour exactly —
+Claude watched, OpenAI off, badge unchanged. The next `Save` writes the key with both entries, so
+the file changes even though nothing the user sees does.
 
 **Dialog:** a `Watch OpenAI status` checkbox beside the existing options, plus an enabled-when-checked
 text field *Components (comma-separated, blank = all)* pre-filled with the default. No live component
 list in the dialog: it would need a fetch at open time and would break on rename.
+
+The Claude entry has **no** dialog control. Its filter is an advanced, README-documented JSON key
+that narrows popup rows and the tooltip and never the badge; the dialog round-trip must preserve it
+untouched rather than resetting it to the default on save.
 
 ## Error handling
 
@@ -252,24 +318,35 @@ Pure Core, so all of it is unit-testable:
   `[]`, `components[]` filtered to non-operational, `SourceId` stamped.
 - `StatusMonitorTests` — per-source floor and backoff; an OpenAI failure leaves Claude's next-due time
   and last-known-good untouched; `ApplyEnabled` preserves surviving sources and makes a new one
-  immediately due; single-flight per source.
-- `StatusDetailTests` — row precedence (incidents over components), substring matching incl. the
-  three `codex` components, empty filter watches all, an incident with no components counts as
-  watched, the relevance table's three states, tooltip ordering and the 127-char truncation dropping
-  OpenAI first.
-- `SettingsTests` — absent key yields today's behaviour; unknown source id dropped; malformed entry
-  resets alone.
+  immediately due; single-flight per source; a result with a mismatched `SourceId` is dropped; a
+  completion for a source disabled while in flight is discarded and does not recreate its entry;
+  `BadgeDegraded` ignores the filter and ignores non-`RaisesBadge` sources.
+- `StatusDetailTests` — row precedence applied after filtering (incidents all filtered out but a
+  watched component non-operational still yields rows), substring matching incl. the three `codex`
+  components, token normalization (whitespace-only tokens, duplicates, a list that normalizes to
+  empty watches all), an incident with no components counts as watched, all four relevance rows
+  including unclassifiable-degraded, and the tooltip dropping the non-badge suffix whole rather than
+  letting it be truncated.
+- `SettingsTests` — absent key yields today's runtime behaviour; unknown source id dropped; a
+  malformed `statusSources` entry resets that entry while thresholds, display mode and staleness
+  survive; the dialog round-trip preserves a hand-written Claude filter.
 - `UsagePopupTests` — offscreen render (`CreateControl()`, never `Show()`) with two sources, one
   degraded-and-relevant, one degraded-but-filtered-out.
 
 ## Success criteria
 
-- [ ] With OpenAI off, behaviour is byte-for-byte today's: one poll, one banner, same badge rule.
+- [ ] With OpenAI off, visible and runtime behaviour is unchanged: one poll, one banner, same badge
+      rule. The persisted `settings.json` gains a `statusSources` key on the next save; nothing else
+      about the file changes.
 - [ ] With OpenAI on, the popup shows both banners, Claude first, each verbatim from its page.
 - [ ] An OpenAI disruption affecting a watched component colours its banner, lists the affected
       components, and adds a tooltip suffix — and leaves the tray icon unmarked.
 - [ ] An OpenAI disruption outside the watched components shows a grey banner saying so, with no
       tooltip suffix and no rows.
+- [ ] An OpenAI disruption that identifies no affected components at all is treated as relevant:
+      coloured banner and a tooltip suffix, despite the filter.
+- [ ] A Claude filter set by hand narrows the popup rows and the tooltip but still leaves the badge
+      warning during a Claude outage.
 - [ ] A Claude disruption still raises the badge and still lists incidents with `Details` links.
 - [ ] Killing one source's network (bad host) leaves the other source's cadence and data untouched.
 - [ ] An existing `settings.json` upgrades in place with no visible change.
