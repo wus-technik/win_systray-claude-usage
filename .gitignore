@@ -26,3 +26,6 @@ publish/
 
 # Logs & misc
 *.log
+
+# Local build output (publish dir, extracted release notes)
+artifacts/

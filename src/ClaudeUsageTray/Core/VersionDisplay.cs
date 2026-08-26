@@ -36,4 +36,10 @@ public static class VersionDisplay
     /// a failure, may be retried. An uninstalled build has no feed to check against.</summary>
     public static bool CanCheck(UpdateAvailability state, bool isInstalled)
         => isInstalled && state != UpdateAvailability.Checking;
+
+    /// <summary>Applying needs a staged package, which only a completed check can report. Separate
+    /// from CanCheck on purpose: the Update now button stays dead until there is something to
+    /// install, so it can never be pressed on faith.</summary>
+    public static bool CanApply(UpdateAvailability state, bool isInstalled)
+        => isInstalled && state == UpdateAvailability.UpdateReady;
 }

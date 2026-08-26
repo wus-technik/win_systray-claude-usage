@@ -419,9 +419,14 @@ public sealed class TrayApp : ApplicationContext
             : UpdateCheck.IsUpdateReady ? UpdateAvailability.UpdateReady
             : UpdateAvailability.Unknown,
         LatestVersion: UpdateCheck.LatestKnownVersion,
+        InitialReleaseNotes: UpdateCheck.LatestKnownReleaseNotes,
         CheckNow: UpdateCheck.CheckNowAsync,
-        Confirm: question => MessageBox.Show(_settingsDialog, question, AppInfo.Window("Update"),
-            MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes,
+        // With notes, the question comes with what is changing; without them there is nothing to show
+        // beyond the question itself, so a plain prompt is the honest fallback.
+        Confirm: (question, notes) => notes is { Length: > 0 }
+            ? ReleaseNotesDialog.Confirm(_settingsDialog, AppInfo.Window("Update"), question, notes)
+            : MessageBox.Show(_settingsDialog, question, AppInfo.Window("Update"),
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes,
         RestartToApply: () =>
         {
             // ApplyUpdatesAndRestart terminates the process, so both NotifyIcons must go first or the

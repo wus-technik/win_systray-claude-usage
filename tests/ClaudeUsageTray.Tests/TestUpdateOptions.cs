@@ -13,7 +13,8 @@ internal static class TestUpdateOptions
         IsInstalled: false,
         InitialState: UpdateAvailability.NotInstalled,
         LatestVersion: null,
+        InitialReleaseNotes: null,
         CheckNow: () => throw new InvalidOperationException("this test should not check for updates"),
-        Confirm: _ => throw new InvalidOperationException("this test should not prompt for a restart"),
+        Confirm: (_, _) => throw new InvalidOperationException("this test should not prompt for a restart"),
         RestartToApply: () => throw new InvalidOperationException("this test should not restart"));
 }

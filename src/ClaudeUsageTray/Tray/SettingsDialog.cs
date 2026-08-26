@@ -39,8 +39,21 @@ public sealed class SettingsDialog : Form
     private readonly Label _installedVersion = new() { Name = "installedVersion", AutoSize = true };
     private readonly Label _updateStatus = new() { Name = "updateStatus", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Button _updateNow = new() { Name = "updateNow", Text = "Update now", AutoSize = true };
+    // The glyph is the control; AccessibleName carries the meaning, since a screen reader reads
+    // neither a dingbat nor a tooltip as a name.
+    private readonly Button _checkUpdates = new()
+    {
+        Name = "checkUpdates",
+        Text = "⟳",
+        AccessibleName = "Check for updates",
+        AutoSize = false,
+        Size = new Size(26, 25),
+        FlatStyle = FlatStyle.Standard,
+        Font = new Font("Segoe UI Symbol", 10f),
+    };
     private readonly UpdateOptions _updates;
     private UpdateAvailability _updateState;
+    private string? _releaseNotes;
     private string? _latestVersion;
     private bool _suspendSync;
 
@@ -61,6 +74,7 @@ public sealed class SettingsDialog : Form
         _updates = updates;
         _updateState = updates.InitialState;
         _latestVersion = updates.LatestVersion;
+        _releaseNotes = updates.InitialReleaseNotes;
 
         Text = AppInfo.Window("Settings");
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -169,17 +183,19 @@ public sealed class SettingsDialog : Form
         return grid;
     }
 
-    /// <summary>Creator, version, update state and the one button that acts on it, in a single grid so
-    /// the three values line up under each other.</summary>
+    /// <summary>Creator, version, update state and the two controls that act on it — refresh checks,
+    /// Update now installs — in a single grid so the three values line up under each other.</summary>
     private Control BuildAbout()
     {
         _installedVersion.Text = _updates.InstalledVersion;
         _creator.Text = AppInfo.CreatorForLabel;
-        _updateNow.Click += async (_, _) => await CheckForUpdatesAsync();
+        _checkUpdates.Click += async (_, _) => await CheckForUpdatesAsync();
+        _updateNow.Click += (_, _) => ApplyUpdate();
+        new ToolTip().SetToolTip(_checkUpdates, "Check for updates");
 
         var grid = new TableLayoutPanel
         {
-            ColumnCount = 3,
+            ColumnCount = 4,
             RowCount = 3,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
@@ -192,32 +208,42 @@ public sealed class SettingsDialog : Form
         grid.Controls.Add(new Label { Text = "Updates", AutoSize = true, Margin = new Padding(0, 3, 8, 0) }, 0, 2);
         _updateStatus.Margin = new Padding(0, 3, 8, 0);
         grid.Controls.Add(_updateStatus, 1, 2);
-        grid.Controls.Add(_updateNow, 2, 2);
+        grid.Controls.Add(_checkUpdates, 2, 2);
+        grid.Controls.Add(_updateNow, 3, 2);
         return grid;
     }
 
-    /// <summary>One check, then act on what it found. Runs on the UI thread up to the await and back on
-    /// it afterwards, so the labels are only ever touched from one thread.</summary>
+    /// <summary>One check, and nothing else — finding an update must not start installing one. Runs on
+    /// the UI thread up to the await and back on it afterwards, so the labels are only ever touched
+    /// from one thread.</summary>
     private async Task CheckForUpdatesAsync()
     {
         if (!VersionDisplay.CanCheck(_updateState, _updates.IsInstalled)) return;
 
         _updateState = UpdateAvailability.Checking;
         _latestVersion = null;
+        _releaseNotes = null;
         RefreshUpdateSection();
 
-        var (state, latest) = await _updates.CheckNow();
+        var (state, latest, notes) = await _updates.CheckNow();
         if (IsDisposed || Disposing) return; // closed while the feed was answering
 
         _updateState = state;
         _latestVersion = latest;
+        _releaseNotes = ReleaseNotes.Format(notes);
         RefreshUpdateSection();
+    }
 
-        if (state != UpdateAvailability.UpdateReady) return;
+    /// <summary>Installs what a check already found: show what is changing, then restart. Only
+    /// reachable while an update is staged, so it never has to check first.</summary>
+    private void ApplyUpdate()
+    {
+        if (!VersionDisplay.CanApply(_updateState, _updates.IsInstalled)) return;
+
         var question = _latestVersion is { Length: > 0 } version
             ? $"Version {version} is ready. Restart now to install it?"
             : "An update is ready. Restart now to install it?";
-        if (!_updates.Confirm(question)) return; // stays staged; the menu can still apply it
+        if (!_updates.Confirm(question, _releaseNotes)) return; // stays staged; the menu can still apply it
 
         // Save first: the restart does not come back, and throwing away half-finished edits to install
         // an update would be a nasty surprise. A failed save cancels the restart rather than losing them.
@@ -228,7 +254,8 @@ public sealed class SettingsDialog : Form
     private void RefreshUpdateSection()
     {
         _updateStatus.Text = VersionDisplay.Describe(_updateState, _latestVersion);
-        _updateNow.Enabled = VersionDisplay.CanCheck(_updateState, _updates.IsInstalled);
+        _checkUpdates.Enabled = VersionDisplay.CanCheck(_updateState, _updates.IsInstalled);
+        _updateNow.Enabled = VersionDisplay.CanApply(_updateState, _updates.IsInstalled);
         // Grey means "nothing to do here", which is wrong for something waiting to be installed.
         _updateStatus.ForeColor = _updateState switch
         {

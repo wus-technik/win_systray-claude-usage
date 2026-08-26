@@ -54,4 +54,20 @@ public class VersionDisplayTests
     [InlineData(UpdateAvailability.Failed)]
     public void NeverCheckWhenNotInstalled(UpdateAvailability state)
         => Assert.False(VersionDisplay.CanCheck(state, isInstalled: false));
+
+    /// <summary>Applying is a separate decision from checking: the Update now button must be dead
+    /// until a check has actually found something, so a user cannot press it on faith.</summary>
+    [Theory]
+    [InlineData(UpdateAvailability.UpdateReady, true)]
+    [InlineData(UpdateAvailability.Unknown, false)]
+    [InlineData(UpdateAvailability.Checking, false)]
+    [InlineData(UpdateAvailability.UpToDate, false)]
+    [InlineData(UpdateAvailability.Failed, false)]
+    [InlineData(UpdateAvailability.NotInstalled, false)]
+    public void CanApplyOnlyWithAStagedUpdate(UpdateAvailability state, bool expected)
+        => Assert.Equal(expected, VersionDisplay.CanApply(state, isInstalled: true));
+
+    [Fact]
+    public void AnUninstalledBuildCanNeverApply()
+        => Assert.False(VersionDisplay.CanApply(UpdateAvailability.UpdateReady, isInstalled: false));
 }

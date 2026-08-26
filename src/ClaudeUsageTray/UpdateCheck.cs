@@ -13,6 +13,7 @@ public static class UpdateCheck
     private static UpdateManager? _manager;
     private static UpdateInfo? _stagedUpdate;
     private static string? _latestKnownVersion;
+    private static string? _latestKnownNotes;
 
     /// <summary>The running version. Velopack's own record when installed — it is the version the
     /// updater compares against — falling back to the assembly's for `dotnet run` and portable
@@ -39,6 +40,13 @@ public static class UpdateCheck
     public static string? LatestKnownVersion
     {
         get { lock (Gate) return _latestKnownVersion; }
+    }
+
+    /// <summary>The release notes Velopack packed with that version, so the dialog can show what a
+    /// background check already staged. Null when the package carried none.</summary>
+    public static string? LatestKnownReleaseNotes
+    {
+        get { lock (Gate) return _latestKnownNotes; }
     }
 
     public static bool IsInstalled
@@ -69,27 +77,27 @@ public static class UpdateCheck
         }
     }
 
-    /// <summary>One check on demand, for the Settings dialog's "Update now". Shares its body with the
+    /// <summary>One check on demand, for the Settings dialog's refresh button. Shares its body with the
     /// periodic check so there is a single definition of "check and stage", and reports the outcome
     /// instead of swallowing it — a user who pressed a button is owed an answer, unlike the background
     /// loop, whose failures must stay silent.</summary>
-    public static async Task<(UpdateAvailability State, string? LatestVersion)> CheckNowAsync()
+    public static async Task<(UpdateAvailability State, string? LatestVersion, string? ReleaseNotes)> CheckNowAsync()
     {
         try
         {
-            if (!CreateManager().IsInstalled) return (UpdateAvailability.NotInstalled, null);
+            if (!CreateManager().IsInstalled) return (UpdateAvailability.NotInstalled, null, null);
             await CheckOnceAsync();
         }
         catch
         {
-            return (UpdateAvailability.Failed, null);
+            return (UpdateAvailability.Failed, null, null);
         }
 
         lock (Gate)
         {
             return IsUpdateReadyUnlocked()
-                ? (UpdateAvailability.UpdateReady, _latestKnownVersion)
-                : (UpdateAvailability.UpToDate, _latestKnownVersion);
+                ? (UpdateAvailability.UpdateReady, _latestKnownVersion, _latestKnownNotes)
+                : (UpdateAvailability.UpToDate, _latestKnownVersion, null);
         }
     }
 
@@ -112,6 +120,9 @@ public static class UpdateCheck
             _latestKnownVersion = updates?.TargetFullRelease?.Version?.ToString() is { } target
                 ? VersionDisplay.Short(target)
                 : null;
+            // Whatever `vpk pack --releaseNotes` put on the target release. Packages built before the
+            // pipeline passed it have none, which is not an error — the dialog then just asks plainly.
+            _latestKnownNotes = ReleaseNotes.Format(updates?.TargetFullRelease?.NotesMarkdown);
         }
     }
 
