@@ -271,7 +271,7 @@ public sealed class TrayApp : ApplicationContext
     public void ShowPopup()
     {
         if (_popup is { IsDisposed: false }) { _popup.Close(); }
-        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow, _lastFetchStatus);
+        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow, null, _lastFetchStatus);
         _popup.Show();
         _popup.Activate();
     }
