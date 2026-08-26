@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-26-openai-status-source-design.md`
 
+**Issue:** [#17](https://github.com/wus-technik/win_systray-claude-usage/issues/17) — every commit in this plan ends its body with `Refs #17` so the issue timeline picks the work up; the final commit of the last task uses `Closes #17`.
+
 ## Global Constraints
 
 - **Pure logic goes in `src/ClaudeUsageTray/Core/`**, WinForms only in `src/ClaudeUsageTray/Tray/`. No clocks and no threads in `Core/`: every time-dependent function takes a caller-supplied `DateTimeOffset now`.
@@ -22,7 +24,8 @@
 - **Test commands:** `dotnet test` (all), `dotnet test --filter FullyQualifiedName~ClassName` (one class). CI runs `dotnet test -c Release`.
 - **Style:** match surrounding code. There is no linter or formatter step. XML doc comments on Core types explain *why*, not *what*.
 - **Naming deviation from the spec:** the registry class is `StatusSourceRegistry`, not `StatusSources`. `Settings.StatusSources` is a property of the same name, and inside `Settings.cs` a `StatusSources.All` reference would bind to the property and fail to compile. Everything else keeps the spec's names.
-- **Commits:** one per task, conventional-commit prefix (`feat:`, `refactor:`, `docs:`). No AI co-author trailer.
+- **Commits:** one per task, conventional-commit prefix (`feat:`, `refactor:`, `docs:`), and a
+  `Refs #17` line in the body (`Closes #17` on the last task). No AI co-author trailer.
 
 ---
 
@@ -166,7 +169,7 @@ Expected: PASS, 8 tests.
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusSource.cs tests/ClaudeUsageTray.Tests/StatusSourceRegistryTests.cs
-git commit -m "feat: add a curated status source registry"
+git commit -m "feat: add a curated status source registry" -m "Refs #17"
 ```
 
 ---
@@ -359,7 +362,7 @@ Expected: PASS, whole suite. Any remaining failure is a `PlatformStatus` constru
 
 ```bash
 git add -A src tests
-git commit -m "feat: parse status page components and stamp the source id"
+git commit -m "feat: parse status page components and stamp the source id" -m "Refs #17"
 ```
 
 ---
@@ -490,7 +493,7 @@ Expected: PASS, 6 tests.
 
 ```bash
 git add src/ClaudeUsageTray/Core/ComponentFilter.cs tests/ClaudeUsageTray.Tests/ComponentFilterTests.cs
-git commit -m "feat: add the component watch filter"
+git commit -m "feat: add the component watch filter" -m "Refs #17"
 ```
 
 ---
@@ -650,7 +653,7 @@ Expected: PASS, 13 test cases.
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusDetail.cs tests/ClaudeUsageTray.Tests/StatusDetailRelevanceTests.cs
-git commit -m "feat: add status relevance rules for the watch filter"
+git commit -m "feat: add status relevance rules for the watch filter" -m "Refs #17"
 ```
 
 ---
@@ -860,7 +863,7 @@ Expected: PASS, 10 tests.
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusDetailRows.cs tests/ClaudeUsageTray.Tests/StatusDetailRowsTests.cs
-git commit -m "feat: select status detail rows in Core"
+git commit -m "feat: select status detail rows in Core" -m "Refs #17"
 ```
 
 ---
@@ -996,7 +999,7 @@ Expected: PASS, 7 tests.
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusDetailRows.cs tests/ClaudeUsageTray.Tests/StatusDetailTooltipTests.cs
-git commit -m "feat: build multi-source tooltip suffixes in Core"
+git commit -m "feat: build multi-source tooltip suffixes in Core" -m "Refs #17"
 ```
 
 ---
@@ -1266,7 +1269,7 @@ Expected: PASS, 11 tests.
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusMonitor.cs tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs
-git commit -m "feat: add a per-source status monitor"
+git commit -m "feat: add a per-source status monitor" -m "Refs #17"
 ```
 
 ---
@@ -1482,7 +1485,7 @@ Expected: PASS, including all pre-existing tests.
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
-git commit -m "feat: configure status sources and watch filters in settings"
+git commit -m "feat: configure status sources and watch filters in settings" -m "Refs #17"
 ```
 
 ---
@@ -1620,7 +1623,7 @@ Then: `dotnet run --project src/ClaudeUsageTray`, open the popup, confirm the Cl
 
 ```bash
 git add src/ClaudeUsageTray/Tray/TrayApp.cs
-git commit -m "refactor: move tray status state into StatusMonitor"
+git commit -m "refactor: move tray status state into StatusMonitor" -m "Refs #17"
 ```
 
 ---
@@ -1829,7 +1832,7 @@ Expected: PASS, whole suite.
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs tests/ClaudeUsageTray.Tests/UsagePopupStatusTests.cs tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs
-git commit -m "feat: render every watched status source in the popup"
+git commit -m "feat: render every watched status source in the popup" -m "Refs #17"
 ```
 
 ---
@@ -1989,7 +1992,7 @@ Expected: PASS, whole suite.
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs
-git commit -m "feat: add the OpenAI status source to the settings dialog"
+git commit -m "feat: add the OpenAI status source to the settings dialog" -m "Refs #17"
 ```
 
 ---
@@ -2060,7 +2063,7 @@ Expected: PASS. Then re-read both edits against `Settings.NormalizeFields` and `
 
 ```bash
 git add README.md CLAUDE.md
-git commit -m "docs: document the OpenAI status source and the watch filter"
+git commit -m "docs: document the OpenAI status source and the watch filter" -m "Closes #17"
 ```
 
 ---

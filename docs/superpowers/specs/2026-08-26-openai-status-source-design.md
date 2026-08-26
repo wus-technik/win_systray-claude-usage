@@ -1,6 +1,7 @@
 # A second platform status source: OpenAI
 
 Date: 2026-08-26
+Issue: [#17](https://github.com/wus-technik/win_systray-claude-usage/issues/17)
 Supersedes parts of: [2026-08-26-platform-status-design.md](2026-08-26-platform-status-design.md)
 
 ## Problem
