@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using ClaudeUsageTray.Core;
 
 namespace ClaudeUsageTray.Tray;
@@ -6,7 +7,8 @@ namespace ClaudeUsageTray.Tray;
 /// countdowns, plus a last-updated line.</summary>
 public sealed class UsagePopup : Form
 {
-    public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now, string? lastFetchStatus = null)
+    public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now,
+        PlatformStatus? platformStatus = null, string? lastFetchStatus = null)
     {
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
         Text = AppInfo.Name;
@@ -24,6 +26,8 @@ public sealed class UsagePopup : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Dock = DockStyle.Fill,
         };
+
+        AddPlatformStatus(layout, platformStatus, settings, now);
 
         if (snapshot is null)
         {
@@ -91,6 +95,109 @@ public sealed class UsagePopup : Form
         var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
         AddCaption(layout, $"{title} — {usage.Percent}%{resets}{PaceSuffix(usage.Percent, elapsed, settings)}");
         AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings, elapsed), elapsed);
+    }
+
+    /// <summary>The page's own banner is the single source of truth — exactly what the user would
+    /// see at status.claude.com — so it is shown verbatim. A disruption is the first thing seen,
+    /// hence above the usage rows, and it still renders in the no-data state.</summary>
+    private static void AddPlatformStatus(TableLayoutPanel layout, PlatformStatus? status,
+        Settings settings, DateTimeOffset now)
+    {
+        bool stale = status is not null
+            && now - status.FetchedAt > TimeSpan.FromMinutes(settings.StalenessMinutes);
+
+        string header;
+        Color color;
+        if (status is null)
+        {
+            header = "Claude status: unavailable";
+            color = SystemColors.GrayText;
+        }
+        else if (status.Degraded)
+        {
+            header = $"Claude status: {StatusText(status)}";
+            // DarkOrange for a minor banner; Firebrick for major/critical and for any unknown
+            // indicator, which the Degraded rule already treats as a disruption.
+            color = status.Indicator == "minor" ? Color.DarkOrange : Color.Firebrick;
+        }
+        else
+        {
+            header = $"Claude status: {StatusText(status)}";
+            color = SystemColors.GrayText;
+        }
+        if (stale) header += " · stale";
+
+        layout.Controls.Add(WrappingLabel(header, color, new Padding(0, 0, 0, 2)));
+
+        if (status is not { Degraded: true }) return;
+
+        var shown = status.Incidents.Take(3).ToList();
+        foreach (var incident in shown)
+        {
+            layout.Controls.Add(WrappingLabel(DescribeIncident(incident, now),
+                SystemColors.ControlText, new Padding(0, 0, 0, 0)));
+            if (incident.Shortlink is { } link)
+            {
+                var details = new LinkLabel { Text = "Details", AutoSize = true, Margin = new Padding(0, 0, 0, 0) };
+                details.LinkClicked += (_, _) => OpenUrl(link);
+                layout.Controls.Add(details);
+            }
+        }
+        if (status.Incidents.Count > shown.Count)
+        {
+            layout.Controls.Add(new Label
+            {
+                Text = $"+{status.Incidents.Count - shown.Count} more",
+                AutoSize = true,
+                ForeColor = SystemColors.GrayText,
+                Margin = new Padding(0, 2, 0, 0),
+            });
+        }
+        var page = new LinkLabel { Text = "status.claude.com", AutoSize = true, Margin = new Padding(0, 2, 0, 4) };
+        page.LinkClicked += (_, _) => OpenUrl("https://status.claude.com");
+        layout.Controls.Add(page);
+    }
+
+    /// <summary>A label for page-supplied text, which has no length limit we control: banner wording
+    /// and incident detail wrap at the bar width and grow downwards instead of stretching the
+    /// AutoSize form sideways. The bar width is the anchor because it is the popup's one fixed
+    /// column — PositionNearCursor clamps the form's position but not its size, so a single long
+    /// incident would otherwise push the popup off the screen edge.</summary>
+    private static Label WrappingLabel(string text, Color color, Padding margin) => new()
+    {
+        Text = text,
+        AutoSize = true,
+        MaximumSize = new Size(UsageBar.DefaultWidth, 0),
+        ForeColor = color,
+        Margin = margin,
+    };
+
+    /// <summary>The page's banner text, verbatim; the indicator name only when the banner is
+    /// empty, which the live page does not send but the parser tolerates.</summary>
+    private static string StatusText(PlatformStatus status)
+        => string.IsNullOrWhiteSpace(status.Description) ? status.Indicator : status.Description;
+
+    /// <summary>One incident row: name, status with initial capital, impact when not
+    /// none/missing, affected components, and age.</summary>
+    private static string DescribeIncident(PlatformIncident incident, DateTimeOffset now)
+    {
+        var parts = new List<string> { $"{incident.Name} — {Capitalize(incident.Status)}" };
+        if (!string.IsNullOrEmpty(incident.Impact) && incident.Impact != "none")
+            parts.Add(incident.Impact);
+        if (incident.Components.Count > 0)
+            parts.Add(string.Join(", ", incident.Components));
+        if (incident.UpdatedAt is { } updated)
+            parts.Add($"updated {RelativeTime.Ago(updated, now)}");
+        return string.Join(" · ", parts);
+    }
+
+    private static string Capitalize(string s)
+        => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    private static void OpenUrl(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch { /* a dead link must never take the popup down */ }
     }
 
     /// <summary>A model- or surface-scoped weekly limit. Not routed through AddWindowRow via a

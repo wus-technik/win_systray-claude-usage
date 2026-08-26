@@ -109,6 +109,12 @@
     <div class="states" id="statesGrid"></div>
   </section>
 
+  <section>
+    <h2>Platform status — warning badge</h2>
+    <div class="states" id="badgeGrid"></div>
+    <p class="caption">White disc, dark rim, shape-drawn exclamation in the bottom-right corner, drawn over the rim and never dimmed. Each true-size row shows every base state plain and badged — inspect at 1:1, per the standing lesson that magnified previews flatter small marks. The ×2 row is context only.</p>
+  </section>
+
   <div class="note">
     As with the two-character version, the exact usage integer lives in the tooltip and left-click popup, not the icon. A single digit buys the most legible center glyph at true 16&nbsp;px, and <code>5</code>/<code>7</code> map directly to the window names (5-hour, 7-day) with no legend to learn.</div>
 </div>
@@ -127,7 +133,7 @@
   // Filled-badge icon, single-digit center. dir 'cw' for 5, 'ccw' for 7.
   function badgeIcon(letter, pct, dir, scale, opts) {
     opts = opts || {};
-    const size = 16, S = scale || 1, px = size * S;
+    const size = opts.size || 16, S = scale || 1, px = size * S;
     const c = document.createElement('canvas');
     c.width = px*dpr; c.height = px*dpr; c.style.width = px+'px'; c.style.height = px+'px';
     const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
@@ -162,13 +168,27 @@
 
     // White digit over a dark halo — reads on both halves and on light taskbars.
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = '700 ' + (9.6*S) + 'px "Segoe UI", system-ui, sans-serif';
+    ctx.font = '700 ' + (px * 0.6) + 'px "Segoe UI", system-ui, sans-serif';
     ctx.globalAlpha = A.halo; ctx.fillStyle = '#000';
     for (let dx = -1; dx <= 1; dx++)
       for (let dy = -1; dy <= 1; dy++)
         if (dx || dy) ctx.fillText(letter, cx + dx*S, cy + 0.5*S + dy*S);
     ctx.globalAlpha = A.digit; ctx.fillStyle = opts.labelColor || '#fff';
     ctx.fillText(letter, cx, cy + 0.5*S);
+
+    // Warning badge — MUST mirror IconRenderer.DrawWarningBadge exactly.
+    if (opts.warning) {
+      const d = px * 0.45;
+      const bx = px - d / 2, by = px - d / 2;
+      ctx.globalAlpha = 1; ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(bx, by, d / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 1 * S; ctx.strokeStyle = 'rgb(30, 30, 30)';
+      ctx.beginPath(); ctx.arc(bx, by, d / 2, 0, Math.PI * 2); ctx.stroke();
+      const w = d * 0.22;
+      ctx.fillStyle = 'rgb(30, 30, 30)';
+      ctx.fillRect(bx - w / 2, by - d * 0.26, w, d * 0.40);  // stem
+      ctx.fillRect(bx - w / 2, by + d * 0.24, w, w);         // dot
+    }
     return c;
   }
 
@@ -214,6 +234,42 @@
       mk('5',88,'cw','Stale (dimmed)','updated 22m ago',{dim:true});
       mk('—',0,'cw','No data','run Claude Code',{color:C.faint,labelColor:C.faint});
       mk('7',0,'ccw','Fresh window','0% · empty badge');
+    }
+
+    const badgeGrid = document.getElementById('badgeGrid');
+    if (badgeGrid) {
+      badgeGrid.innerHTML = '';
+      const states = [
+        { name: 'green',   pct: 13, dim: false },
+        { name: 'orange',  pct: 55, dim: false },
+        { name: 'red',     pct: 91, dim: false },
+        { name: 'dimmed',  pct: 55, dim: true },
+        { name: 'neutral', pct: 0,  dim: false, color: C.faint, labelColor: C.faint },
+      ];
+      [16, 20, 24].forEach(size => {
+        const rowLabel = document.createElement('div');
+        rowLabel.className = 'label';
+        rowLabel.style.gridColumn = '1 / -1';
+        rowLabel.textContent = size + ' px, at true size';
+        badgeGrid.appendChild(rowLabel);
+        states.forEach(st => {
+          [false, true].forEach(warn => {
+            const d = document.createElement('div'); d.className = 'scell';
+            d.appendChild(badgeIcon('5', st.pct, 'cw', 1,
+              { size: size, dim: st.dim, color: st.color, labelColor: st.labelColor, warning: warn }));
+            const l = document.createElement('div'); l.className = 'label'; l.textContent = st.name; d.appendChild(l);
+            const s = document.createElement('div'); s.className = 'sub'; s.textContent = warn ? 'badge' : 'plain'; d.appendChild(s);
+            badgeGrid.appendChild(d);
+          });
+        });
+      });
+      [16, 20, 24].forEach(size => {
+        const d = document.createElement('div'); d.className = 'scell';
+        d.appendChild(badgeIcon('5', 55, 'cw', 2, { size: size, warning: true }));
+        const l = document.createElement('div'); l.className = 'label'; l.textContent = size + ' px × 2'; d.appendChild(l);
+        const s = document.createElement('div'); s.className = 'sub'; s.textContent = 'enlarged'; d.appendChild(s);
+        badgeGrid.appendChild(d);
+      });
     }
   }
 

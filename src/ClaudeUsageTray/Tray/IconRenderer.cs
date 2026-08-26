@@ -19,9 +19,11 @@ public static class IconRenderer
     /// Filled-badge icon: translucent severity-tinted disc, solid pie wedge from 12 o'clock
     /// for usage (clamped 0–100), 1 px rim, centered digit with a dark halo so it reads on
     /// dark AND light taskbars. clockwise=true for the 5h window, false (counter-clockwise)
-    /// for 7d. dimmed = stale data.
+    /// for 7d. dimmed = stale data. warning = the Claude platform is degraded: a white
+    /// exclamation badge in the bottom-right corner, drawn over everything and never dimmed.
     /// </summary>
-    public static Icon Render(char digit, int percent, Severity severity, bool clockwise, bool dimmed, int size)
+    public static Icon Render(char digit, int percent, Severity severity, bool clockwise,
+        bool dimmed, int size, bool warning = false)
     {
         var color = severity switch
         {
@@ -29,14 +31,16 @@ public static class IconRenderer
             Severity.Orange => Color.FromArgb(232, 150, 40),
             _ => Color.FromArgb(64, 184, 96),
         };
-        return Draw(digit.ToString(), Math.Clamp(percent, 0, 100), color, clockwise, dimmed, size);
+        return Draw(digit.ToString(), Math.Clamp(percent, 0, 100), color, clockwise, dimmed, size, warning);
     }
 
-    /// <summary>Grey badge with a centered em-dash: the "no usage data yet" state.</summary>
-    public static Icon RenderNeutral(int size)
-        => Draw("—", percent: 0, Color.FromArgb(150, 150, 150), clockwise: true, dimmed: false, size);
+    /// <summary>Grey badge with a centered em-dash: the "no usage data yet" state. The warning
+    /// badge applies here too — an outage with no usage data must still be visible.</summary>
+    public static Icon RenderNeutral(int size, bool warning = false)
+        => Draw("—", percent: 0, Color.FromArgb(150, 150, 150), clockwise: true, dimmed: false, size, warning);
 
-    private static Icon Draw(string glyph, int percent, Color color, bool clockwise, bool dimmed, int size)
+    private static Icon Draw(string glyph, int percent, Color color, bool clockwise, bool dimmed,
+        int size, bool warning)
     {
         if (dimmed) color = Color.FromArgb(120, color);
 
@@ -80,6 +84,8 @@ public static class IconRenderer
             }
             using (var brush = new SolidBrush(textColor))
                 g.DrawString(glyph, font, brush, new RectangleF(0, 0, size, size), format);
+
+            if (warning) DrawWarningBadge(g, size);
         }
 
         IntPtr hIcon = bmp.GetHicon();
@@ -92,5 +98,30 @@ public static class IconRenderer
         {
             DestroyIcon(hIcon);
         }
+    }
+
+    /// <summary>White disc with a dark rim and a shape-drawn exclamation, inscribed in the
+    /// bottom-right corner — the conventional notification position, away from the centred
+    /// digit. Drawn last so it rides over the rim; white fill plus dark rim reads on dark AND
+    /// light taskbars, the same dual-legibility rule the digit halo was built for. Never
+    /// dimmed: dimming encodes stale *usage* data, and the service state is fresh from its own
+    /// fetch — a real outage must not fade. The exclamation is shapes, not text: a 5–6 px font
+    /// would sit below the legibility floor this project already enforces for the digit, and a
+    /// shape-drawn "!" is the only form guaranteed to read at 16 px.</summary>
+    private static void DrawWarningBadge(Graphics g, int size)
+    {
+        float d = size * 0.45f;
+        float cx = size - d / 2f;
+        float cy = size - d / 2f;
+
+        using (var fill = new SolidBrush(Color.White))
+            g.FillEllipse(fill, cx - d / 2f, cy - d / 2f, d, d);
+        using (var rim = new Pen(Color.FromArgb(30, 30, 30), 1f))
+            g.DrawEllipse(rim, cx - d / 2f, cy - d / 2f, d, d);
+
+        using var mark = new SolidBrush(Color.FromArgb(30, 30, 30));
+        float w = d * 0.22f;
+        g.FillRectangle(mark, cx - w / 2f, cy - d * 0.26f, w, d * 0.40f); // stem
+        g.FillRectangle(mark, cx - w / 2f, cy + d * 0.24f, w, w);          // dot
     }
 }

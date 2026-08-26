@@ -45,6 +45,7 @@ and how much paid credit you've burned this month.
 | 📈 **Pace marker** | A line on each bar marking where the *clock* is in the period — fill past it means you're on track to hit the cap early |
 | 🚦 **Pace colours** | Colour follows usage *against the clock*, not raw percent: 60 % with 5½ of 7 days gone stays green, 40 % in the first hour of a 5-hour window goes red |
 | 🔄 **Live + offline** | Polls Anthropic's usage API every 5 min; falls back to Claude Code's local cache |
+| 🚨 **Platform status** | Claude's own service banner — while status.claude.com says anything but "All Systems Operational", a white warning badge sits on every tray icon and the popup lists the active incidents |
 | 🚀 **Zero-friction** | Per-user install, no admin, auto-updates, starts at login |
 
 ## Install
@@ -117,6 +118,9 @@ Two sources, newest wins:
    The app never stores, refreshes, or logs that token, and respects `Retry-After` on 429s.
 2. **Offline fallback** — the `cachedUsageUtilization` block Claude Code writes to
    `%USERPROFILE%\.claude.json`, used whenever no valid token is available.
+3. **Platform status** — the public status page at status.claude.com, polled once a minute with
+   no auth and no token involved. The page's own banner decides the warning badge; incident
+   details are the page's own words.
 
 A rolling diagnostic log lands in `%APPDATA%\ClaudeUsageTray\fetch.log` so a
 "stale, never refreshes" report is debuggable. It records fetch outcomes and the two window
@@ -173,6 +177,7 @@ by the tag-triggered GitHub Actions workflow — push a `v*` tag whose version m
 | [`specs/2026-07-24-live-usage-fetch-design.md`](docs/superpowers/specs/2026-07-24-live-usage-fetch-design.md) | Live API polling and rate-limit handling |
 | [`specs/2026-07-24-icon-readability-design.md`](docs/superpowers/specs/2026-07-24-icon-readability-design.md) | Badge icon legibility at tray size |
 | [`specs/2026-07-27-fable-and-credits-design.md`](docs/superpowers/specs/2026-07-27-fable-and-credits-design.md) | Scoped weekly limits and credit usage |
+| [`specs/2026-08-26-platform-status-design.md`](docs/superpowers/specs/2026-08-26-platform-status-design.md) | Platform status polling and the taskbar outage indicator |
 
 </details>
 
