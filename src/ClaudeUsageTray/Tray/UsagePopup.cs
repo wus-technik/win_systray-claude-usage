@@ -127,25 +127,15 @@ public sealed class UsagePopup : Form
         }
         if (stale) header += " · stale";
 
-        layout.Controls.Add(new Label
-        {
-            Text = header,
-            AutoSize = true,
-            ForeColor = color,
-            Margin = new Padding(0, 0, 0, 2),
-        });
+        layout.Controls.Add(WrappingLabel(header, color, new Padding(0, 0, 0, 2)));
 
         if (status is not { Degraded: true }) return;
 
         var shown = status.Incidents.Take(3).ToList();
         foreach (var incident in shown)
         {
-            layout.Controls.Add(new Label
-            {
-                Text = DescribeIncident(incident, now),
-                AutoSize = true,
-                Margin = new Padding(0, 0, 0, 0),
-            });
+            layout.Controls.Add(WrappingLabel(DescribeIncident(incident, now),
+                SystemColors.ControlText, new Padding(0, 0, 0, 0)));
             if (incident.Shortlink is { } link)
             {
                 var details = new LinkLabel { Text = "Details", AutoSize = true, Margin = new Padding(0, 0, 0, 0) };
@@ -167,6 +157,20 @@ public sealed class UsagePopup : Form
         page.LinkClicked += (_, _) => OpenUrl("https://status.claude.com");
         layout.Controls.Add(page);
     }
+
+    /// <summary>A label for page-supplied text, which has no length limit we control: banner wording
+    /// and incident detail wrap at the bar width and grow downwards instead of stretching the
+    /// AutoSize form sideways. The bar width is the anchor because it is the popup's one fixed
+    /// column — PositionNearCursor clamps the form's position but not its size, so a single long
+    /// incident would otherwise push the popup off the screen edge.</summary>
+    private static Label WrappingLabel(string text, Color color, Padding margin) => new()
+    {
+        Text = text,
+        AutoSize = true,
+        MaximumSize = new Size(UsageBar.DefaultWidth, 0),
+        ForeColor = color,
+        Margin = margin,
+    };
 
     /// <summary>The page's banner text, verbatim; the indicator name only when the banner is
     /// empty, which the live page does not send but the parser tolerates.</summary>
