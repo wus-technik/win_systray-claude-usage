@@ -62,9 +62,10 @@ public sealed record StatusSource(
     IReadOnlyList<string> DefaultComponents);   // filter used when settings omit the key
 ```
 
-`StatusSources.Claude`, `StatusSources.OpenAi`, `StatusSources.All`, and
-`StatusSources.ById(string id)` — which matches ids with `StringComparer.OrdinalIgnoreCase` and
-returns `null` for anything unknown, because settings normalization depends on that answer.
+`StatusSourceRegistry.Claude`, `.OpenAi`, `.All`, and `StatusSourceRegistry.ById(string id)`, which
+matches ids with `StringComparer.OrdinalIgnoreCase` and returns `null` for anything unknown —
+settings normalization depends on that null. The class is *not* named `StatusSources`: the
+`Settings.StatusSources` property of the same name would shadow it inside `Settings.cs`.
 
 No user-supplied URLs: the app never fetches a host it does not ship, and every payload shape it
 parses is one that was verified by hand. The registry is generic so that `RaisesBadge` and the
@@ -113,10 +114,11 @@ public sealed record SourceView(
 
 IReadOnlyList<StatusSource> TakeDue(DateTimeOffset now);                  // gate + floor + backoff +
                                                                           // single-flight; records the attempt
-void Accept(string sourceId, PlatformStatus? result, DateTimeOffset now); // null => RecordFailure
+bool Accept(string sourceId, PlatformStatus? result, DateTimeOffset now); // null => RecordFailure;
+                                                                          // false => discarded, see below
 PlatformStatus? Status(string sourceId);
 IReadOnlyList<SourceView> Sources();                                      // registry order, for the popup
-bool BadgeDegraded(DateTimeOffset now);                                   // RaisesBadge sources only
+bool BadgeDegraded();                                                     // RaisesBadge sources only
 void ApplyEnabled(IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)> enabled);
 ```
 
@@ -206,7 +208,7 @@ watched** — "unclassified" must not mean "invisible".
 
 ### The filter never gates the badge
 
-`BadgeDegraded` is `RaisesBadge && Degraded`, full stop. It does not consult the filter for any
+`BadgeDegraded()` is `RaisesBadge && Degraded`, full stop. It does not consult the filter for any
 source.
 
 For OpenAI this is moot (`RaisesBadge: false`). For Claude it is a deliberate asymmetry with the
@@ -260,7 +262,7 @@ limit, they are omitted entirely** before `TrimTooltip` runs. A half-cut `· Ope
 worse than no suffix, and the badge-raising source's suffix must survive because it is the text that
 explains the marker on the icon.
 
-**Badge:** `IconRenderer.Render(warning: monitor.BadgeDegraded(now))`. `IconRenderer` does not
+**Badge:** `IconRenderer.Render(warning: monitor.BadgeDegraded())`. `IconRenderer` does not
 change; the warning marker keeps meaning "Claude is degraded, which is why your numbers may have
 stopped moving."
 
@@ -282,7 +284,7 @@ Per-entry fallback needs a tolerant read; plain deserialization cannot deliver i
 thresholds, display mode and staleness. The property is therefore deserialized as
 `Dictionary<string, JsonElement>` and normalized entry by entry:
 
-- Unknown ids (no `StatusSources.ById` match) are dropped.
+- Unknown ids (no `StatusSourceRegistry.ById` match) are dropped.
 - Missing ids are filled from the registry defaults: `claude` enabled with an empty filter, `openai`
   disabled with `DefaultComponents`.
 - An entry whose `enabled` or `components` value has the wrong shape resets **that entry** to its
