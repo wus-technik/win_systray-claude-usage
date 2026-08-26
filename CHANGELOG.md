@@ -8,7 +8,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
-## [Unreleased]
+## [0.7.1] - 2026-08-26
 
 ### Changed
 
@@ -67,7 +67,8 @@ written for the person deciding whether to install it — not for the person who
 [releases page](https://github.com/wus-technik/win_systray-claude-usage/releases) for what shipped in
 them.
 
-[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.1
 [0.7.0]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.0
 [0.6.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.6.2
 [0.6.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.6.1
