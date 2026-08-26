@@ -29,3 +29,9 @@ publish/
 
 # Local build output (publish dir, extracted release notes)
 artifacts/
+
+# The user-global ignore file carries a "build/**/*" rule, which silently hides new files in this
+# repo's build/ directory — that is how changelog-section.ps1 first reached CI as a missing script.
+# A repo .gitignore outranks the global one, so keep the build scripts explicitly tracked.
+!build/
+!build/*.ps1
