@@ -1,0 +1,151 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A Windows system-tray app (.NET 10, WinForms, `win-x64` self-contained) that shows Claude usage
+limits as badge icons. Shipped as a per-user Velopack install with auto-update. See `README.md` for
+the user-facing behaviour (icon semantics, pace colours, settings keys) — it is the reference for
+*what* the app does; this file covers *how to work on it*.
+
+## Commands
+
+```powershell
+dotnet test                                   # all tests (Debug)
+dotnet test --configuration Release           # what CI runs
+dotnet test --filter FullyQualifiedName~SeverityRulesTests             # one class
+dotnet test --filter "FullyQualifiedName~SeverityRulesTests.Method"    # one test
+dotnet run --project src/ClaudeUsageTray      # run the tray app from source
+.\build\build-release.ps1                     # publish + vpk pack -> .\Releases
+```
+
+CI (`.github/workflows/ci.yml`) runs restore + `dotnet test -c Release` on Windows for every PR and
+push to `main`. There is no linter or formatter step — match surrounding style.
+
+## Architecture
+
+Two-layer split, and it is load-bearing:
+
+- **`src/ClaudeUsageTray/Core/`** — pure, WinForms-free logic: parsing, formatting, severity,
+  scheduling, row selection. No clocks and no threads: every time-dependent function takes a
+  caller-supplied `DateTimeOffset now`. This is what the tests exercise.
+- **`src/ClaudeUsageTray/Tray/`** — WinForms only: `TrayApp` (the `ApplicationContext` that owns all
+  timers and state), `IconRenderer`, `UsagePopup`, `UsageBar`, `SettingsDialog`.
+
+**Put new logic in `Core/` as a pure function and unit-test it.** Adding a decision to `TrayApp` or a
+paint method is how this codebase becomes untestable — the reason `FetchScheduler`, `StatusScheduler`,
+`SeverityRules`, `PopupRows`, `TimeMarker`, and `SnapshotPrecedence` exist as separate state machines
+is that each was pulled out of the UI to be testable.
+
+### Data flow
+
+Three independent sources feed one `UsageSnapshot` (`Core/UsageSnapshot.cs`), newest wins via
+`SnapshotPrecedence.IsNewer` — which is what stops the 30 s cache re-read from clobbering a fresher
+API result:
+
+1. **Live API** — `UsageApiClient` GETs `https://api.anthropic.com/api/oauth/usage` every 5 min,
+   authenticated with the token `CredentialsReader` reads from `~/.claude/.credentials.json`.
+2. **Offline cache** — `UsageCacheReader` parses `cachedUsageUtilization` from `.claude.json`
+   (`ConfigPath.Resolve`, overridable via the `configPathOverride` setting). Watched with a
+   `FileSystemWatcher` + 500 ms debounce, plus a 30 s tick as the recovery path for missed events.
+3. **Platform status** — `PlatformStatusApi` polls status.claude.com every 60 s, no auth. Kept fully
+   independent of the usage path: a status failure must never null, clobber, or delay usage data.
+
+Both network paths are gated by a scheduler (`FetchScheduler` for usage, `StatusScheduler` for
+status) that owns the floors, backoff, and budget. `TrayApp` enforces single-flight with a bool on
+the UI thread. Fetch outcomes land in `%APPDATA%\ClaudeUsageTray\fetch.log` — percentages and
+outcomes only, **never** money amounts, currency, or account-specific model names.
+
+### Non-negotiable invariants
+
+- **The token is read-only.** Never write, refresh, or log credential material anywhere, `fetch.log`
+  included.
+- **Nothing in the read paths throws.** `UsageCacheReader`, `CredentialsReader`, `UsageApiClient`,
+  and `Settings.Load` swallow IO/JSON errors and return null / defaults. A malformed file must
+  degrade the display, not kill the tray.
+- **Labels come from the payload**, not from a hardcoded model list — a renamed or new model has to
+  show up with no app update.
+- **Absent data means no row.** Never render a placeholder `0 %` or `—` for a limit the account
+  does not have.
+
+## Working with the live usage endpoint
+
+`GET /api/oauth/usage` enforces a **tight per-token rolling-hour budget shared across every consumer
+of that token** — this tray *and* every running `claude.exe` on the machine. Measured behaviour:
+~28–30 requests/h (hence `FetchScheduler`'s default 20/h margin); under contention it returns
+`429 rate_limit_error` with `Retry-After: 0` and recovers within ~90 s.
+
+**Do not hammer it while debugging.** Even ~15 quick probes exhaust the budget and cause minutes of
+persistent 429s — for the user's real Claude Code sessions too. Test against `UsageApiClientTests`
+with canned responses instead of live calls. For the same reason the `.claude.json` cache can lag
+many hours: Claude Code hits the same limit.
+
+## Verifying UI drawing without a human
+
+`UsageBar` and `IconRenderer` are painted to a bitmap and sampled in `UsageBarTests` /
+`IconRendererTests` — extend those rather than eyeballing the app.
+
+For whole-popup checks, construct a real `UsagePopup` with a synthetic `UsageSnapshot` from a
+throwaway test in `tests/ClaudeUsageTray.Tests/` (that project has `UseWindowsForms=true`) and
+capture it with `Control.DrawToBitmap`. Scale the capture ~6x with `InterpolationMode.NearestNeighbor`
+— the bars are 240x12, too small to judge otherwise.
+
+**Pitfall:** call `CreateControl()`, never `Show()`. `UsagePopup.OnDeactivate` calls `Close()`, and
+with no message loop `Show()` triggers an immediate activate/deactivate cycle that disposes the form
+— you get a blank render with zero controls and no error. Delete the probe file afterwards; it is a
+verification artifact, not a test.
+
+## Testing a build in the real installed app
+
+To install a local build over the existing Velopack install (preserving the auto-update chain):
+
+1. Build a package. `.\build\build-release.ps1` takes its version from the csproj `<Version>`, and
+   `Update.exe apply` requires a version *higher* than what is installed. To avoid bumping the csproj
+   on a feature branch, run the two steps by hand and override only the pack version with a
+   `-local.N` suffix:
+   ```powershell
+   dotnet publish src/ClaudeUsageTray -c Release -r win-x64 --self-contained -o artifacts\publish
+   dnx vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray `
+     --packVersion <ver>-local.N --packDir artifacts\publish --mainExe ClaudeUsageTray.exe
+   ```
+   The exe's own ProductVersion still reads the csproj version — harmless, since Velopack (and
+   `UpdateManager`) compares the *package* version.
+2. `Stop-Process -Name ClaudeUsageTray -Force`
+3. `& "$env:LOCALAPPDATA\WusTechnik.ClaudeUsageTray\Update.exe" apply --package <path-to-nupkg>`
+
+**Do not use `WusTechnik.ClaudeUsageTray-win-Setup.exe` to update.** Setup.exe is first-install only,
+silently no-ops when the app is already installed, and is non-silent so it stalls headless.
+
+**The relaunched app dies when the tool shell ends.** `Update.exe apply` launches the new version as
+a child of the shell that ran it; from an agent's PowerShell/Bash call that shell's job object kills
+the tray app seconds later — which looks exactly like a startup crash (no WER report, no event log
+entry, `fetch.log` just stops after the first poll). Relaunch it detached instead:
+
+```powershell
+& explorer.exe "$env:LOCALAPPDATA\WusTechnik.ClaudeUsageTray\current\ClaudeUsageTray.exe"
+```
+
+Check the parent with `Get-CimInstance Win32_Process -Filter "Name='ClaudeUsageTray.exe'"` before
+diagnosing a real crash.
+
+Paths: installed app `%LOCALAPPDATA%\WusTechnik.ClaudeUsageTray\current\`, settings and log
+`%APPDATA%\ClaudeUsageTray\`.
+
+## Releasing
+
+Production releases are tag-triggered (`.github/workflows/release.yml`): bump `<Version>` in
+`src/ClaudeUsageTray/ClaudeUsageTray.csproj`, then push a matching `v<Version>` tag. The workflow
+hard-fails if tag and csproj version disagree, then tests, downloads the previous release as a delta
+baseline, packs, and publishes to GitHub Releases.
+
+Note for both the workflow and `build-release.ps1`: `--packAuthors` is written into the nuspec
+verbatim, so the company ampersand must arrive already XML-escaped (`W&amp;S Technik GmbH`) or `vpk`
+fails with an `XmlException`. Same in the csproj, where MSBuild rejects a bare `&`.
+
+## Design docs
+
+`docs/superpowers/spec*/` holds the design doc per feature and `docs/superpowers/plans/` the
+implementation plans. Read the relevant design doc before changing severity/pace rules, the icon
+renderer, scoped limits and credits, or platform status — each records why a rule looks odd (e.g. why
+`is_active: false` is never filtered on, why pace has a dead zone and a floor).
