@@ -27,6 +27,15 @@ public sealed class TrayApp : ApplicationContext
     private string? _rejectedToken;
     private string _lastFetchStatus = "no fetch yet";
 
+    // Platform status polling: 60 s steady state (StatusPage's recommended cadence); all
+    // budget/backoff state lives in the unit-tested StatusScheduler. Single-flight via
+    // _statusInFlight (UI thread only). Fully independent of the usage path: a status failure
+    // can never null, clobber, or delay usage data.
+    private readonly System.Windows.Forms.Timer _statusPoll = new() { Interval = 60_000 };
+    private readonly StatusScheduler _statusScheduler = new();
+    private bool _statusInFlight;
+    private PlatformStatus? _status;
+
     private readonly ContextMenuStrip _menu;
     private ToolStripMenuItem _updatedItem = null!, _restartToUpdateItem = null!;
 
@@ -70,10 +79,13 @@ public sealed class TrayApp : ApplicationContext
         _tick.Start();
         _poll.Tick += (_, _) => StartApiFetch();
         _poll.Start();
+        _statusPoll.Tick += (_, _) => StartStatusFetch();
+        _statusPoll.Start();
 
         ApplyDisplayMode();
         Refresh();
         StartApiFetch();
+        StartStatusFetch();
     }
 
     // ---- data ----
@@ -177,6 +189,53 @@ public sealed class TrayApp : ApplicationContext
         Render();
     }
 
+    // ---- platform status polling ----
+
+    private void StartStatusFetch()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_statusInFlight) return; // transient; not worth logging on every timer tick
+        if (!_statusScheduler.CanFetch(now)) { _log.Write(now, "status: skip: budget/backoff gate not open yet"); return; }
+
+        _statusInFlight = true;
+        _statusScheduler.RecordAttempt(now);
+        _log.Write(now, "status: attempt: GET summary.json");
+        _ = Task.Run(async () =>
+        {
+            var result = await PlatformStatusApi.FetchAsync(Http, DateTimeOffset.UtcNow, CancellationToken.None)
+                .ConfigureAwait(false);
+            try { _sync.BeginInvoke((Action)(() => OnStatusFetchCompleted(result))); }
+            catch (InvalidOperationException) { /* app shutting down */ }
+        });
+    }
+
+    private void OnStatusFetchCompleted(PlatformStatus? result)
+    {
+        _statusInFlight = false;
+        var now = DateTimeOffset.UtcNow;
+        if (result is null)
+        {
+            // Keep the last-known-good state: a dead endpoint degrades to stale, never to blank.
+            _statusScheduler.RecordFailure(now);
+            _log.Write(now, "status: error: no usable response; backing off");
+        }
+        else
+        {
+            _statusScheduler.RecordSuccess();
+            _status = result;
+            if (result.Degraded)
+            {
+                string names = string.Join(", ", result.Incidents.Select(i => i.Name));
+                _log.Write(now, $"status: degraded: indicator={result.Indicator} incidents={result.Incidents.Count}: {names}");
+            }
+            else
+            {
+                _log.Write(now, $"status: ok: indicator={result.Indicator} ({result.Description}) incidents={result.Incidents.Count}");
+            }
+        }
+        Render();
+    }
+
     // ---- rendering ----
 
     private void Render()
@@ -184,11 +243,18 @@ public sealed class TrayApp : ApplicationContext
         var now = DateTimeOffset.UtcNow;
         bool stale = _snapshot is not null
             && now - _snapshot.FetchedAt > TimeSpan.FromMinutes(_settings.StalenessMinutes);
+        bool degraded = _status is { Degraded: true };
+        // A real outage must not vanish because *our* network is down: the state keeps being
+        // displayed once fetched, only marked stale.
+        bool statusStale = _status is not null
+            && now - _status.FetchedAt > TimeSpan.FromMinutes(_settings.StalenessMinutes);
 
         if (_iconFive is not null)
-            Apply(_iconFive, '5', _snapshot?.FiveHour, "5h", TimeSpan.FromHours(5), clockwise: true, stale, now);
+            Apply(_iconFive, '5', _snapshot?.FiveHour, "5h", TimeSpan.FromHours(5),
+                clockwise: true, stale, degraded, statusStale, now);
         if (_iconSeven is not null)
-            Apply(_iconSeven, '7', _snapshot?.SevenDay, "7d", TimeSpan.FromDays(7), clockwise: false, stale, now);
+            Apply(_iconSeven, '7', _snapshot?.SevenDay, "7d", TimeSpan.FromDays(7),
+                clockwise: false, stale, degraded, statusStale, now);
 
         _updatedItem.Text = _settingsSaveFailed
             ? "Settings could not be saved"
@@ -200,15 +266,15 @@ public sealed class TrayApp : ApplicationContext
     }
 
     private void Apply(NotifyIcon icon, char digit, WindowUsage? usage, string label, TimeSpan period,
-        bool clockwise, bool stale, DateTimeOffset now)
+        bool clockwise, bool stale, bool degraded, bool statusStale, DateTimeOffset now)
     {
         int size = IconRenderer.SystemTrayIconSize();
         var old = icon.Icon;
 
         if (usage is null)
         {
-            icon.Icon = IconRenderer.RenderNeutral(size);
-            icon.Text = "No Claude usage data yet — run Claude Code.";
+            icon.Icon = IconRenderer.RenderNeutral(size, warning: degraded);
+            icon.Text = TrimTooltip("No Claude usage data yet — run Claude Code." + StatusSuffix(statusStale));
         }
         else
         {
@@ -218,8 +284,9 @@ public sealed class TrayApp : ApplicationContext
             var severity = _settings.PaceColors
                 ? SeverityRules.ForPace(usage.Percent, elapsed, _settings.Thresholds.Orange, _settings.Thresholds.Red)
                 : SeverityRules.For(usage.Percent, _settings.Thresholds.Orange, _settings.Thresholds.Red);
-            icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise, dimmed: stale, size);
-            icon.Text = TrimTooltip(BuildTooltip(label, usage, elapsed, stale, now));
+            icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
+                dimmed: stale, size, warning: degraded);
+            icon.Text = TrimTooltip(BuildTooltip(label, usage, elapsed, stale, now) + StatusSuffix(statusStale));
         }
         old?.Dispose();
     }
@@ -246,6 +313,15 @@ public sealed class TrayApp : ApplicationContext
     private static string TrimTooltip(string text)
         => text.Length <= 127 ? text : text[..126] + "…"; // NotifyIcon.Text hard limit
 
+    /// <summary>The disruption names itself in the tooltip; normal operation and a never-fetched
+    /// status stay unobtrusive.</summary>
+    private string StatusSuffix(bool statusStale)
+    {
+        if (_status is not { Degraded: true } status) return "";
+        var text = string.IsNullOrWhiteSpace(status.Description) ? status.Indicator : status.Description;
+        return $" · Claude: {text}{(statusStale ? " (stale)" : "")}";
+    }
+
     // ---- display mode / icons ----
 
     private void ApplyDisplayMode()
@@ -271,7 +347,7 @@ public sealed class TrayApp : ApplicationContext
     public void ShowPopup()
     {
         if (_popup is { IsDisposed: false }) { _popup.Close(); }
-        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow, null, _lastFetchStatus);
+        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow, _status, _lastFetchStatus);
         _popup.Show();
         _popup.Activate();
     }
@@ -299,7 +375,7 @@ public sealed class TrayApp : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => { Refresh(); StartApiFetch(); }));
+        menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => { Refresh(); StartApiFetch(); StartStatusFetch(); }));
         menu.Items.Add(_restartToUpdateItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_updatedItem);
@@ -440,6 +516,7 @@ public sealed class TrayApp : ApplicationContext
             _retry.Dispose();
             _tick.Dispose();
             _poll.Dispose();
+            _statusPoll.Dispose();
             _menu.Dispose();
             _sync.Dispose();
         }
