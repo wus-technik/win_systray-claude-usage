@@ -19,6 +19,8 @@ dotnet publish src/ClaudeUsageTray -c Release -r win-x64 --self-contained -o $pu
 # vpk writes --packAuthors into the package's nuspec verbatim, so the ampersand has to arrive
 # already XML-escaped: a bare "W&S Technik GmbH" makes vpk fail with an XmlException. The escape is
 # undone when the manifest is read, so Windows still shows "W&S Technik GmbH".
-dnx vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $version --packDir $publish --mainExe ClaudeUsageTray.exe --releaseNotes $notesFile
+# --icon is what puts the app icon on Setup.exe, the desktop shortcut and the Start menu entry.
+# <ApplicationIcon> only covers the exe itself; vpk builds the shortcuts and needs its own copy.
+dnx vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $version --packDir $publish --mainExe ClaudeUsageTray.exe --releaseNotes $notesFile --icon src/ClaudeUsageTray/app.ico
 
 Write-Host "Release $version built in .\Releases"
