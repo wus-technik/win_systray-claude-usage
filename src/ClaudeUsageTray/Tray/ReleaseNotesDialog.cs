@@ -15,6 +15,7 @@ public sealed class ReleaseNotesDialog : Form
     internal ReleaseNotesDialog(string title, string question, string notes)
     {
         Text = title;
+        Icon = AppIcon.Value;
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimizeBox = false;
         MaximizeBox = false;

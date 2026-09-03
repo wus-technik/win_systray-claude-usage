@@ -83,7 +83,8 @@ jobs:
         shell: pwsh
         # --packAuthors lands in the package's nuspec verbatim, so the ampersand must arrive already
         # XML-escaped or vpk fails with an XmlException. It reads back as "W&S Technik GmbH".
-        run: dnx --yes vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $env:VERSION --packDir artifacts/publish --mainExe ClaudeUsageTray.exe --releaseNotes artifacts/release-notes.md
+        # --icon covers what <ApplicationIcon> cannot: Setup.exe and the shortcuts vpk creates.
+        run: dnx --yes vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $env:VERSION --packDir artifacts/publish --mainExe ClaudeUsageTray.exe --releaseNotes artifacts/release-notes.md --icon src/ClaudeUsageTray/app.ico
 
       - name: Upload and publish release
         shell: pwsh

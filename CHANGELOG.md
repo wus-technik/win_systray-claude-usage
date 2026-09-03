@@ -8,6 +8,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [Unreleased]
+
+### Added
+
+- The app has an icon of its own: the exe in Explorer, the installer, the desktop shortcut, the
+  Start menu entry and the Settings and update windows all show a speedometer instead of the generic
+  default. The tray badge is unchanged.
+
 ## [0.7.1] - 2026-08-26
 
 ### Changed

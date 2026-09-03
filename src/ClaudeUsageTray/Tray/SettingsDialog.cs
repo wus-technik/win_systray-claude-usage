@@ -77,6 +77,7 @@ public sealed class SettingsDialog : Form
         _releaseNotes = updates.InitialReleaseNotes;
 
         Text = AppInfo.Window("Settings");
+        Icon = AppIcon.Value;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;

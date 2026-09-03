@@ -15,6 +15,9 @@
          assembly name and reads "ClaudeUsageTray". -->
     <AssemblyTitle>Claude Usage Tray</AssemblyTitle>
     <Copyright>Copyright (c) 2026 W&amp;S Technik GmbH</Copyright>
+    <!-- The static identity icon: the exe in Explorer, the taskbar, the shortcuts vpk creates. Not
+         the tray badge — IconRenderer still draws that at runtime. -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
@@ -26,5 +29,11 @@
          the publish output puts it inside the Velopack package, so the installed app directory
          carries it — this is why neither build-release.ps1 nor release.yml needs to handle it. -->
     <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Ships for the same reason as LICENSE: the app icon is third-party artwork, so its licence
+         and provenance have to travel with the binaries, not just live in the repo. -->
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Embedded as well as compiled into the win32 icon group: AppIcon hands the same icon to the
+         window title bars, and reading it back out of the exe's resources needs P/Invoke. -->
+    <EmbeddedResource Include="app.ico" LogicalName="ClaudeUsageTray.app.ico" />
   </ItemGroup>
 </Project>

@@ -14,6 +14,8 @@
 *.html      text
 *.css       text
 *.js        text
+*.mjs       text
+*.svg       text
 *.yml       text
 *.yaml      text
 
