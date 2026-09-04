@@ -1,5 +1,4 @@
 using System.Net;
-using System.Reflection;
 
 namespace ClaudeUsageTraySetupStub;
 
@@ -11,9 +10,10 @@ public static class HttpRetry
     public static readonly IReadOnlyList<TimeSpan> DefaultDelays =
         [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4), TimeSpan.FromSeconds(8)];
 
-    /// <summary>GitHub rejects requests without a User-Agent. The version is the stub's own.</summary>
-    public static readonly string UserAgent =
-        $"ClaudeUsageTraySetup/{Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "0.0.0"}";
+    /// <summary>GitHub rejects requests without a User-Agent. The version is <see
+    /// cref="StubVersion.Short"/>, not `AssemblyName.Version`, which would silently drop a prerelease
+    /// suffix such as `-beta.1`.</summary>
+    public static readonly string UserAgent = $"ClaudeUsageTraySetup/{StubVersion.Short}";
 
     public static bool IsTransient(HttpStatusCode status)
         => (int)status >= 500 || status is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout;
