@@ -9,7 +9,7 @@ namespace ClaudeUsageTray;
 public static class UpdateCheck
 {
     // Public GitHub Releases feed; clients deliberately use no access token.
-    private const string FeedUrl = "https://github.com/wus-technik/win_systray-claude-usage";
+    private const string FeedUrl = AppInfo.ProjectUrl;
     private static readonly object Gate = new();
     private static UpdateManager? _manager;
     private static UpdateInfo? _stagedUpdate;

@@ -68,6 +68,16 @@ public class SettingsDialogUpdateTests : IDisposable
     }
 
     [Fact]
+    public void TheCreatorLinksToTheProjectPage()
+    {
+        // A LinkLabel with no explicit LinkArea links its whole text — the tooltip is what tells the
+        // user where the click goes, so it has to name the URL.
+        var creator = (LinkLabel)Label(Dialog(Options()), "creator");
+        Assert.Equal("https://github.com/wus-technik/win_systray-claude-usage", AppInfo.ProjectUrl);
+        Assert.Single(creator.Links);
+    }
+
+    [Fact]
     public void TheWindowIsTitledLikeTheRestOfTheApp()
         => Assert.Equal("Claude Usage — Settings", Dialog(Options()).Text);
 
