@@ -145,6 +145,12 @@ cancels the restart rather than losing them. Updates published before 0.7.1 carr
 fall back to a plain confirmation. Outside the installed app there is nothing to update, so both
 controls are disabled.
 
+**Use beta releases** in the same section picks which builds the updater considers. Off — the default
+— only stable releases are ever offered. On, pre-release builds (`0.7.2-beta.1`, `0.7.2-beta.2`, …)
+are offered as well, and stable releases still arrive, so opting in never means falling behind.
+Changing it applies to the next check, with no restart; unchecking it moves you back to the latest
+stable build, even when that means stepping down from a newer beta.
+
 Everything is also readable and editable in `%APPDATA%\ClaudeUsageTray\settings.json`. An invalid
 value there falls back to its default on load — the pair `orange`/`red` resets together, since the
 file gives no way to tell which of the two was meant.
@@ -156,6 +162,7 @@ file gives no way to tell which of the two was meant.
 | `paceColors` | colour by usage against elapsed time instead of raw percent | `true` |
 | `stalenessMinutes` | minutes before data is flagged stale | `15` |
 | `runAtStartup` | applied to the HKCU `Run` key at every installed launch | `true` |
+| `useBetaReleases` | offer pre-release builds too; off means stable releases only | `false` |
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
 
 ## Development

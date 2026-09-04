@@ -21,6 +21,7 @@ public class SettingsTests : IDisposable
             StalenessMinutes = 5,
             RunAtStartup = false,
             PaceColors = false,
+            UseBetaReleases = true,
             ConfigPathOverride = @"C:\alt\.claude.json",
         };
         original.Save(path);
@@ -32,6 +33,7 @@ public class SettingsTests : IDisposable
         Assert.Equal(5, loaded.StalenessMinutes);
         Assert.False(loaded.RunAtStartup);
         Assert.False(loaded.PaceColors);
+        Assert.True(loaded.UseBetaReleases);
         Assert.Equal(@"C:\alt\.claude.json", loaded.ConfigPathOverride);
     }
 
@@ -47,6 +49,7 @@ public class SettingsTests : IDisposable
         Assert.Contains("\"stalenessMinutes\": 15", json);
         Assert.Contains("\"runAtStartup\": true", json);
         Assert.Contains("\"paceColors\": true", json);
+        Assert.Contains("\"useBetaReleases\": false", json);
     }
 
     [Fact]
@@ -59,7 +62,18 @@ public class SettingsTests : IDisposable
         Assert.Equal(15, s.StalenessMinutes);
         Assert.True(s.RunAtStartup);
         Assert.True(s.PaceColors);
+        Assert.False(s.UseBetaReleases);
         Assert.Null(s.ConfigPathOverride);
+    }
+
+    [Fact]
+    public void Load_ConfigWithoutUseBetaReleases_StaysOnStableReleases()
+    {
+        // Opting into pre-release builds is a decision only the user makes: a file written before the
+        // beta ring existed, or one where the key was deleted, must never enrol them.
+        var path = PathFor("pre-beta.json");
+        File.WriteAllText(path, """{ "displayMode": "fiveHour", "runAtStartup": false }""");
+        Assert.False(Settings.Load(path).UseBetaReleases);
     }
 
     [Fact]

@@ -46,6 +46,20 @@ jobs:
         # nobody can read the changes for. Same spirit as the tag/version check above.
         run: ./build/changelog-section.ps1 -Version $env:VERSION -OutFile artifacts/release-notes.md
 
+      - name: Determine release ring
+        shell: pwsh
+        # A prerelease version (0.7.2-beta.1) ships to the win-beta channel as a GitHub pre-release,
+        # so only opted-in users are offered it. A stable version ships to win *and* is mirrored into
+        # win-beta: a win-beta client never reads releases.win.json, so without the mirror beta users
+        # would stall after every stable release.
+        run: |
+          $ring = ./build/release-ring.ps1 -Version $env:VERSION
+          $mirror = if ($ring.MirrorChannel) { " (mirrored into '$($ring.MirrorChannel)')" } else { "" }
+          Write-Host "Version $env:VERSION ships to channel '$($ring.Channel)'$mirror."
+          Add-Content -Path $env:GITHUB_ENV -Value "CHANNEL=$($ring.Channel)"
+          Add-Content -Path $env:GITHUB_ENV -Value "MIRROR_CHANNEL=$($ring.MirrorChannel)"
+          Add-Content -Path $env:GITHUB_ENV -Value "IS_BETA=$($ring.IsBeta)"
+
       - name: Restore
         run: dotnet restore
 
@@ -73,7 +87,21 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: dnx --yes vpk --version 1.2.0 download github --repoUrl https://github.com/${{ github.repository }} --token $env:GH_TOKEN
+        # One baseline per channel about to be packed, or the deltas would be computed against the
+        # wrong ring. A channel with no prior release simply yields no baseline and vpk packs a full
+        # release, so this must not fail the build.
+        run: |
+          $channels = @($env:CHANNEL) + @($env:MIRROR_CHANNEL | Where-Object { $_ })
+          foreach ($channel in $channels) {
+            # --pre for win-beta: real betas are GitHub pre-releases, so the newest beta baseline is
+            # only visible when pre-releases are searched.
+            $pre = if ($channel -eq 'win-beta') { @('--pre') } else { @() }
+            dnx --yes vpk --version 1.2.0 download github --repoUrl https://github.com/${{ github.repository }} --channel $channel @pre --token $env:GH_TOKEN
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::warning::No delta baseline for channel '$channel'; packing a full release for it."
+            }
+          }
+          exit 0
 
       - name: Publish self-contained app
         shell: pwsh
@@ -84,10 +112,29 @@ jobs:
         # --packAuthors lands in the package's nuspec verbatim, so the ampersand must arrive already
         # XML-escaped or vpk fails with an XmlException. It reads back as "W&S Technik GmbH".
         # --icon covers what <ApplicationIcon> cannot: Setup.exe and the shortcuts vpk creates.
-        run: dnx --yes vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $env:VERSION --packDir artifacts/publish --mainExe ClaudeUsageTray.exe --releaseNotes artifacts/release-notes.md --icon src/ClaudeUsageTray/app.ico
+        # One pack per channel: each writes its own releases.{channel}.json index and channel-named
+        # assets, which is what keeps the two rings apart.
+        run: |
+          $channels = @($env:CHANNEL) + @($env:MIRROR_CHANNEL | Where-Object { $_ })
+          foreach ($channel in $channels) {
+            dnx --yes vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packTitle "Claude Usage Tray" --packAuthors "W&amp;S Technik GmbH" --packVersion $env:VERSION --packDir artifacts/publish --mainExe ClaudeUsageTray.exe --releaseNotes artifacts/release-notes.md --icon src/ClaudeUsageTray/app.ico --channel $channel
+            if ($LASTEXITCODE -ne 0) { throw "vpk pack failed for channel '$channel'" }
+          }
 
       - name: Upload and publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: dnx --yes vpk --version 1.2.0 upload github --repoUrl https://github.com/${{ github.repository }} --publish --releaseName "Claude Usage Tray $env:VERSION" --tag "v$env:VERSION" --token $env:GH_TOKEN
+        # The ring's own channel goes up first and creates the GitHub release; the mirror is merged
+        # into that same release afterwards. --pre marks a beta as a GitHub pre-release, which is the
+        # second barrier keeping it away from stable clients (they search stable releases only).
+        run: |
+          $repo = "https://github.com/${{ github.repository }}"
+          $name = "Claude Usage Tray $env:VERSION"
+          $pre = if ($env:IS_BETA -eq 'True') { @('--pre') } else { @() }
+          dnx --yes vpk --version 1.2.0 upload github --repoUrl $repo --channel $env:CHANNEL @pre --publish --releaseName $name --tag "v$env:VERSION" --token $env:GH_TOKEN
+          if ($LASTEXITCODE -ne 0) { throw "vpk upload failed for channel '$env:CHANNEL'" }
+          if ($env:MIRROR_CHANNEL) {
+            dnx --yes vpk --version 1.2.0 upload github --repoUrl $repo --channel $env:MIRROR_CHANNEL --merge --publish --releaseName $name --tag "v$env:VERSION" --token $env:GH_TOKEN
+            if ($LASTEXITCODE -ne 0) { throw "vpk upload failed for mirror channel '$env:MIRROR_CHANNEL'" }
+          }

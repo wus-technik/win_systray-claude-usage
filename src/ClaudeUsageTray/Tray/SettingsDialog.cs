@@ -51,6 +51,12 @@ public sealed class SettingsDialog : Form
         FlatStyle = FlatStyle.Standard,
         Font = new Font("Segoe UI Symbol", 10f),
     };
+    private readonly CheckBox _betaReleases = new()
+    {
+        Name = "betaReleases",
+        Text = "Use beta releases (pre-release builds, may be unstable)",
+        AutoSize = true,
+    };
     private readonly UpdateOptions _updates;
     private UpdateAvailability _updateState;
     private string? _releaseNotes;
@@ -133,6 +139,11 @@ public sealed class SettingsDialog : Form
 
         layout.Controls.Add(Heading("About"));
         layout.Controls.Add(BuildAbout());
+
+        // Which ring the updater follows belongs next to the update controls it changes. Disabled
+        // outside the installed app for the same reason those are: there is nothing to update.
+        _betaReleases.Enabled = _updates.IsInstalled;
+        layout.Controls.Add(Indent(_betaReleases));
 
         layout.Controls.Add(_error);
         layout.Controls.Add(BuildButtons());
@@ -304,7 +315,7 @@ public sealed class SettingsDialog : Form
         int order = 0;
         foreach (var control in new Control[]
                  { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   reset, cancel, save })
+                   _betaReleases, reset, cancel, save })
             control.TabIndex = order++;
         return row;
     }
@@ -319,6 +330,7 @@ public sealed class SettingsDialog : Form
         _modeBoth.Checked = source.DisplayMode == DisplayMode.Both;
         _startup.Checked = runAtStartup;
         _paceColors.Checked = source.PaceColors;
+        _betaReleases.Checked = source.UseBetaReleases;
         _suspendSync = false;
         SetThresholds(source.Thresholds.Orange, source.Thresholds.Red, source.StalenessMinutes);
     }
@@ -376,6 +388,7 @@ public sealed class SettingsDialog : Form
         draft.PaceColors = _paceColors.Checked;
         draft.StalenessMinutes = (int)_staleness.Value;
         draft.RunAtStartup = _startup.Checked;
+        draft.UseBetaReleases = _betaReleases.Checked;
         return draft;
     }
 
@@ -421,6 +434,7 @@ public sealed class SettingsDialog : Form
         StalenessMinutes = source.StalenessMinutes,
         RunAtStartup = source.RunAtStartup,
         PaceColors = source.PaceColors,
+        UseBetaReleases = source.UseBetaReleases,
         ConfigPathOverride = source.ConfigPathOverride,
     };
 }

@@ -1,6 +1,7 @@
 using System.Reflection;
 using ClaudeUsageTray.Core;
 using Velopack;
+using Velopack.Locators;
 using Velopack.Sources;
 
 namespace ClaudeUsageTray;
@@ -14,6 +15,26 @@ public static class UpdateCheck
     private static UpdateInfo? _stagedUpdate;
     private static string? _latestKnownVersion;
     private static string? _latestKnownNotes;
+    private static bool _useBetaReleases;
+
+    /// <summary>Selects the release ring — at launch from the saved setting, and again whenever the
+    /// user changes it, so the next check follows the new ring with no restart.
+    ///
+    /// A change throws away what the previous ring staged: a package downloaded for the other ring
+    /// must never be offered, and a version cached from it must not keep claiming an update is
+    /// waiting. The next check re-stages from the ring now in force.</summary>
+    public static void UseRing(bool useBetaReleases)
+    {
+        lock (Gate)
+        {
+            if (_useBetaReleases == useBetaReleases) return;
+            _useBetaReleases = useBetaReleases;
+            _manager = null;
+            _stagedUpdate = null;
+            _latestKnownVersion = null;
+            _latestKnownNotes = null;
+        }
+    }
 
     /// <summary>The running version. Velopack's own record when installed — it is the version the
     /// updater compares against — falling back to the assembly's for `dotnet run` and portable
@@ -140,5 +161,29 @@ public static class UpdateCheck
     }
 
     private static UpdateManager CreateManager()
-        => new(new GithubSource(FeedUrl, accessToken: null, prerelease: false));
+    {
+        bool useBetaReleases;
+        lock (Gate) useBetaReleases = _useBetaReleases;
+        var ring = UpdateRing.For(useBetaReleases, InstalledChannel());
+
+        // The channel is passed explicitly every time, including for stable: the installed package's
+        // own channel is Velopack's default, so a user who took a beta package would otherwise stay
+        // on the beta ring no matter what the setting says.
+        return new UpdateManager(
+            new GithubSource(FeedUrl, accessToken: null, prerelease: ring.IncludePrereleases),
+            new Velopack.UpdateOptions
+            {
+                ExplicitChannel = ring.Channel,
+                AllowVersionDowngrade = ring.AllowVersionDowngrade,
+            });
+    }
+
+    /// <summary>The channel recorded in the installed package's manifest — what Velopack treats as
+    /// the default channel. Null outside an install and on any locator failure; the ring rules read
+    /// that as stable, which is the safe reading.</summary>
+    private static string? InstalledChannel()
+    {
+        try { return VelopackLocator.IsCurrentSet ? VelopackLocator.Current.Channel : null; }
+        catch { return null; }
+    }
 }

@@ -468,6 +468,11 @@ public sealed class TrayApp : ApplicationContext
         _settings.StalenessMinutes = edited.StalenessMinutes;
         _settings.PaceColors = edited.PaceColors;
         _settings.RunAtStartup = edited.RunAtStartup;
+        _settings.UseBetaReleases = edited.UseBetaReleases;
+
+        // Takes effect on the next check rather than at the next launch. A no-op when unchanged, so
+        // saving unrelated edits never discards a staged update.
+        UpdateCheck.UseRing(_settings.UseBetaReleases);
 
         PersistSettings();
         ApplyDisplayMode();

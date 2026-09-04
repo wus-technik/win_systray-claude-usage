@@ -43,6 +43,8 @@ internal static class Program
             catch { /* startup registration is best-effort; a locked-down registry must not kill the tray */ }
         }
 
+        // Before the first check, so the launch check already follows the ring the user picked.
+        UpdateCheck.UseRing(settings.UseBetaReleases);
         _ = UpdateCheck.RunPeriodicAsync(); // fire-and-forget; never blocks the tray
 
         Application.Run(new TrayApp(settings, settingsPath, isInstalled));

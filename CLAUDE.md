@@ -111,6 +111,11 @@ To install a local build over the existing Velopack install (preserving the auto
    ```
    The exe's own ProductVersion still reads the csproj version — harmless, since Velopack (and
    `UpdateManager`) compares the *package* version.
+
+   Add `--channel win-beta` to test the beta ring; the assets are then named `-win-beta-` and the
+   installed manifest records that channel, which is what makes the app read the beta feed (and what
+   `UpdateRing` keys the return-to-stable downgrade off). Without the flag, `vpk pack` defaults to
+   `win`, matching a stable install.
 2. `Stop-Process -Name ClaudeUsageTray -Force`
 3. `& "$env:LOCALAPPDATA\WusTechnik.ClaudeUsageTray\Update.exe" apply --package <path-to-nupkg>`
 
@@ -138,6 +143,26 @@ Production releases are tag-triggered (`.github/workflows/release.yml`): bump `<
 `src/ClaudeUsageTray/ClaudeUsageTray.csproj`, then push a matching `v<Version>` tag. The workflow
 hard-fails if tag and csproj version disagree, then tests, downloads the previous release as a delta
 baseline, packs, and publishes to GitHub Releases.
+
+### Release rings
+
+`build/release-ring.ps1` derives the ring from `<Version>` and is the only place that decides it —
+both `release.yml` and `build-release.ps1` call it, so a local build and CI cannot disagree.
+
+- A prerelease version (`0.7.2-beta.1`, dot-numbered so `beta.10` sorts above `beta.9`) packs to
+  channel **`win-beta`** and is uploaded with `--pre`, i.e. as a GitHub pre-release. Only users with
+  `useBetaReleases` on are offered it.
+- A stable version packs **twice**: channel `win`, then the same build again as the `win-beta`
+  mirror, merged into the same GitHub release. **The mirror is mandatory, not cosmetic**: a
+  `win-beta` client never reads `releases.win.json`, so without it beta users stall after every
+  stable release, and the beta index would eventually fall out of the 10-release window
+  `GithubSource` looks at.
+
+Beta versions need their own `## 0.7.2-beta.N` section in `CHANGELOG.md` — `changelog-section.ps1`
+hard-fails otherwise, betas included. The client side of this lives in `Core/UpdateRing.cs`; the
+design doc (`docs/superpowers/specs/2026-09-04-beta-release-ring-design.md`) records the verified
+Velopack behaviour it depends on, including why `AllowVersionDowngrade` is enabled *only* for the
+switch back to stable.
 
 Note for both the workflow and `build-release.ps1`: `--packAuthors` is written into the nuspec
 verbatim, so the company ampersand must arrive already XML-escaped (`W&amp;S Technik GmbH`) or `vpk`

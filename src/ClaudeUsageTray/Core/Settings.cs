@@ -42,6 +42,12 @@ public sealed class Settings
     /// <summary>Colour bars and badges by usage against elapsed time rather than by raw percent.
     /// Off falls back to the pure Thresholds comparison everywhere.</summary>
     public bool PaceColors { get; set; } = true;
+
+    /// <summary>Follow the beta ring (<see cref="UpdateRing.BetaChannel"/>) instead of stable, so
+    /// pre-release builds are offered. Off by default and never inferred: opting in is the user's
+    /// decision alone, so a missing key means stable.</summary>
+    public bool UseBetaReleases { get; set; }
+
     public string? ConfigPathOverride { get; set; }
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)

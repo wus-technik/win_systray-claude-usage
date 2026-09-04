@@ -12,6 +12,13 @@ written for the person deciding whether to install it — not for the person who
 
 ### Added
 
+- **Use beta releases**, a checkbox in the Settings dialog. With it on, the updater also offers
+  pre-release builds (`0.7.2-beta.1`, `0.7.2-beta.2`, …); with it off — the default — nothing changes
+  and only stable releases are ever offered. The switch takes effect on the next update check, with
+  no restart, and unchecking it moves you back to the latest stable build, even when that means
+  stepping down from a newer beta. Stable releases keep reaching beta users too, so opting in never
+  means falling behind.
+
 - The app has an icon of its own: the exe in Explorer, the installer, the desktop shortcut, the
   Start menu entry and the Settings and update windows all show a speedometer instead of the generic
   default. The tray badge is unchanged.

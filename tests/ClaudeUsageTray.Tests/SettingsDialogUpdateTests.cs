@@ -20,9 +20,10 @@ public class SettingsDialogUpdateTests : IDisposable
 
     public void Dispose() { foreach (var dialog in _open) dialog.Dispose(); }
 
-    private SettingsDialog Dialog(UpdateOptions updates, Func<Settings, bool>? save = null)
+    private SettingsDialog Dialog(UpdateOptions updates, Func<Settings, bool>? save = null,
+        Settings? settings = null)
     {
-        var dialog = new SettingsDialog(new Settings(), canRunAtStartup: true, runAtStartup: true,
+        var dialog = new SettingsDialog(settings ?? new Settings(), canRunAtStartup: true, runAtStartup: true,
             save: save ?? (s => { _saved.Add(s); return true; }), updates);
         _open.Add(dialog);
         dialog.StartPosition = FormStartPosition.Manual;
@@ -279,5 +280,60 @@ public class SettingsDialogUpdateTests : IDisposable
         Assert.False(UpdateNow(dialog).Enabled);
         Assert.Equal("updates are available only in the installed app",
             Label(dialog, "updateStatus").Text);
+    }
+
+    private static CheckBox BetaReleases(SettingsDialog dialog)
+        => (CheckBox)dialog.Controls.Find("betaReleases", searchAllChildren: true).Single();
+
+    [Fact]
+    public void TheBetaCheckboxShowsTheSavedSetting()
+        => Assert.True(BetaReleases(
+            Dialog(Options(), settings: new Settings { UseBetaReleases = true })).Checked);
+
+    [Fact]
+    public void OptingIntoBetasLandsInTheDraft()
+    {
+        var dialog = Dialog(Options());
+        Assert.False(dialog.Draft().UseBetaReleases); // default is stable
+
+        BetaReleases(dialog).Checked = true;
+        Assert.True(dialog.Draft().UseBetaReleases);
+    }
+
+    [Fact]
+    public void OptingOutOfBetasLandsInTheDraft()
+    {
+        var dialog = Dialog(Options(), settings: new Settings { UseBetaReleases = true });
+
+        BetaReleases(dialog).Checked = false;
+        Assert.False(dialog.Draft().UseBetaReleases);
+    }
+
+    [Fact]
+    public void SavingCarriesTheRingToTheApp()
+    {
+        var dialog = Dialog(Options());
+        BetaReleases(dialog).Checked = true;
+
+        Button(dialog, "save").PerformClick();
+        Assert.True(Assert.Single(_saved).UseBetaReleases);
+    }
+
+    [Fact]
+    public void AnUninstalledBuildCannotOptIntoBetas()
+    {
+        // There is no update path at all outside the installed app, so the ring is not a choice here.
+        Assert.False(BetaReleases(Dialog(Options(isInstalled: false))).Enabled);
+    }
+
+    [Fact]
+    public void ResetToDefaultsLeavesTheRingAlone()
+    {
+        // "Reset to defaults" is about the colours; silently unenrolling from betas would be as
+        // surprising as it unregistering the launcher.
+        var dialog = Dialog(Options(), settings: new Settings { UseBetaReleases = true });
+
+        Button(dialog, "reset").PerformClick();
+        Assert.True(dialog.Draft().UseBetaReleases);
     }
 }
