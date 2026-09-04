@@ -8,6 +8,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [0.7.2] - 2026-09-04
+
+Everything below since 0.7.1, gathered for anyone updating from it. The two `0.7.2-beta` sections
+that follow are the same changes as they reached the beta ring.
+
+### Added
+
+- **Use beta releases**, a checkbox in the Settings dialog. With it on, the updater also offers
+  pre-release builds (`0.7.3-beta.1` and the like); with it off — the default — nothing changes and
+  only stable releases are ever offered. The switch takes effect on the next update check, with no
+  restart, and unticking it moves you back to the latest stable build, even when that means stepping
+  down from a newer beta. Stable releases keep reaching beta users too, so opting in never means
+  falling behind.
+
+- The app has an icon of its own: the exe in Explorer, the installer, the desktop shortcut, the
+  Start menu entry and the Settings and update windows all show a speedometer instead of the generic
+  default. The tray badge is unchanged.
+
+- The creator line in the Settings dialog's About section links to the project page.
+
 ## [0.7.2-beta.2] - 2026-09-04
 
 ### Fixed
@@ -96,7 +116,8 @@ First release on the beta channel, and the release that introduces it.
 [releases page](https://github.com/wus-technik/win_systray-claude-usage/releases) for what shipped in
 them.
 
-[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.2-beta.2...HEAD
+[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.2
 [0.7.2-beta.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.2-beta.2
 [0.7.2-beta.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.2-beta.1
 [0.7.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.1
