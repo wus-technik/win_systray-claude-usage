@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>ClaudeUsageTraySetupStub</RootNamespace>
+    <AssemblyName>ClaudeUsageTraySetup</AssemblyName>
+    <!-- The stub's own version. Independent of the app's: it is the one component that cannot
+         auto-update, so support asks users for `ClaudeUsageTraySetup.exe /version`. CI appends
+         the commit via SourceRevisionId. -->
+    <Version>1.0.0</Version>
+    <Company>W&amp;S Technik GmbH</Company>
+    <Authors>W&amp;S Technik GmbH</Authors>
+    <Product>Claude Usage Tray Setup</Product>
+    <AssemblyTitle>Claude Usage Tray Setup</AssemblyTitle>
+    <Copyright>Copyright (c) 2026 W&amp;S Technik GmbH</Copyright>
+    <ApplicationIcon>..\ClaudeUsageTray\app.ico</ApplicationIcon>
+    <!-- comctl32 v6 is what makes TaskDialogIndirect exist at all. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- NativeAOT for size (~2 MB vs a 60+ MB framework-dependent-or-not exe). Needs the MSVC
+         linker, so `dotnet publish` runs in CI only; `dotnet build` and the tests do not need it. -->
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <OptimizationPreference>Size</OptimizationPreference>
+    <StripSymbols>true</StripSymbols>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Shared source, not a project reference: the stub must not carry WinForms or Velopack, and
+         every asset name derives from these channel strings. The setup-stub workflow's paths filter
+         lists this file so a change here rebuilds the stub. -->
+    <Compile Include="..\ClaudeUsageTray\Core\UpdateRing.cs" Link="Core\UpdateRing.cs" />
+  </ItemGroup>
+</Project>
