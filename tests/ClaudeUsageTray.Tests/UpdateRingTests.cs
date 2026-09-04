@@ -79,6 +79,52 @@ public class UpdateRingTests
         Assert.False(ring.AllowVersionDowngrade);
     }
 
+    // ---- no recorded choice: follow the channel this build was installed from ----
+
+    [Fact]
+    public void NoChoiceOnABetaInstall_StaysOnBetas()
+    {
+        // Someone who ran the beta installer has never touched the checkbox. Reading that as "stable"
+        // makes the installer undo itself: the first check would offer stable as a downgrade.
+        var ring = UpdateRing.For(useBetaReleases: null, installedChannel: UpdateRing.BetaChannel);
+
+        Assert.Equal("win-beta", ring.Channel);
+        Assert.True(ring.IncludePrereleases);
+        Assert.False(ring.AllowVersionDowngrade);
+    }
+
+    [Fact]
+    public void NoChoiceOnAStableInstall_StaysOnStable()
+    {
+        var ring = UpdateRing.For(useBetaReleases: null, installedChannel: UpdateRing.StableChannel);
+
+        Assert.Equal("win", ring.Channel);
+        Assert.False(ring.IncludePrereleases);
+        Assert.False(ring.AllowVersionDowngrade);
+    }
+
+    [Fact]
+    public void NoChoiceOutsideAnInstall_StaysOnStable()
+        => Assert.Equal("win", UpdateRing.For(useBetaReleases: null, installedChannel: null).Channel);
+
+    [Fact]
+    public void AnExplicitOptOutBeatsABetaInstall()
+    {
+        // The difference between "never chose" and "chose stable": only the latter leaves the ring.
+        var ring = UpdateRing.For(useBetaReleases: false, installedChannel: UpdateRing.BetaChannel);
+
+        Assert.Equal("win", ring.Channel);
+        Assert.True(ring.AllowVersionDowngrade);
+    }
+
+    [Theory]
+    [InlineData("win-beta", true)]
+    [InlineData("WIN-BETA", true)]
+    [InlineData("win", false)]
+    [InlineData(null, false)]
+    public void IsBetaChannelIsWhatAnUnsetSettingFollows(string? installedChannel, bool expected)
+        => Assert.Equal(expected, UpdateRing.IsBetaChannel(installedChannel));
+
     [Fact]
     public void TheTwoChannelNamesAreTheVelopackDefaultsForWindows()
     {

@@ -146,10 +146,13 @@ fall back to a plain confirmation. Outside the installed app there is nothing to
 controls are disabled.
 
 **Use beta releases** in the same section picks which builds the updater considers. Off — the default
-— only stable releases are ever offered. On, pre-release builds (`0.7.2-beta.1`, `0.7.2-beta.2`, …)
-are offered as well, and stable releases still arrive, so opting in never means falling behind.
-Changing it applies to the next check, with no restart; unchecking it moves you back to the latest
-stable build, even when that means stepping down from a newer beta.
+for a normal install — only stable releases are ever offered. On, pre-release builds
+(`0.7.2-beta.1`, `0.7.2-beta.2`, …) are offered as well, and stable releases still arrive, so opting
+in never means falling behind. Changing it applies to the next check, with no restart; unchecking it
+moves you back to the latest stable build, even when that means stepping down from a newer beta.
+
+Installing from the beta installer starts the box ticked, since that is plainly what was asked for —
+until you tick or untick it yourself, the app follows the channel it was installed from.
 
 Everything is also readable and editable in `%APPDATA%\ClaudeUsageTray\settings.json`. An invalid
 value there falls back to its default on load — the pair `orange`/`red` resets together, since the
@@ -162,7 +165,7 @@ file gives no way to tell which of the two was meant.
 | `paceColors` | colour by usage against elapsed time instead of raw percent | `true` |
 | `stalenessMinutes` | minutes before data is flagged stale | `15` |
 | `runAtStartup` | applied to the HKCU `Run` key at every installed launch | `true` |
-| `useBetaReleases` | offer pre-release builds too; off means stable releases only | `false` |
+| `useBetaReleases` | offer pre-release builds too; `false` means stable releases only | unset — follows the channel the app was installed from |
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
 
 ## Development

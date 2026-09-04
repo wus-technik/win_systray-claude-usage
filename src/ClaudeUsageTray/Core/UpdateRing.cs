@@ -23,8 +23,15 @@ public sealed record UpdateRing(string Channel, bool IncludePrereleases, bool Al
 
     public const string BetaChannel = "win-beta";
 
+    /// <summary>Whether a channel name is the beta one. Also what an unrecorded setting follows, so
+    /// the adoption rule and the ring rules cannot drift apart.</summary>
+    public static bool IsBetaChannel(string? channel)
+        => string.Equals(channel?.Trim(), BetaChannel, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>The ring for one check.</summary>
-    /// <param name="useBetaReleases">The user's setting.</param>
+    /// <param name="useBetaReleases">The user's setting, or null when they have never made the
+    /// choice — a settings file written before the ring existed, a file with the key removed, or a
+    /// fresh install with no file at all.</param>
     /// <param name="installedChannel">The channel recorded in the installed package's manifest
     /// (<c>VelopackLocator.Current.Channel</c>); null outside an install.</param>
     /// <remarks>Downgrading is enabled only for the switch back to stable, and that asymmetry is the
@@ -35,14 +42,19 @@ public sealed record UpdateRing(string Channel, bool IncludePrereleases, bool Al
     /// the beta channel, the beta ring is never behind the stable one. Enabling it there would let a
     /// lagging or partly published beta index pull an opted-in user backwards instead. It also
     /// self-heals: once the stable package is applied the manifest reads "win" again and this returns
-    /// false, so no steady state ever permits a downgrade.</remarks>
-    public static UpdateRing For(bool useBetaReleases, string? installedChannel)
+    /// false, so no steady state ever permits a downgrade.
+    ///
+    /// With no recorded choice the installed channel decides, which is what stops the beta installer
+    /// from undoing itself: a build installed from the beta Setup.exe has no setting yet, and reading
+    /// that as "stable" would offer stable as a downgrade on its very first check. An explicit false
+    /// is different from an absent one — that one does leave the ring.</remarks>
+    public static UpdateRing For(bool? useBetaReleases, string? installedChannel)
     {
-        var onBeta = string.Equals(installedChannel?.Trim(), BetaChannel,
-            StringComparison.OrdinalIgnoreCase);
+        var onBeta = IsBetaChannel(installedChannel);
+        var useBeta = useBetaReleases ?? onBeta;
         return new UpdateRing(
-            Channel: useBetaReleases ? BetaChannel : StableChannel,
-            IncludePrereleases: useBetaReleases,
-            AllowVersionDowngrade: !useBetaReleases && onBeta);
+            Channel: useBeta ? BetaChannel : StableChannel,
+            IncludePrereleases: useBeta,
+            AllowVersionDowngrade: !useBeta && onBeta);
     }
 }

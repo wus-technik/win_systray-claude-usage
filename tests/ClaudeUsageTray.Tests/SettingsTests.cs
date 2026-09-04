@@ -49,7 +49,9 @@ public class SettingsTests : IDisposable
         Assert.Contains("\"stalenessMinutes\": 15", json);
         Assert.Contains("\"runAtStartup\": true", json);
         Assert.Contains("\"paceColors\": true", json);
-        Assert.Contains("\"useBetaReleases\": false", json);
+        // Null, not false: "never chosen" is a state of its own, and the ring rules read it as
+        // "follow the channel this build was installed from".
+        Assert.Contains("\"useBetaReleases\": null", json);
     }
 
     [Fact]
@@ -62,17 +64,28 @@ public class SettingsTests : IDisposable
         Assert.Equal(15, s.StalenessMinutes);
         Assert.True(s.RunAtStartup);
         Assert.True(s.PaceColors);
-        Assert.False(s.UseBetaReleases);
+        Assert.Null(s.UseBetaReleases);
         Assert.Null(s.ConfigPathOverride);
     }
 
     [Fact]
-    public void Load_ConfigWithoutUseBetaReleases_StaysOnStableReleases()
+    public void Load_ConfigWithoutUseBetaReleases_RecordsNoChoice()
     {
-        // Opting into pre-release builds is a decision only the user makes: a file written before the
-        // beta ring existed, or one where the key was deleted, must never enrol them.
+        // A file written before the beta ring existed, or one with the key deleted, must not be read
+        // as an opt-out: null is what lets UpdateRing follow the installed channel instead, so the
+        // beta installer does not undo itself. See UpdateRingTests.
         var path = PathFor("pre-beta.json");
         File.WriteAllText(path, """{ "displayMode": "fiveHour", "runAtStartup": false }""");
+        Assert.Null(Settings.Load(path).UseBetaReleases);
+    }
+
+    [Fact]
+    public void Load_ExplicitOptOut_IsKeptApartFromNoChoice()
+    {
+        // The distinction the nullable exists for: this user chose stable, and that choice outranks a
+        // beta-channel install.
+        var path = PathFor("opted-out.json");
+        File.WriteAllText(path, """{ "useBetaReleases": false }""");
         Assert.False(Settings.Load(path).UseBetaReleases);
     }
 

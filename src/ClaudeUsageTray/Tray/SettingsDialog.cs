@@ -341,7 +341,9 @@ public sealed class SettingsDialog : Form
         _modeBoth.Checked = source.DisplayMode == DisplayMode.Both;
         _startup.Checked = runAtStartup;
         _paceColors.Checked = source.PaceColors;
-        _betaReleases.Checked = source.UseBetaReleases;
+        // Null is resolved at startup (Program.cs) against the installed channel; falling back to
+        // false here only covers a dialog constructed straight from a file, as the tests do.
+        _betaReleases.Checked = source.UseBetaReleases ?? false;
         _suspendSync = false;
         SetThresholds(source.Thresholds.Orange, source.Thresholds.Red, source.StalenessMinutes);
     }

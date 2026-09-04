@@ -43,6 +43,12 @@ internal static class Program
             catch { /* startup registration is best-effort; a locked-down registry must not kill the tray */ }
         }
 
+        // A file with no recorded choice adopts the channel this build was installed from, so a build
+        // installed from the beta Setup.exe does not undo itself by treating "not chosen" as "stable".
+        // Resolved here rather than left to the ring rules alone, so the Settings checkbox shows the
+        // ring the app is actually on. Not written to disk until something else saves.
+        settings.UseBetaReleases ??= UpdateRing.IsBetaChannel(UpdateCheck.InstalledChannel);
+
         // Before the first check, so the launch check already follows the ring the user picked.
         UpdateCheck.UseRing(settings.UseBetaReleases);
         _ = UpdateCheck.RunPeriodicAsync(); // fire-and-forget; never blocks the tray

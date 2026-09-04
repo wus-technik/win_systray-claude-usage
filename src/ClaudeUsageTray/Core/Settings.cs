@@ -44,9 +44,13 @@ public sealed class Settings
     public bool PaceColors { get; set; } = true;
 
     /// <summary>Follow the beta ring (<see cref="UpdateRing.BetaChannel"/>) instead of stable, so
-    /// pre-release builds are offered. Off by default and never inferred: opting in is the user's
-    /// decision alone, so a missing key means stable.</summary>
-    public bool UseBetaReleases { get; set; }
+    /// pre-release builds are offered.
+    ///
+    /// Deliberately nullable: null means the user has never made the choice, and then the channel the
+    /// build was installed from decides (<see cref="UpdateRing.For"/>) — a normal install stays on
+    /// stable, one from the beta Setup.exe stays on betas instead of being offered stable as a
+    /// downgrade on its first check. An explicit false is a real opt-out and does leave the ring.</summary>
+    public bool? UseBetaReleases { get; set; }
 
     public string? ConfigPathOverride { get; set; }
 

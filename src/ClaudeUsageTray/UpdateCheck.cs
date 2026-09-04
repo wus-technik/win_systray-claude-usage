@@ -15,7 +15,7 @@ public static class UpdateCheck
     private static UpdateInfo? _stagedUpdate;
     private static string? _latestKnownVersion;
     private static string? _latestKnownNotes;
-    private static bool _useBetaReleases;
+    private static bool? _useBetaReleases;
 
     /// <summary>Selects the release ring — at launch from the saved setting, and again whenever the
     /// user changes it, so the next check follows the new ring with no restart.
@@ -23,7 +23,7 @@ public static class UpdateCheck
     /// A change throws away what the previous ring staged: a package downloaded for the other ring
     /// must never be offered, and a version cached from it must not keep claiming an update is
     /// waiting. The next check re-stages from the ring now in force.</summary>
-    public static void UseRing(bool useBetaReleases)
+    public static void UseRing(bool? useBetaReleases)
     {
         lock (Gate)
         {
@@ -162,9 +162,9 @@ public static class UpdateCheck
 
     private static UpdateManager CreateManager()
     {
-        bool useBetaReleases;
+        bool? useBetaReleases;
         lock (Gate) useBetaReleases = _useBetaReleases;
-        var ring = UpdateRing.For(useBetaReleases, InstalledChannel());
+        var ring = UpdateRing.For(useBetaReleases, InstalledChannel);
 
         // The channel is passed explicitly every time, including for stable: the installed package's
         // own channel is Velopack's default, so a user who took a beta package would otherwise stay
@@ -179,11 +179,15 @@ public static class UpdateCheck
     }
 
     /// <summary>The channel recorded in the installed package's manifest — what Velopack treats as
-    /// the default channel. Null outside an install and on any locator failure; the ring rules read
-    /// that as stable, which is the safe reading.</summary>
-    private static string? InstalledChannel()
+    /// the default channel, and what an unrecorded <c>useBetaReleases</c> follows. Null outside an
+    /// install and on any locator failure; the ring rules read that as stable, which is the safe
+    /// reading.</summary>
+    public static string? InstalledChannel
     {
-        try { return VelopackLocator.IsCurrentSet ? VelopackLocator.Current.Channel : null; }
-        catch { return null; }
+        get
+        {
+            try { return VelopackLocator.IsCurrentSet ? VelopackLocator.Current.Channel : null; }
+            catch { return null; }
+        }
     }
 }

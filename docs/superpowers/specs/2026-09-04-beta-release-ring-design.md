@@ -82,6 +82,20 @@ Enabled **only while a return to stable is pending**, because:
 An unknown or absent installed channel (dev runs, `dotnet run`, portable builds) counts as *not*
 beta, so it never enables a downgrade.
 
+### Why the setting is tri-state
+
+`Settings.UseBetaReleases` is `bool?`, and null — no recorded choice — follows the installed channel
+rather than defaulting to stable. Without that, the beta installer undoes itself: someone who runs
+`-win-beta-Setup.exe` has no `useBetaReleases` key in `settings.json`, a plain `false` default would
+put them on the stable ring, and because their manifest says `win-beta` the downgrade rule fires and
+their first check offers stable as a downgrade. Observed in exactly that form on a real install
+before the fix.
+
+An explicit `false` is not the same as an absent one: that is a real opt-out and does leave the ring.
+`Program.cs` resolves null against `UpdateCheck.InstalledChannel` at startup, so the Settings
+checkbox shows the ring the app is actually on; the resolved value reaches the file only when
+something else saves.
+
 ## Failure mode to accept
 
 If no release in the newest 10 carries the requested channel's index, the ring looks *up to date*

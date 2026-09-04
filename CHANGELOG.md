@@ -8,6 +8,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [Unreleased]
+
+### Fixed
+
+- A build installed from the beta installer no longer talks itself back onto stable. Because it had
+  no saved answer to **Use beta releases** yet, its first update check treated that as "stable
+  please" and offered the older stable release — undoing the install. Until you tick or untick the
+  box yourself, the app now follows the channel it was installed from; ticking or unticking it still
+  decides everything from then on.
+
 ## [0.7.2-beta.1] - 2026-09-04
 
 First release on the beta channel, and the release that introduces it.
