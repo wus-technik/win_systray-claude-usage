@@ -93,10 +93,15 @@ jobs:
         run: |
           $channels = @($env:CHANNEL) + @($env:MIRROR_CHANNEL | Where-Object { $_ })
           foreach ($channel in $channels) {
+            # Built as an array and splatted: an `if` that yields a one-element array unrolls it to a
+            # string, which then splats one character per argument.
+            $vpkArgs = @('download', 'github',
+              '--repoUrl', 'https://github.com/${{ github.repository }}',
+              '--channel', $channel, '--token', $env:GH_TOKEN)
             # --pre for win-beta: real betas are GitHub pre-releases, so the newest beta baseline is
             # only visible when pre-releases are searched.
-            $pre = if ($channel -eq 'win-beta') { @('--pre') } else { @() }
-            dnx --yes vpk --version 1.2.0 download github --repoUrl https://github.com/${{ github.repository }} --channel $channel @pre --token $env:GH_TOKEN
+            if ($channel -eq 'win-beta') { $vpkArgs += '--pre' }
+            dnx --yes vpk --version 1.2.0 @vpkArgs
             if ($LASTEXITCODE -ne 0) {
               Write-Host "::warning::No delta baseline for channel '$channel'; packing a full release for it."
             }
@@ -131,10 +136,18 @@ jobs:
         run: |
           $repo = "https://github.com/${{ github.repository }}"
           $name = "Claude Usage Tray $env:VERSION"
-          $pre = if ($env:IS_BETA -eq 'True') { @('--pre') } else { @() }
-          dnx --yes vpk --version 1.2.0 upload github --repoUrl $repo --channel $env:CHANNEL @pre --publish --releaseName $name --tag "v$env:VERSION" --token $env:GH_TOKEN
+          # Built as an array and splatted: an `if` that yields a one-element array unrolls it to a
+          # string, which then splats one character per argument.
+          $vpkArgs = @('upload', 'github', '--repoUrl', $repo, '--channel', $env:CHANNEL,
+            '--publish', '--releaseName', $name, '--tag', "v$env:VERSION",
+            '--token', $env:GH_TOKEN)
+          if ($env:IS_BETA -eq 'True') { $vpkArgs += '--pre' }
+          dnx --yes vpk --version 1.2.0 @vpkArgs
           if ($LASTEXITCODE -ne 0) { throw "vpk upload failed for channel '$env:CHANNEL'" }
           if ($env:MIRROR_CHANNEL) {
-            dnx --yes vpk --version 1.2.0 upload github --repoUrl $repo --channel $env:MIRROR_CHANNEL --merge --publish --releaseName $name --tag "v$env:VERSION" --token $env:GH_TOKEN
+            $mirrorArgs = @('upload', 'github', '--repoUrl', $repo, '--channel', $env:MIRROR_CHANNEL,
+              '--merge', '--publish', '--releaseName', $name, '--tag', "v$env:VERSION",
+              '--token', $env:GH_TOKEN)
+            dnx --yes vpk --version 1.2.0 @mirrorArgs
             if ($LASTEXITCODE -ne 0) { throw "vpk upload failed for mirror channel '$env:MIRROR_CHANNEL'" }
           }
