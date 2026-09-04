@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using ClaudeUsageTray.Core;
 
 namespace ClaudeUsageTray.Tray;
@@ -35,7 +36,9 @@ public sealed class SettingsDialog : Form
     private readonly Panel _preview = new() { Name = "preview", Width = UsageBar.DefaultWidth, Height = UsageBar.DefaultHeight };
     private readonly Label _previewCaption = new() { Name = "previewCaption", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Label _error = new() { Name = "error", AutoSize = true, ForeColor = Color.Firebrick, Visible = false };
-    private readonly Label _creator = new() { Name = "creator", AutoSize = true };
+    // A LinkLabel, so the creator doubles as the way to the project page. Still a Label as far as
+    // the grid — and the tests — are concerned.
+    private readonly LinkLabel _creator = new() { Name = "creator", AutoSize = true };
     private readonly Label _installedVersion = new() { Name = "installedVersion", AutoSize = true };
     private readonly Label _updateStatus = new() { Name = "updateStatus", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Button _updateNow = new() { Name = "updateNow", Text = "Update now", AutoSize = true };
@@ -190,6 +193,8 @@ public sealed class SettingsDialog : Form
     {
         _installedVersion.Text = _updates.InstalledVersion;
         _creator.Text = AppInfo.CreatorForLabel;
+        _creator.Click += (_, _) => OpenUrl(AppInfo.ProjectUrl);
+        new ToolTip().SetToolTip(_creator, AppInfo.ProjectUrl);
         _checkUpdates.Click += async (_, _) => await CheckForUpdatesAsync();
         _updateNow.Click += (_, _) => ApplyUpdate();
         new ToolTip().SetToolTip(_checkUpdates, "Check for updates");
@@ -212,6 +217,12 @@ public sealed class SettingsDialog : Form
         grid.Controls.Add(_checkUpdates, 2, 2);
         grid.Controls.Add(_updateNow, 3, 2);
         return grid;
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch { /* no browser, or a dead link: neither is worth taking the dialog down for */ }
     }
 
     /// <summary>One check, and nothing else — finding an update must not start installing one. Runs on
