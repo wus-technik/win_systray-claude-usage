@@ -12,6 +12,10 @@ public static class AppInfo
     /// <summary>Matches the copyright holder in LICENSE and the &lt;Company&gt; in the csproj.</summary>
     public const string Creator = "W&S Technik GmbH";
 
+    /// <summary>Where the app lives. The creator label links here, and the update feed reads its
+    /// releases from the same repository.</summary>
+    public const string ProjectUrl = "https://github.com/wus-technik/win_systray-claude-usage";
+
     /// <summary>A title for one of the app's windows: "Claude Usage — Settings".</summary>
     public static string Window(string surface) => $"{Name} — {surface}";
 
