@@ -119,8 +119,8 @@ prints the launcher's own version and build commit.
 | 🟢 Green badge | On or under the pace the clock sets for the period |
 | 🟠 Orange badge | Burning ≥ 1.1× the clock — the cap arrives before the reset |
 | 🔴 Red badge | Burning ≥ 1.75× the clock, **or** over 85 % used whatever the pace |
-| Dimmed | Stale data (cache older than 15 min) |
-| Grey `—` | No data yet — run Claude Code once |
+| Dimmed | Stale data (Claude Code data older than 15 min, or Claude Desktop history older than 3 h) |
+| Grey `—` | No data yet — open Claude Code or Claude Desktop once |
 
 The pace ratio is `percent used ÷ percent of the period elapsed` — the same comparison the marker
 line makes visually. When it is what decided the colour, the popup caption and the hover tooltip name
@@ -162,16 +162,31 @@ placeholder `0 %` or `—` for a limit you don't have:
 
 <br>
 
-Two sources, newest wins:
+Three usage sources plus the status page. Claude Code's data wins whenever it is current; the
+Claude Desktop history steps in when it is not.
 
 1. **Live** — read-only `GET` against Anthropic's OAuth usage endpoint every 5 minutes,
    the same source claude.ai uses, authenticated with **Claude Code's existing token**.
    The app never stores, refreshes, or logs that token, and respects `Retry-After` on 429s.
 2. **Offline fallback** — the `cachedUsageUtilization` block Claude Code writes to
    `%USERPROFILE%\.claude.json`, used whenever no valid token is available.
-3. **Platform status** — the public status page at status.claude.com, polled once a minute with
+3. **Claude Desktop history** — `plan-usage-history.json`, which the Claude Desktop app keeps in
+   `%APPDATA%\Claude\` or, on newer versions, inside its package container under
+   `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`. Both places are checked and the
+   newer file wins. It is used only when the two Claude Code sources are absent or stale, and it
+   carries percentages only: no reset times (so no countdowns, no pace colouring, no time marker),
+   no per-model limits, no credit amounts. The desktop app writes it only while you work in it, so
+   gaps of an hour are normal; it counts as stale after `desktopStalenessHours`. If you only use
+   Claude Desktop, this is where your numbers come from. The field meanings are inferred from
+   observation, not documented, so a desktop app update can silently change them.
+4. **Platform status** — the public status page at status.claude.com, polled once a minute with
    no auth and no token involved. The page's own banner decides the warning badge; incident
    details are the page's own words.
+
+When nothing yields data, the popup says which of these is missing — `.claude.json` absent, present
+without a usage block, no credentials file for the live fetch, or a desktop history file with no
+samples — instead of a blanket "run Claude Code". Note that installing Claude Desktop also installs
+Claude Code, so `.claude.json` usually exists even on a machine that never ran the CLI directly.
 
 A rolling diagnostic log lands in `%APPDATA%\ClaudeUsageTray\fetch.log` so a
 "stale, never refreshes" report is debuggable. It records fetch outcomes and the two window
@@ -181,8 +196,8 @@ percentages only — **never** money amounts, currency, or account-specific mode
 
 ## Settings
 
-**Right-click → `Settings…`** covers everything except `configPathOverride`: which icons to show,
-run-at-startup, the two colour thresholds, pace colouring, and the staleness cutoff. Saving applies
+**Right-click → `Settings…`** covers everything except the two path overrides: which icons to show,
+run-at-startup, the two colour thresholds, pace colouring, and the two staleness cutoffs. Saving applies
 at once — the badges and the popup repaint, no restart. A preview bar shows where the thresholds land
 before you commit them, and the two spinners constrain each other so `orange` can never reach `red`.
 
@@ -215,9 +230,11 @@ file gives no way to tell which of the two was meant.
 | `thresholds` | `{ "orange": 50, "red": 85 }` severity boundaries (%) — with `paceColors` on, the red value is the absolute ceiling and both are the fallback | as shown |
 | `paceColors` | colour by usage against elapsed time instead of raw percent | `true` |
 | `stalenessMinutes` | minutes before data is flagged stale | `15` |
+| `desktopStalenessHours` | hours before Claude Desktop history data is flagged stale | `3` |
 | `runAtStartup` | applied to the HKCU `Run` key at every installed launch | `true` |
 | `useBetaReleases` | offer pre-release builds too; `false` means stable releases only | unset — follows the channel the app was installed from |
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
+| `desktopHistoryPathOverride` | explicit path to the desktop app's `plan-usage-history.json`; file-only, and re-read at launch | unset |
 
 ## Development
 

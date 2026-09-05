@@ -8,6 +8,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [Unreleased]
+
+### Added
+
+- **Usage for Claude Desktop users.** The tray now reads the Claude Desktop app's own usage history
+  when Claude Code's data is missing or stale, so a machine that only uses the desktop app shows
+  its 5-hour and 7-day percentages (and credits, when enabled) instead of a permanent `—`. Both
+  places the desktop app is known to keep the file are checked. This source has no reset times,
+  so those rows show percentages without countdowns or pace colouring, and the popup says
+  *Claude Desktop history* so you know which numbers you are looking at.
+- **`desktopStalenessHours`** in Settings (default 3). The desktop app records usage only while
+  you work in it, so its data is judged by an hours-scale cutoff rather than the minutes-scale one
+  used for Claude Code.
+
+### Changed
+
+- When there is no usage data at all, the popup and tooltip now say what is missing — `.claude.json`
+  absent, present without a usage block, no credentials file for the live fetch, or an empty desktop
+  history — instead of always suggesting you run Claude Code. The popup's *Fetch* line also explains
+  when the live fetch is off for lack of credentials.
+
 ## [0.7.2] - 2026-09-04
 
 Everything below since 0.7.1, gathered for anyone updating from it. The two `0.7.2-beta` sections
