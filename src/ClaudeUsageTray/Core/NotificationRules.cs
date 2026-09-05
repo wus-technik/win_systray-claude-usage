@@ -114,13 +114,19 @@ public sealed partial class NotificationRules
         var values = UsageValues.Enumerate(snapshot, settings, now);
         var level = settings.UsageNotifications.Level;
 
-        // Rule 6 — eviction first, so a vanished key cannot leave a latch behind.
+        // Rule 6 — eviction first, so a vanished key cannot leave a latch behind. A notified key that
+        // stops being reported has left the level exactly as surely as one that drops below it — the
+        // toast named it, and the payload no longer backs that claim — so it is also an exit.
         var present = new HashSet<string>(values.Select(v => v.Key), UsageValues.KeyComparer);
-        foreach (var gone in _keys.Keys.Where(k => !present.Contains(k)).ToList()) _keys.Remove(gone);
+        bool exited = false;
+        foreach (var gone in _keys.Keys.Where(k => !present.Contains(k)).ToList())
+        {
+            if (_keys[gone] is { Above: true, Notified: true }) exited = true;
+            _keys.Remove(gone);
+        }
 
         var crossed = new List<UsageValue>();
         var latched = new List<UsageValue>();
-        bool exited = false;
         foreach (var value in values)
         {
             bool above = AtOrAbove(value.Severity, level);

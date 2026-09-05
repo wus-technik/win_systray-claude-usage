@@ -312,6 +312,19 @@ public class NotificationRulesUsageTests
     }
 
     [Fact]
+    public void ANotifiedKeyThatVanishesFromThePayloadRetractsItsToast()
+    {
+        var fable = new ScopedLimit("Fable", null, 10, T0.AddDays(3), true);
+        var rules = new NotificationRules();
+        rules.NoteLiveOutcome(LiveOutcome.Snapshot);
+        rules.OnUsage(Fresh(Snap(10, T0, scoped: fable)), Absolute(), T0);
+        Assert.NotNull(rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(1), scoped: new ScopedLimit("Fable", null, 92, T0.AddDays(3), true))), Absolute(), T0.AddMinutes(1)).Notification);
+        var gone = rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(2))), Absolute(), T0.AddMinutes(2));   // Fable no longer reported
+        Assert.Null(gone.Notification);
+        Assert.True(gone.RemoveUsageToast);
+    }
+
+    [Fact]
     public void KeysCompareCaseInsensitively()
     {
         var rules = ArmedAt(10);
