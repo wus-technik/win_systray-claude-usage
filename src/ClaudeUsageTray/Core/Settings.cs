@@ -180,7 +180,7 @@ public sealed class Settings
             sources[source.Id] = entry is null
                 ? new StatusSourceSettings
                 {
-                    Enabled = source.RaisesBadge,           // Claude on, OpenAI off
+                    Enabled = source.EnabledByDefault,      // Claude on, OpenAI off
                     Components = [.. source.DefaultComponents],
                 }
                 : new StatusSourceSettings

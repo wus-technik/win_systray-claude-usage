@@ -1,5 +1,4 @@
 using System.IO;
-using System.Linq;
 using System.Net;
 using ClaudeUsageTray.Core;
 using Xunit;
@@ -38,7 +37,7 @@ public class PlatformStatusApiTests
     /// second endpoint-override overload existing purely for them.</summary>
     private static StatusSource TestSource(string id = "claude", bool raisesBadge = true)
         => new(id, id, $"https://status.{id}.test/api/v2/summary.json", $"https://status.{id}.test",
-            $"status.{id}.test", raisesBadge, []);
+            $"status.{id}.test", raisesBadge, raisesBadge, []);
 
     private const string OpenAiShape = """
         {
@@ -126,16 +125,6 @@ public class PlatformStatusApiTests
         Assert.StartsWith("ClaudeUsageTray/", h.LastRequest.Headers.UserAgent.ToString());
         Assert.Null(h.LastRequest.Headers.Authorization);
     }
-
-    [Fact]
-    public void TestOnlyEndpointOverride_UsesProvidedUrl()
-    {
-        var source = TestSource() with { SummaryUrl = "http://localhost:8080/summary.json" };
-        var (result, handler) = Fetch(_ => Json(HttpStatusCode.OK, AllOperational), source);
-        Assert.NotNull(result);
-        Assert.Equal("http://localhost:8080/summary.json", handler.LastRequest!.RequestUri!.ToString());
-    }
-
 
     [Fact]
     public void Degraded_ParsesIncidents_WithAndWithoutComponents()

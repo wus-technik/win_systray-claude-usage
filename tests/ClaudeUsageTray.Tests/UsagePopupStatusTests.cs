@@ -29,6 +29,17 @@ public class UsagePopupStatusTests : IDisposable
             .ToList();
     }
 
+    private List<LinkLabel> Links(params SourceView[] sources)
+    {
+        var popup = new UsagePopup(new DisplayChoice(null, Stale: false), new Settings(), Now, sources);
+        _open.Add(popup);
+        popup.CreateControl();
+        return popup.Controls.Cast<Control>()
+            .SelectMany(c => c.Controls.Cast<Control>())
+            .OfType<LinkLabel>()
+            .ToList();
+    }
+
     private static SourceView View(StatusSource source, string indicator, string description,
         PlatformComponent[]? components = null, IReadOnlyList<string>? filter = null)
         => new(source, new PlatformStatus(source.Id, Now, indicator, description, [], components ?? []),
@@ -81,5 +92,14 @@ public class UsagePopupStatusTests : IDisposable
     {
         var labels = Labels(new SourceView(StatusSourceRegistry.Claude, null, []));
         Assert.Equal("Claude status: unavailable", labels[0].Text);
+    }
+
+    [Fact]
+    public void IncidentWithShortlink_RendersADetailsLink()
+    {
+        var status = new PlatformStatus(StatusSourceRegistry.Claude.Id, Now, "major", "Service Disruption",
+            [new PlatformIncident("Something broke", "investigating", "major", "https://stspg.io/x", Now, [])], []);
+        var links = Links(new SourceView(StatusSourceRegistry.Claude, status, []));
+        Assert.Single(links, l => l.Text == "Details");
     }
 }

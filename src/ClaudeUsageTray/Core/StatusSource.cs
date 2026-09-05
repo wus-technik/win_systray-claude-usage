@@ -4,6 +4,7 @@ namespace ClaudeUsageTray.Core;
 /// field here rather than a branch at the call site — <see cref="RaisesBadge"/> in particular, so
 /// "an OpenAI outage never marks the tray icon" is a value a test can assert.</summary>
 /// <param name="Id">The settings.json token. Lower-case ASCII.</param>
+/// <param name="EnabledByDefault">Watched when settings carry no entry for this source.</param>
 /// <param name="DefaultComponents">Watch filter used when settings carry no list for this source.
 /// Empty means watch every component.</param>
 public sealed record StatusSource(
@@ -13,6 +14,7 @@ public sealed record StatusSource(
     string PageUrl,
     string PageLabel,
     bool RaisesBadge,
+    bool EnabledByDefault,
     IReadOnlyList<string> DefaultComponents);
 
 /// <summary>A source paired with its current state, as the popup and the tooltip consume it, so
@@ -32,6 +34,7 @@ public static class StatusSourceRegistry
         PageUrl: "https://status.claude.com",
         PageLabel: "status.claude.com",
         RaisesBadge: true,
+        EnabledByDefault: true,
         // All six of Claude's components matter to this app; the field exists for symmetry.
         DefaultComponents: []);
 
@@ -42,13 +45,15 @@ public static class StatusSourceRegistry
         PageUrl: "https://status.openai.com",
         PageLabel: "status.openai.com",
         RaisesBadge: false,
+        EnabledByDefault: false,
         // 25 components span products a Codex user does not use (Sora, Ads API, FedRAMP, …).
         // "codex" alone matches Codex API, Codex Web, and Codex in ChatGPT Desktop.
         DefaultComponents: ["codex", "responses", "login", "vs code extension"]);
 
     public static IReadOnlyList<StatusSource> All { get; } = [Claude, OpenAi];
 
-    /// <summary>The source with this id, or null — settings normalization depends on the null.</summary>
+    /// <summary>The registry's lookup API for callers holding a settings id (case-insensitive; null
+    /// for unknown ids).</summary>
     public static StatusSource? ById(string? id)
         => id is null ? null : All.FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase));
 }

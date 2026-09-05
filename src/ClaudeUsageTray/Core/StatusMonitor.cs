@@ -44,7 +44,10 @@ public sealed class StatusMonitor
     /// <summary>Files a completed fetch, or a null for a failed one. Returns false when the result
     /// was discarded: the source was disabled while its fetch was outstanding, or the payload's own
     /// SourceId disagrees with the id it arrived under. Both should be unreachable — which is
-    /// exactly why neither may silently file an OpenAI outage under Claude.</summary>
+    /// exactly why neither may silently file an OpenAI outage under Claude. If a source is disabled
+    /// and re-enabled while its fetch is outstanding, the completion is filed under the fresh entry —
+    /// nothing is resurrected — and the 30 s floor charged by the new entry's first TakeDue prevents a
+    /// double fetch.</summary>
     public bool Accept(string sourceId, PlatformStatus? result, DateTimeOffset now)
     {
         var entry = Find(sourceId);

@@ -241,12 +241,11 @@ public sealed class TrayApp : ApplicationContext
         foreach (var source in _statusMonitor.TakeDue(now))
         {
             _log.Write(now, $"status[{source.Id}]: attempt: GET summary.json");
-            var captured = source;
             _ = Task.Run(async () =>
             {
-                var result = await PlatformStatusApi.FetchAsync(Http, captured, DateTimeOffset.UtcNow,
+                var result = await PlatformStatusApi.FetchAsync(Http, source, DateTimeOffset.UtcNow,
                     CancellationToken.None).ConfigureAwait(false);
-                try { _sync.BeginInvoke((Action)(() => OnStatusFetchCompleted(captured.Id, result))); }
+                try { _sync.BeginInvoke((Action)(() => OnStatusFetchCompleted(source.Id, result))); }
                 catch (InvalidOperationException) { /* app shutting down */ }
             });
         }

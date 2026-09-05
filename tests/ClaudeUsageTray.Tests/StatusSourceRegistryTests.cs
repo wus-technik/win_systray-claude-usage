@@ -19,6 +19,13 @@ public class StatusSourceRegistryTests
     }
 
     [Fact]
+    public void OnlyClaude_IsEnabledByDefault()
+    {
+        Assert.True(StatusSourceRegistry.Claude.EnabledByDefault);
+        Assert.False(StatusSourceRegistry.OpenAi.EnabledByDefault);
+    }
+
+    [Fact]
     public void Endpoints_AreTheVerifiedSummaryUrls()
     {
         Assert.Equal("https://status.claude.com/api/v2/summary.json", StatusSourceRegistry.Claude.SummaryUrl);

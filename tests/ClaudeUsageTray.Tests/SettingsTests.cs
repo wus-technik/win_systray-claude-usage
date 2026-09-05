@@ -1,5 +1,4 @@
 using ClaudeUsageTray.Core;
-using System.Linq;
 using Xunit;
 
 namespace ClaudeUsageTray.Tests;

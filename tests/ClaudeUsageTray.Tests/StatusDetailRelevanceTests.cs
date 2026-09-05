@@ -48,6 +48,13 @@ public class StatusDetailRelevanceTests
         => Assert.False(StatusDetail.IsRelevant(
             Status("minor", [new("Sora", "major_outage")], [Incident("Sora")]), Codex));
 
+    /// <summary>The payload identifies what is affected only via the incident — no component list at
+    /// all — so the "unclassifiable" rule must not fire just because Components is empty.</summary>
+    [Fact]
+    public void IncidentNamingOnlyUnwatchedComponents_WithNoComponentList_IsNotRelevant()
+        => Assert.False(StatusDetail.IsRelevant(
+            Status("minor", components: [], incidents: [Incident("Sora")]), Codex));
+
     [Fact]
     public void IncidentNamingAWatchedComponent_IsRelevant()
         => Assert.True(StatusDetail.IsRelevant(Status("minor", incidents: [Incident("Codex API")]), Codex));
