@@ -30,6 +30,53 @@ public static partial class StatusDetail
         return header;
     }
 
+    /// <summary>The tooltip tail naming every relevant disruption, badge-raising source first.
+    /// <paramref name="available"/> is how many characters the caller has left before NotifyIcon's
+    /// 127-character limit: suffixes for non-badge sources are dropped **whole** when they do not
+    /// fit, because a half-cut "· OpenAI: Minor serv…" is worse than none, and the badge-raising
+    /// source's suffix is the text that explains the marker on the icon — it is never dropped.</summary>
+    public static string TooltipSuffix(IReadOnlyList<SourceView> sources, DateTimeOffset now,
+        int stalenessMinutes, int available)
+    {
+        var ordered = sources
+            .Where(v => v.Status is { Degraded: true } s && IsRelevant(s, v.Filter))
+            .OrderByDescending(v => v.Source.RaisesBadge)
+            .ToList();
+
+        var text = "";
+        foreach (var view in ordered)
+        {
+            var status = view.Status!;
+            var words = string.IsNullOrWhiteSpace(status.Description) ? status.Indicator : status.Description;
+            var stale = now - status.FetchedAt > TimeSpan.FromMinutes(stalenessMinutes);
+            var piece = $" · {view.Source.DisplayName}: {words}{(stale ? " (stale)" : "")}";
+            if (!view.Source.RaisesBadge && text.Length + piece.Length > available) continue;
+            text += piece;
+        }
+        return text;
+    }
+
+    /// <summary>NotifyIcon.Text hard limit.</summary>
+    public const int TooltipLimit = 127;
+
+    /// <summary>The complete tray tooltip. Badge-raising suffixes are reserved first — when the usage
+    /// text plus those suffixes would not fit, the usage text is shortened, never the suffix — and the
+    /// non-badge suffixes get whatever budget is left, dropped whole when it is not enough. Doing this
+    /// here rather than in TrayApp is what makes the "badge suffix survives" rule a tested fact
+    /// instead of a hope about trim order.</summary>
+    public static string ComposeTooltip(string usageText, IReadOnlyList<SourceView> sources,
+        DateTimeOffset now, int stalenessMinutes, int limit = TooltipLimit)
+    {
+        var badge = TooltipSuffix(sources.Where(v => v.Source.RaisesBadge).ToList(), now, stalenessMinutes, limit);
+        var room = limit - badge.Length;
+        var head = usageText.Length <= room ? usageText
+            : room <= 1 ? ""
+            : usageText[..(room - 1)] + "…";
+        var text = head + badge;
+        return text + TooltipSuffix(sources.Where(v => !v.Source.RaisesBadge).ToList(), now, stalenessMinutes,
+            available: limit - text.Length);
+    }
+
     private static List<StatusRow> Selected(PlatformStatus status, IReadOnlyList<string> filter,
         DateTimeOffset now)
     {
