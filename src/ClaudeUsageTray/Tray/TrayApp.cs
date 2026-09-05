@@ -34,6 +34,13 @@ public sealed class TrayApp : ApplicationContext
     private readonly System.Windows.Forms.Timer _statusPoll = new() { Interval = 60_000 };
     private readonly StatusMonitor _statusMonitor;
 
+    // Desktop notifications. Every decision — baseline, arming, hysteresis, fingerprint, per-source
+    // status state — lives in the clock-free NotificationRules; the presenter only shows what it is
+    // handed. One call site, in Render(): every path that changes data ends there, and the rules
+    // make re-evaluating unchanged data a no-op, so a single site cannot be forgotten.
+    private readonly NotificationRules _notifications = new();
+    private readonly ToastPresenter _toasts;
+
     private readonly ContextMenuStrip _menu;
     private ToolStripMenuItem _updatedItem = null!, _restartToUpdateItem = null!;
 
@@ -61,6 +68,8 @@ public sealed class TrayApp : ApplicationContext
         _sync.CreateControl();
         _menu = BuildMenu();
         _statusMonitor = new StatusMonitor(settings.EnabledSources());
+        _toasts = new ToastPresenter(AppInfo.Aumid, _sync, ShowPopup,
+            message => _log.Write(DateTimeOffset.UtcNow, message));
 
         var dir = Path.GetDirectoryName(_configPath);
         if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
@@ -175,6 +184,10 @@ public sealed class TrayApp : ApplicationContext
                 ? "no credentials file · live fetch off"
                 : "no valid credentials · live fetch off";
             _log.Write(now, "skip: no valid access token (missing/expired/near-expiry)");
+            // No usable token is a terminal outcome for arming: on a desktop-only machine this is
+            // the permanent state, and waiting for a fetch that will never happen would leave usage
+            // notifications off forever.
+            if (_notifications.NoteLiveOutcome(LiveOutcome.NoToken) is { } armed) _log.Write(now, armed);
             return;
         }
         if (token == _rejectedToken) { _log.Write(now, "skip: token previously rejected (401/403); waiting for refresh"); return; }
@@ -209,6 +222,7 @@ public sealed class TrayApp : ApplicationContext
             string seven = result.Snapshot.SevenDay?.Percent.ToString() ?? "-";
             _lastFetchStatus = $"live · 5h={five}% 7d={seven}%";
             _log.Write(now, $"200 ok: 5h={five}% 7d={seven}% ({(adopted ? "adopted" : "not newer than current, kept")})");
+            Arm(LiveOutcome.Snapshot, now);
         }
         else if (result.Unauthorized)
         {
@@ -216,6 +230,7 @@ public sealed class TrayApp : ApplicationContext
             _rejectedToken = token;
             _lastFetchStatus = "token rejected (401/403)";
             _log.Write(now, "401/403 unauthorized: token rejected; waiting for Claude Code to refresh it");
+            Arm(LiveOutcome.Unauthorized, now);
         }
         else if (result.RateLimited)
         {
@@ -223,14 +238,21 @@ public sealed class TrayApp : ApplicationContext
             string ra = result.RetryAfter is { } r ? $"{(int)r.TotalSeconds}s" : "none";
             _lastFetchStatus = "rate-limited (429)";
             _log.Write(now, $"429 rate-limited: retry-after={ra}; backing off max(Retry-After, 60s), bounded by 20/h cap");
+            Arm(LiveOutcome.RateLimited, now);
         }
         else
         {
             _fetchScheduler.RecordFailure(now);
             _lastFetchStatus = "network/other error";
             _log.Write(now, "network/other error: no response; escalating 5/10/20 min backoff");
+            Arm(LiveOutcome.Failed, now);
         }
         Render();
+    }
+
+    private void Arm(LiveOutcome outcome, DateTimeOffset now)
+    {
+        if (_notifications.NoteLiveOutcome(outcome) is { } line) _log.Write(now, line);
     }
 
     // ---- platform status polling ----
@@ -286,6 +308,7 @@ public sealed class TrayApp : ApplicationContext
         var now = DateTimeOffset.UtcNow;
         var choice = SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings);
         LogSourceChange(choice, now);
+        Notify(choice, now);
         bool degraded = _statusMonitor.BadgeDegraded();
 
         if (_iconFive is not null)
@@ -302,6 +325,25 @@ public sealed class TrayApp : ApplicationContext
                 : $"Updated {RelativeTime.Ago(choice.Snapshot.FetchedAt, now)}";
 
         _restartToUpdateItem.Enabled = UpdateCheck.IsUpdateReady;
+    }
+
+    /// <summary>The single notification call site. Runs on every Render — startup, the 30 s tick, the
+    /// watcher debounce, both fetch completions, a settings save, a manual refresh. The 30 s tick is
+    /// required, not merely tolerated: pace severity moves with the clock, so a value crossing into
+    /// red because the window elapsed is a real crossing, and the rules' hysteresis is what stops the
+    /// same clock from flapping it.</summary>
+    private void Notify(DisplayChoice choice, DateTimeOffset now)
+    {
+        var usage = _notifications.OnUsage(choice, _settings, now);
+        foreach (var line in usage.Log) _log.Write(now, line);
+        if (usage.RemoveUsageToast) _toasts.Remove(NotificationRules.UsageTag);
+        if (usage.Notification is { } toast) _toasts.Show(toast);
+
+        foreach (var outcome in _notifications.OnStatus(_statusMonitor.Sources(), _settings))
+        {
+            foreach (var line in outcome.Log) _log.Write(now, line);
+            if (outcome.Notification is { } status) _toasts.Show(status);
+        }
     }
 
     private void Apply(NotifyIcon icon, char digit, DisplayChoice choice, WindowUsage? usage, string label,
@@ -543,6 +585,7 @@ public sealed class TrayApp : ApplicationContext
         _settings.RunAtStartup = edited.RunAtStartup;
         _settings.UseBetaReleases = edited.UseBetaReleases;
         _settings.StatusSources = edited.StatusSources;
+        _settings.UsageNotifications = edited.UsageNotifications;
 
         // Takes effect on the next check rather than at the next launch. A no-op when unchanged, so
         // saving unrelated edits never discards a staged update.
@@ -604,6 +647,7 @@ public sealed class TrayApp : ApplicationContext
             _poll.Dispose();
             _statusPoll.Dispose();
             _menu.Dispose();
+            _toasts.Dispose();
             _sync.Dispose();
         }
         base.Dispose(disposing);
