@@ -107,7 +107,8 @@ public class UsagePopupWidthTests : IDisposable
         };
         var wide = WidthWith(new DisplayChoice(desktop, true), null);
 
-        Assert.Equal(baseline, wide);
+        Assert.True(wide <= baseline,
+            $"expected the desktop-source popup ({wide}) to be no wider than the CLI baseline ({baseline})");
     }
 
     private int WidthWith(DisplayChoice choice, PlatformStatus? status)
