@@ -49,8 +49,13 @@ API result:
 2. **Offline cache** — `UsageCacheReader` parses `cachedUsageUtilization` from `.claude.json`
    (`ConfigPath.Resolve`, overridable via the `configPathOverride` setting). Watched with a
    `FileSystemWatcher` + 500 ms debounce, plus a 30 s tick as the recovery path for missed events.
-3. **Platform status** — `PlatformStatusApi` polls status.claude.com every 60 s, no auth. Kept fully
-   independent of the usage path: a status failure must never null, clobber, or delay usage data.
+3. **Platform status** — one unauthenticated GET per enabled source every 60 s, gated per source by
+   `StatusMonitor` (which owns a `StatusScheduler`, the last-known-good result, and the in-flight
+   flag for each). `StatusSourceRegistry` holds the two curated sources; `RaisesBadge` is a field of
+   the source, which is why only Claude can mark the tray icon. All display decisions — relevance
+   under the watch filter, row selection, headers, tooltip suffixes — are pure functions in
+   `StatusDetail`. Kept fully independent of the usage path, and of each other: one source's failure
+   must never null, clobber, or delay the other's data or the usage data.
 
 Both network paths are gated by a scheduler (`FetchScheduler` for usage, `StatusScheduler` for
 status) that owns the floors, backoff, and budget. `TrayApp` enforces single-flight with a bool on

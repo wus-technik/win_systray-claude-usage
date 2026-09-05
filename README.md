@@ -45,7 +45,7 @@ and how much paid credit you've burned this month.
 | 📈 **Pace marker** | A line on each bar marking where the *clock* is in the period — fill past it means you're on track to hit the cap early |
 | 🚦 **Pace colours** | Colour follows usage *against the clock*, not raw percent: 60 % with 5½ of 7 days gone stays green, 40 % in the first hour of a 5-hour window goes red |
 | 🔄 **Live + offline** | Polls Anthropic's usage API every 5 min; falls back to Claude Code's local cache |
-| 🚨 **Platform status** | Claude's own service banner — while status.claude.com says anything but "All Systems Operational", a white warning badge sits on every tray icon and the popup lists the active incidents |
+| 🚨 **Platform status** | Claude's own service banner — while status.claude.com says anything but "All Systems Operational", a white warning badge sits on every tray icon and the popup lists the active incidents. OpenAI status is an optional second banner, off by default, popup/tooltip-only |
 | 🚀 **Zero-friction** | Per-user install, no admin, auto-updates, starts at login |
 
 ## Install
@@ -184,7 +184,9 @@ Claude Desktop history steps in when it is not.
    colouring can come and go; `fetch.log` records each switch.
 4. **Platform status** — the public status page at status.claude.com, polled once a minute with
    no auth and no token involved. The page's own banner decides the warning badge; incident
-   details are the page's own words.
+   details are the page's own words. status.openai.com is an optional second source, off by
+   default — it shows up in the popup and the tooltip but never touches the badge, since an
+   OpenAI outage says nothing about your Claude usage headroom.
 
 When nothing yields data, the popup says which of these is missing — `.claude.json` absent, present
 without a usage block, no credentials file for the live fetch, or a desktop history file with no
@@ -200,7 +202,8 @@ percentages only — **never** money amounts, currency, or account-specific mode
 ## Settings
 
 **Right-click → `Settings…`** covers everything except the two path overrides: which icons to show,
-run-at-startup, the two colour thresholds, pace colouring, and the two staleness cutoffs. Saving applies
+run-at-startup, the two colour thresholds, pace colouring, the two staleness cutoffs, and the
+**Watch OpenAI status** checkbox with its comma-separated component field. Saving applies
 at once — the badges and the popup repaint, no restart. A preview bar shows where the thresholds land
 before you commit them, and the two spinners constrain each other so `orange` can never reach `red`.
 
@@ -238,6 +241,34 @@ file gives no way to tell which of the two was meant.
 | `useBetaReleases` | offer pre-release builds too; `false` means stable releases only | unset — follows the channel the app was installed from |
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
 | `desktopHistoryPathOverride` | explicit path to the desktop app's `plan-usage-history.json`; file-only, and re-read at launch | unset |
+| `statusSources` | which status pages to watch, and which of their components matter | `claude` on watching everything, `openai` off with the default filter |
+
+### `statusSources`
+
+Which public status pages the tray watches, and which of their components matter.
+
+```json
+"statusSources": {
+  "claude": { "enabled": true,  "components": [] },
+  "openai": { "enabled": false, "components": ["codex", "responses", "login", "vs code extension"] }
+}
+```
+
+- `enabled` — poll this page. Claude is on by default, OpenAI off; the OpenAI toggle and its
+  component list are in **Settings → Watch OpenAI status**.
+- `components` — case-insensitive substring match against the page's component names; `"codex"`
+  matches `Codex API`, `Codex Web`, and `Codex in ChatGPT Desktop`. An empty list watches every
+  component.
+
+A disruption affecting none of your watched components still shows the page's banner, greyed and
+marked `· outside your watched components`, and adds nothing to the tooltip. A disruption the page
+cannot attribute to any component is always shown in full — a filter narrows noise, it never hides
+an outage the page could not classify.
+
+**Only Claude's status can mark the tray icon.** An OpenAI outage appears in the popup and the
+tooltip and leaves the badge alone, because it says nothing about your Claude usage headroom. The
+`claude` entry accepts a `components` filter too — an advanced, JSON-only setting that narrows the
+popup rows and the tooltip but never the badge.
 
 ## Privacy
 
@@ -274,6 +305,7 @@ by the tag-triggered GitHub Actions workflow — push a `v*` tag whose version m
 | [`specs/2026-07-24-icon-readability-design.md`](docs/superpowers/specs/2026-07-24-icon-readability-design.md) | Badge icon legibility at tray size |
 | [`specs/2026-07-27-fable-and-credits-design.md`](docs/superpowers/specs/2026-07-27-fable-and-credits-design.md) | Scoped weekly limits and credit usage |
 | [`specs/2026-08-26-platform-status-design.md`](docs/superpowers/specs/2026-08-26-platform-status-design.md) | Platform status polling and the taskbar outage indicator |
+| [`specs/2026-08-26-openai-status-source-design.md`](docs/superpowers/specs/2026-08-26-openai-status-source-design.md) | status.openai.com as an optional second status source and the component watch filter |
 | [`specs/2026-09-04-beta-release-ring-design.md`](docs/superpowers/specs/2026-09-04-beta-release-ring-design.md) | The stable/beta release rings and the return-to-stable downgrade |
 | [`specs/2026-09-04-setup-stub-design.md`](docs/superpowers/specs/2026-09-04-setup-stub-design.md) | The version-independent setup launcher and ring switching |
 
