@@ -7,8 +7,8 @@ namespace ClaudeUsageTray.Tray;
 /// countdowns, plus a last-updated line.</summary>
 public sealed class UsagePopup : Form
 {
-    public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now,
-        PlatformStatus? platformStatus = null, string? lastFetchStatus = null)
+    public UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now,
+        PlatformStatus? platformStatus = null, string? lastFetchStatus = null, string? noDataText = null)
     {
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
         Text = AppInfo.Name;
@@ -29,17 +29,18 @@ public sealed class UsagePopup : Form
 
         AddPlatformStatus(layout, platformStatus, settings, now);
 
-        if (snapshot is null)
+        if (choice.Snapshot is not { } snapshot)
         {
-            layout.Controls.Add(new Label
-            {
-                Text = "No Claude usage data yet — run Claude Code.",
-                AutoSize = true,
-            });
+            // Sentences here name what is missing and can run long; wrap at the bar width like the
+            // status banner does rather than stretching the form.
+            layout.Controls.Add(WrappingLabel(noDataText ?? NoDataReason.Default,
+                SystemColors.ControlText, new Padding(0)));
         }
         else
         {
-            bool stale = now - snapshot.FetchedAt > TimeSpan.FromMinutes(settings.StalenessMinutes);
+            // Staleness is decided by SourceSelection with each source's own allowance; recomputing
+            // it here against StalenessMinutes would flag a desktop-only user most of the time.
+            bool stale = choice.Stale;
             AddWindowRow(layout, "5-hour window", snapshot.FiveHour, TimeSpan.FromHours(5), settings, now);
             AddWindowRow(layout, "7-day window", snapshot.SevenDay, TimeSpan.FromDays(7), settings, now);
 
@@ -58,7 +59,11 @@ public sealed class UsagePopup : Form
 
             if (snapshot.Credits is { } credits) AddCreditRow(layout, credits, settings);
 
-            var updated = $"Last updated {RelativeTime.Ago(snapshot.FetchedAt, now)}" + (stale ? " · stale" : "");
+            var ago = RelativeTime.Ago(snapshot.FetchedAt, now);
+            var updated = snapshot.Source == UsageSource.DesktopHistory
+                ? $"Claude Desktop history · updated {ago}"
+                : $"Last updated {ago}";
+            if (stale) updated += " · stale";
             layout.Controls.Add(new Label
             {
                 Text = updated,

@@ -20,7 +20,7 @@ public class UsagePopupWidthTests : IDisposable
 
     private int WidthWith(PlatformStatus? status)
     {
-        var popup = new UsagePopup(Snapshot, new Settings(), Now, status);
+        var popup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now, status);
         _open.Add(popup);
         popup.PerformLayout();
         return popup.PreferredSize.Width;
@@ -77,13 +77,13 @@ public class UsagePopupWidthTests : IDisposable
     [Fact]
     public void LongIncidentTextGrowsThePopupDownwards()
     {
-        var baselinePopup = new UsagePopup(Snapshot, new Settings(), Now,
+        var baselinePopup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now,
             Degraded("Elevated errors", Incident("Short")));
         _open.Add(baselinePopup);
         baselinePopup.PerformLayout();
         var baseline = baselinePopup.PreferredSize.Height;
 
-        var widePopup = new UsagePopup(Snapshot, new Settings(), Now, Degraded("Elevated errors", Incident(
+        var widePopup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now, Degraded("Elevated errors", Incident(
             "Elevated error rates and substantially increased latency affecting the Messages API, "
             + "streaming responses, and tool use across all first-party surfaces")));
         _open.Add(widePopup);
