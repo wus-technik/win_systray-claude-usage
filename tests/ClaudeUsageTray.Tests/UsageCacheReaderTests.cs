@@ -392,4 +392,34 @@ public class UsageCacheReaderTests : IDisposable
     [Fact]
     public void Status_MalformedFileWithoutTheKey_IsNoUsageKey()
         => Assert.Equal(ConfigStatus.NoUsageKey, UsageCacheReader.Status(WriteFixture("{ not json !!")));
+
+    // ---- chunked scan (Status must not ReadToEnd a multi-MB file) ----
+
+    [Fact]
+    public void Status_KeyBeyondFirstChunk_IsUnreadable()
+    {
+        // ~200 KB of filler before the key, well past the first 64 KiB chunk.
+        var filler = new string('x', 150_000);
+        var path = WriteFixture("{\"padding\":\"" + filler + "\",\"cachedUsageUtilization\":{}}");
+        Assert.Equal(ConfigStatus.Unreadable, UsageCacheReader.Status(path));
+    }
+
+    [Fact]
+    public void Status_KeySpanningChunkBoundary_IsUnreadable()
+    {
+        // Chunk size is 64 KiB (65536 chars). Place the filler so the needle starts 10 chars
+        // before the boundary, i.e. straddles it: chars [65526, 65550) of the file are the needle.
+        const int chunkSize = 64 * 1024;
+        var filler = new string('x', chunkSize - 10);
+        var path = WriteFixture("{" + filler + "\"cachedUsageUtilization\":{}}");
+        Assert.Equal(ConfigStatus.Unreadable, UsageCacheReader.Status(path));
+    }
+
+    [Fact]
+    public void Status_LargeFileWithoutKey_IsNoUsageKey()
+    {
+        var filler = new string('x', 200_000);
+        var path = WriteFixture("{\"padding\":\"" + filler + "\",\"otherKey\":true}");
+        Assert.Equal(ConfigStatus.NoUsageKey, UsageCacheReader.Status(path));
+    }
 }

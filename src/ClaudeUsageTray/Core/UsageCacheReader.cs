@@ -47,8 +47,13 @@ public static class UsageCacheReader
         }
     }
 
+    private const string CachedUsageKeyNeedle = "\"cachedUsageUtilization\"";
+    private const int StatusChunkSize = 64 * 1024;
+
     /// <summary>Why <see cref="TryRead"/> may have returned null, for the no-data message. A guarded
-    /// string search rather than a parse: the file is Claude Code's and can be mid-rewrite.</summary>
+    /// string search rather than a parse: the file is Claude Code's and can be mid-rewrite.
+    /// Scanned in 64 KiB chunks rather than read into one string — .claude.json can be many MiB and
+    /// this runs on the UI thread on every 500 ms watcher debounce and 30 s recovery tick.</summary>
     public static ConfigStatus Status(string path)
     {
         try
@@ -58,9 +63,21 @@ public static class UsageCacheReader
             if (info.Length > 32 * 1024 * 1024) return ConfigStatus.Unreadable;
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             using var reader = new StreamReader(stream);
-            return reader.ReadToEnd().Contains("\"cachedUsageUtilization\"", StringComparison.Ordinal)
-                ? ConfigStatus.Unreadable
-                : ConfigStatus.NoUsageKey;
+
+            var buffer = new char[StatusChunkSize];
+            // Carries the tail of the previous chunk (needle length - 1 chars) in front of the next
+            // one, so a match straddling a chunk boundary is still found.
+            var carry = string.Empty;
+            int read;
+            while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                var window = carry + new string(buffer, 0, read);
+                if (window.Contains(CachedUsageKeyNeedle, StringComparison.Ordinal))
+                    return ConfigStatus.Unreadable;
+                var keep = CachedUsageKeyNeedle.Length - 1;
+                carry = window.Length > keep ? window[^keep..] : window;
+            }
+            return ConfigStatus.NoUsageKey;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException
             or ArgumentException or NotSupportedException)
