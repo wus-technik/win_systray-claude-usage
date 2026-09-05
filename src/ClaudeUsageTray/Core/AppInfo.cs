@@ -16,6 +16,15 @@ public static class AppInfo
     /// releases from the same repository.</summary>
     public const string ProjectUrl = "https://github.com/wus-technik/win_systray-claude-usage";
 
+    /// <summary>The Velopack pack id — `vpk pack --packId`. Must equal the id in build-release.ps1 and
+    /// release.yml; AppInfoTests reads both files to make sure. Also the install directory name under
+    /// %LOCALAPPDATA% and the SingleInstance mutex suffix.</summary>
+    public const string PackId = "WusTechnik.ClaudeUsageTray";
+
+    /// <summary>The Application User Model ID Velopack stamps on the Start Menu shortcut. Toasts for
+    /// an unpackaged app only show under a shortcut's AUMID, and this is the one we already have.</summary>
+    public const string Aumid = "velopack." + PackId;
+
     /// <summary>A title for one of the app's windows: "Claude Usage — Settings".</summary>
     public static string Window(string surface) => $"{Name} — {surface}";
 
