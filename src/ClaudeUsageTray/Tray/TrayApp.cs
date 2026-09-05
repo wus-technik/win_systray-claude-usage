@@ -27,14 +27,12 @@ public sealed class TrayApp : ApplicationContext
     private string? _rejectedToken;
     private string _lastFetchStatus = "no fetch yet";
 
-    // Platform status polling: 60 s steady state (StatusPage's recommended cadence); all
-    // budget/backoff state lives in the unit-tested StatusScheduler. Single-flight via
-    // _statusInFlight (UI thread only). Fully independent of the usage path: a status failure
-    // can never null, clobber, or delay usage data.
+    // Platform status polling: 60 s steady state (StatusPage's recommended cadence). All per-source
+    // budget, backoff, single-flight and last-known-good state lives in the unit-tested
+    // StatusMonitor. Fully independent of the usage path: a status failure can never null, clobber,
+    // or delay usage data, and one source's failure can never affect the other's.
     private readonly System.Windows.Forms.Timer _statusPoll = new() { Interval = 60_000 };
-    private readonly StatusScheduler _statusScheduler = new();
-    private bool _statusInFlight;
-    private PlatformStatus? _status;
+    private readonly StatusMonitor _statusMonitor;
 
     private readonly ContextMenuStrip _menu;
     private ToolStripMenuItem _updatedItem = null!, _restartToUpdateItem = null!;
@@ -62,6 +60,7 @@ public sealed class TrayApp : ApplicationContext
         _isVelopackInstalled = isVelopackInstalled;
         _sync.CreateControl();
         _menu = BuildMenu();
+        _statusMonitor = new StatusMonitor(settings.EnabledSources());
 
         var dir = Path.GetDirectoryName(_configPath);
         if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
@@ -239,44 +238,44 @@ public sealed class TrayApp : ApplicationContext
     private void StartStatusFetch()
     {
         var now = DateTimeOffset.UtcNow;
-        if (_statusInFlight) return; // transient; not worth logging on every timer tick
-        if (!_statusScheduler.CanFetch(now)) { _log.Write(now, "status: skip: budget/backoff gate not open yet"); return; }
-
-        _statusInFlight = true;
-        _statusScheduler.RecordAttempt(now);
-        _log.Write(now, "status: attempt: GET summary.json");
-        _ = Task.Run(async () =>
+        foreach (var source in _statusMonitor.TakeDue(now))
         {
-            var result = await PlatformStatusApi.FetchAsync(Http, StatusSourceRegistry.Claude,
-                DateTimeOffset.UtcNow, CancellationToken.None).ConfigureAwait(false);
-            try { _sync.BeginInvoke((Action)(() => OnStatusFetchCompleted(result))); }
-            catch (InvalidOperationException) { /* app shutting down */ }
-        });
+            _log.Write(now, $"status[{source.Id}]: attempt: GET summary.json");
+            var captured = source;
+            _ = Task.Run(async () =>
+            {
+                var result = await PlatformStatusApi.FetchAsync(Http, captured, DateTimeOffset.UtcNow,
+                    CancellationToken.None).ConfigureAwait(false);
+                try { _sync.BeginInvoke((Action)(() => OnStatusFetchCompleted(captured.Id, result))); }
+                catch (InvalidOperationException) { /* app shutting down */ }
+            });
+        }
     }
 
-    private void OnStatusFetchCompleted(PlatformStatus? result)
+    private void OnStatusFetchCompleted(string sourceId, PlatformStatus? result)
     {
-        _statusInFlight = false;
         var now = DateTimeOffset.UtcNow;
+        if (!_statusMonitor.Accept(sourceId, result, now))
+        {
+            _log.Write(now, $"status[{sourceId}]: discarded: source disabled or id mismatch");
+            return;
+        }
         if (result is null)
         {
             // Keep the last-known-good state: a dead endpoint degrades to stale, never to blank.
-            _statusScheduler.RecordFailure(now);
-            _log.Write(now, "status: error: no usable response; backing off");
+            _log.Write(now, $"status[{sourceId}]: error: no usable response; backing off");
+        }
+        else if (result.Degraded)
+        {
+            var what = result.Incidents.Count > 0
+                ? string.Join(", ", result.Incidents.Select(i => i.Name))
+                : string.Join(", ", result.Components.Select(c => c.Name));
+            _log.Write(now, $"status[{sourceId}]: degraded: indicator={result.Indicator} " +
+                $"incidents={result.Incidents.Count} components={result.Components.Count}: {what}");
         }
         else
         {
-            _statusScheduler.RecordSuccess();
-            _status = result;
-            if (result.Degraded)
-            {
-                string names = string.Join(", ", result.Incidents.Select(i => i.Name));
-                _log.Write(now, $"status: degraded: indicator={result.Indicator} incidents={result.Incidents.Count}: {names}");
-            }
-            else
-            {
-                _log.Write(now, $"status: ok: indicator={result.Indicator} ({result.Description}) incidents={result.Incidents.Count}");
-            }
+            _log.Write(now, $"status[{sourceId}]: ok: indicator={result.Indicator} ({result.Description})");
         }
         Render();
     }
@@ -288,18 +287,14 @@ public sealed class TrayApp : ApplicationContext
         var now = DateTimeOffset.UtcNow;
         var choice = SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings);
         LogSourceChange(choice, now);
-        bool degraded = _status is { Degraded: true };
-        // A real outage must not vanish because *our* network is down: the state keeps being
-        // displayed once fetched, only marked stale.
-        bool statusStale = _status is not null
-            && now - _status.FetchedAt > TimeSpan.FromMinutes(_settings.StalenessMinutes);
+        bool degraded = _statusMonitor.BadgeDegraded();
 
         if (_iconFive is not null)
             Apply(_iconFive, '5', choice, choice.Snapshot?.FiveHour, "5h", TimeSpan.FromHours(5),
-                clockwise: true, degraded, statusStale, now);
+                clockwise: true, degraded, now);
         if (_iconSeven is not null)
             Apply(_iconSeven, '7', choice, choice.Snapshot?.SevenDay, "7d", TimeSpan.FromDays(7),
-                clockwise: false, degraded, statusStale, now);
+                clockwise: false, degraded, now);
 
         _updatedItem.Text = _settingsSaveFailed
             ? "Settings could not be saved"
@@ -311,7 +306,7 @@ public sealed class TrayApp : ApplicationContext
     }
 
     private void Apply(NotifyIcon icon, char digit, DisplayChoice choice, WindowUsage? usage, string label,
-        TimeSpan period, bool clockwise, bool degraded, bool statusStale, DateTimeOffset now)
+        TimeSpan period, bool clockwise, bool degraded, DateTimeOffset now)
     {
         int size = IconRenderer.SystemTrayIconSize();
         var old = icon.Icon;
@@ -324,7 +319,7 @@ public sealed class TrayApp : ApplicationContext
             string noDataText = choice.Snapshot is not null
                 ? $"{label}: no data"
                 : _noDataText ?? NoDataReason.Default;
-            icon.Text = TrimTooltip(noDataText + StatusSuffix(statusStale));
+            icon.Text = WithStatus(noDataText, now);
         }
         else
         {
@@ -336,7 +331,7 @@ public sealed class TrayApp : ApplicationContext
                 : SeverityRules.For(usage.Percent, _settings.Thresholds.Orange, _settings.Thresholds.Red);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
                 dimmed: choice.Stale, size, warning: degraded);
-            icon.Text = TrimTooltip(BuildTooltip(label, usage, elapsed, choice, now) + StatusSuffix(statusStale));
+            icon.Text = WithStatus(BuildTooltip(label, usage, elapsed, choice, now), now);
         }
         old?.Dispose();
     }
@@ -394,14 +389,11 @@ public sealed class TrayApp : ApplicationContext
     private static string TrimTooltip(string text)
         => text.Length <= 127 ? text : text[..126] + "…"; // NotifyIcon.Text hard limit
 
-    /// <summary>The disruption names itself in the tooltip; normal operation and a never-fetched
-    /// status stay unobtrusive.</summary>
-    private string StatusSuffix(bool statusStale)
-    {
-        if (_status is not { Degraded: true } status) return "";
-        var text = string.IsNullOrWhiteSpace(status.Description) ? status.Indicator : status.Description;
-        return $" · Claude: {text}{(statusStale ? " (stale)" : "")}";
-    }
+    /// <summary>The usage tooltip plus every relevant disruption, composed in Core so the badge-raising
+    /// suffix is reserved before anything is cut (StatusDetail.ComposeTooltip). TrimTooltip stays as
+    /// the last-resort guard for the NotifyIcon limit; after ComposeTooltip it should never fire.</summary>
+    private string WithStatus(string text, DateTimeOffset now)
+        => TrimTooltip(StatusDetail.ComposeTooltip(text, _statusMonitor.Sources(), now, _settings.StalenessMinutes));
 
     // ---- display mode / icons ----
 
@@ -430,7 +422,7 @@ public sealed class TrayApp : ApplicationContext
         if (_popup is { IsDisposed: false }) { _popup.Close(); }
         var now = DateTimeOffset.UtcNow;
         _popup = new UsagePopup(SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings),
-            _settings, now, _status, _lastFetchStatus, _noDataText);
+            _settings, now, _statusMonitor.Status("claude"), _lastFetchStatus, _noDataText);
         _popup.Show();
         _popup.Activate();
     }
@@ -553,6 +545,7 @@ public sealed class TrayApp : ApplicationContext
         _settings.PaceColors = edited.PaceColors;
         _settings.RunAtStartup = edited.RunAtStartup;
         _settings.UseBetaReleases = edited.UseBetaReleases;
+        _settings.StatusSources = edited.StatusSources;
 
         // Takes effect on the next check rather than at the next launch. A no-op when unchanged, so
         // saving unrelated edits never discards a staged update.
@@ -560,6 +553,8 @@ public sealed class TrayApp : ApplicationContext
 
         PersistSettings();
         ApplyDisplayMode();
+        _statusMonitor.ApplyEnabled(_settings.EnabledSources());
+        StartStatusFetch();
         Refresh();
         // The popup closes when it loses focus, so it is normally already gone by the time Save is
         // clicked; rebuild it only if it somehow survived, so it cannot keep showing the old colours.
