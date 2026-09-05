@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Net;
 using ClaudeUsageTray.Core;
 using Xunit;
@@ -33,13 +34,76 @@ public class PlatformStatusApiTests
         }
         """;
 
+    /// <summary>A throwaway source, so tests exercise the same code path the app uses without a
+    /// second endpoint-override overload existing purely for them.</summary>
+    private static StatusSource TestSource(string id = "claude", bool raisesBadge = true)
+        => new(id, id, $"https://status.{id}.test/api/v2/summary.json", $"https://status.{id}.test",
+            $"status.{id}.test", raisesBadge, []);
+
+    private const string OpenAiShape = """
+        {
+          "page": { "id": "01JMDK9XYNY6RXSED6SDWW50WY", "name": "OpenAI" },
+          "status": { "indicator": "minor", "description": "Partial System Outage" },
+          "components": [
+            { "id": "1", "name": "Responses", "status": "degraded_performance" },
+            { "id": "2", "name": "Sora", "status": "operational" },
+            { "id": "3", "name": "Codex API", "status": "partial_outage" }
+          ]
+        }
+        """;
+
     private static (PlatformStatus? Status, FakeHandler Handler) Fetch(
-        Func<HttpRequestMessage, HttpResponseMessage> respond)
+        Func<HttpRequestMessage, HttpResponseMessage> respond, StatusSource? source = null)
     {
         var handler = new FakeHandler(respond);
         using var http = new HttpClient(handler);
-        var result = PlatformStatusApi.FetchAsync(http, Now, CancellationToken.None).GetAwaiter().GetResult();
+        var result = PlatformStatusApi.FetchAsync(http, source ?? TestSource(), Now, CancellationToken.None)
+            .GetAwaiter().GetResult();
         return (result, handler);
+    }
+
+    [Fact]
+    public void OpenAiShape_HasNoIncidentsKey_AndStillParses()
+    {
+        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
+        Assert.NotNull(s);
+        Assert.Equal("openai", s!.SourceId);
+        Assert.Equal("minor", s.Indicator);
+        Assert.True(s.Degraded);
+        Assert.Empty(s.Incidents);
+    }
+
+    [Fact]
+    public void Components_KeepOnlyTheNonOperational()
+    {
+        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
+        Assert.Equal(["Responses", "Codex API"], s!.Components.Select(c => c.Name));
+        Assert.Equal(["degraded_performance", "partial_outage"], s.Components.Select(c => c.Status));
+    }
+
+    [Fact]
+    public void Components_SurviveMalformedEntries()
+    {
+        const string ragged = """
+            {
+              "status": { "indicator": "minor", "description": "Partial System Outage" },
+              "components": [
+                "not-an-object",
+                { "name": "Nameless status missing" },
+                { "id": "3", "status": "major_outage" },
+                { "id": "4", "name": "Codex API", "status": "major_outage" }
+              ]
+            }
+            """;
+        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, ragged));
+        Assert.Equal(["Codex API"], s!.Components.Select(c => c.Name));
+    }
+
+    [Fact]
+    public void Request_GoesToTheSourcesOwnUrl()
+    {
+        var (_, h) = Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
+        Assert.Equal("https://status.openai.test/api/v2/summary.json", h.LastRequest!.RequestUri!.ToString());
     }
 
     [Fact]
@@ -58,7 +122,7 @@ public class PlatformStatusApiTests
     public void Request_HasExactUrlAndUserAgent_NoAuthorization()
     {
         var (_, h) = Fetch(_ => Json(HttpStatusCode.OK, AllOperational));
-        Assert.Equal("https://status.claude.com/api/v2/summary.json", h.LastRequest!.RequestUri!.ToString());
+        Assert.Equal("https://status.claude.test/api/v2/summary.json", h.LastRequest!.RequestUri!.ToString());
         Assert.StartsWith("ClaudeUsageTray/", h.LastRequest.Headers.UserAgent.ToString());
         Assert.Null(h.LastRequest.Headers.Authorization);
     }
@@ -66,10 +130,8 @@ public class PlatformStatusApiTests
     [Fact]
     public void TestOnlyEndpointOverride_UsesProvidedUrl()
     {
-        var handler = new FakeHandler(_ => Json(HttpStatusCode.OK, AllOperational));
-        using var http = new HttpClient(handler);
-        var result = PlatformStatusApi.FetchAsync(http, Now, CancellationToken.None,
-            "http://localhost:8080/summary.json").GetAwaiter().GetResult();
+        var source = TestSource() with { SummaryUrl = "http://localhost:8080/summary.json" };
+        var (result, handler) = Fetch(_ => Json(HttpStatusCode.OK, AllOperational), source);
         Assert.NotNull(result);
         Assert.Equal("http://localhost:8080/summary.json", handler.LastRequest!.RequestUri!.ToString());
     }
@@ -193,7 +255,7 @@ public class PlatformStatusApiTests
         // HttpClient surfaces a timeout as a TaskCanceledException.
         var handler = new FakeHandler(_ => throw new TaskCanceledException());
         using var http = new HttpClient(handler);
-        var r = PlatformStatusApi.FetchAsync(http, Now, CancellationToken.None).GetAwaiter().GetResult();
+        var r = PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None).GetAwaiter().GetResult();
         Assert.Null(r);
     }
 
@@ -202,7 +264,7 @@ public class PlatformStatusApiTests
     {
         var handler = new FakeHandler(_ => throw new HttpRequestException("boom"));
         using var http = new HttpClient(handler);
-        var r = PlatformStatusApi.FetchAsync(http, Now, CancellationToken.None).GetAwaiter().GetResult();
+        var r = PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None).GetAwaiter().GetResult();
         Assert.Null(r);
     }
 
@@ -211,7 +273,7 @@ public class PlatformStatusApiTests
     {
         var handler = new FakeHandler(_ => throw new IOException("stream died"));
         using var http = new HttpClient(handler);
-        var r = PlatformStatusApi.FetchAsync(http, Now, CancellationToken.None).GetAwaiter().GetResult();
+        var r = PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None).GetAwaiter().GetResult();
         Assert.Null(r);
     }
 }

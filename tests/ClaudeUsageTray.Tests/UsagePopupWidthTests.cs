@@ -27,7 +27,7 @@ public class UsagePopupWidthTests : IDisposable
     }
 
     private static PlatformStatus Degraded(string description, params PlatformIncident[] incidents)
-        => new(Now, "major", description, incidents);
+        => new("claude", Now, "major", description, incidents, []);
 
     private static PlatformIncident Incident(string name, IReadOnlyList<string>? components = null)
         => new(name, "identified", "major", "https://stspg.io/x", Now.AddMinutes(-7), components ?? []);

@@ -247,8 +247,8 @@ public sealed class TrayApp : ApplicationContext
         _log.Write(now, "status: attempt: GET summary.json");
         _ = Task.Run(async () =>
         {
-            var result = await PlatformStatusApi.FetchAsync(Http, DateTimeOffset.UtcNow, CancellationToken.None)
-                .ConfigureAwait(false);
+            var result = await PlatformStatusApi.FetchAsync(Http, StatusSourceRegistry.Claude,
+                DateTimeOffset.UtcNow, CancellationToken.None).ConfigureAwait(false);
             try { _sync.BeginInvoke((Action)(() => OnStatusFetchCompleted(result))); }
             catch (InvalidOperationException) { /* app shutting down */ }
         });
