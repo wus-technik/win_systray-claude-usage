@@ -50,14 +50,59 @@ and how much paid credit you've burned this month.
 
 ## Install
 
-Grab **`WusTechnik.ClaudeUsageTray-win-Setup.exe`** from the
-[latest release](https://github.com/wus-technik/win_systray-claude-usage/releases/latest)
-and run it.
+Download **[`ClaudeUsageTraySetup.exe`](https://github.com/wus-technik/win_systray-claude-usage/releases/download/setup-stub/ClaudeUsageTraySetup.exe)**
+and run it. The link never changes: the small launcher fetches the newest release for the ring you
+pick — **Stable** or **Beta** — and hands off to that release's installer. Run it again later to
+move an existing install between the two rings.
 
 > [!NOTE]
 > Per-user install — no admin rights, nothing written outside your profile. Updates apply
 > themselves in the background; the tray menu offers **Restart to update** when one is staged.
-> Prefer no installer? A portable `.zip` ships with every release.
+> Prefer no installer? A portable `.zip` ships with every release, as does the classic
+> `WusTechnik.ClaudeUsageTray-win-Setup.exe`.
+
+<details>
+<summary><b>Unattended deployment</b></summary>
+
+<br>
+
+```
+ClaudeUsageTraySetup.exe --ring stable|beta --silent [--token <t>]
+```
+
+Always pass `--ring`: with `--silent` and no ring on a machine that already has the app, the
+launcher changes nothing and exits `3004`, because a default would silently drag a deliberate beta
+opt-in back to stable. Running it repeatedly with the same `--ring` is idempotent and exits `0`.
+
+It must run **in the user's session**, not as SYSTEM (Intune Win32 apps and SCCM programs default
+to SYSTEM). From that context a per-user install lands in the SYSTEM profile and is useless, so the
+launcher refuses with `3001`. For detection rules, check for
+`%LOCALAPPDATA%\WusTechnik.ClaudeUsageTray\current\ClaudeUsageTray.exe` or the Velopack uninstall key
+under `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`.
+
+`--ring beta` looks up GitHub's release list, which is rate-limited per source IP (60/h
+unauthenticated, shared behind a NAT). A fleet rollout should pass `--token` (or set `GH_TOKEN`) or
+roll out stable and let users tick **Use beta releases** in the app. Without the API the beta path
+fails closed in silent mode rather than installing stable content behind an operator's back.
+
+Switching the ring of an installed app stops and restarts it and writes `useBetaReleases`; the move
+itself completes when the user accepts **Restart to update** — the launcher never applies packages.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Installed, ring changed, or already correct |
+| *other* | `Setup.exe` ran and returned this code |
+| `3001` | Bad arguments, or SYSTEM / session-0 context |
+| `3002` | No release found for the ring (or API unavailable in silent mode) |
+| `3003` | Download failed, or the file was empty, not an executable, or failed its digest check |
+| `3004` | `--silent` without `--ring` on an existing install |
+| `3005` | Could not stop or restart the app, or the settings write did not persist |
+| `3006` | Cancelled |
+
+Diagnostics land in `%APPDATA%\ClaudeUsageTray\setup.log`. `ClaudeUsageTraySetup.exe --version`
+prints the launcher's own version and build commit.
+
+</details>
 
 ## Using it
 
@@ -193,6 +238,8 @@ by the tag-triggered GitHub Actions workflow — push a `v*` tag whose version m
 | [`specs/2026-07-24-icon-readability-design.md`](docs/superpowers/specs/2026-07-24-icon-readability-design.md) | Badge icon legibility at tray size |
 | [`specs/2026-07-27-fable-and-credits-design.md`](docs/superpowers/specs/2026-07-27-fable-and-credits-design.md) | Scoped weekly limits and credit usage |
 | [`specs/2026-08-26-platform-status-design.md`](docs/superpowers/specs/2026-08-26-platform-status-design.md) | Platform status polling and the taskbar outage indicator |
+| [`specs/2026-09-04-beta-release-ring-design.md`](docs/superpowers/specs/2026-09-04-beta-release-ring-design.md) | The stable/beta release rings and the return-to-stable downgrade |
+| [`specs/2026-09-04-setup-stub-design.md`](docs/superpowers/specs/2026-09-04-setup-stub-design.md) | The version-independent setup launcher and ring switching |
 
 </details>
 

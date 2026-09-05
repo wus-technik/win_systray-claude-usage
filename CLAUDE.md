@@ -168,6 +168,32 @@ Note for both the workflow and `build-release.ps1`: `--packAuthors` is written i
 verbatim, so the company ampersand must arrive already XML-escaped (`W&amp;S Technik GmbH`) or `vpk`
 fails with an `XmlException`. Same in the csproj, where MSBuild rejects a bare `&`.
 
+## The setup stub
+
+`src/ClaudeUsageTraySetupStub/` is a second executable, `ClaudeUsageTraySetup.exe`: a ~2 MB NativeAOT
+launcher published to the permanent `setup-stub` release. It resolves the newest release for a ring,
+downloads that release's channel `Setup.exe` and runs it; against an existing install it only writes
+`useBetaReleases` and restarts the tray. Design: `docs/superpowers/specs/2026-09-04-setup-stub-design.md`.
+
+- **No WinForms, no Velopack.** `Core/UpdateRing.cs` is linked in as shared source
+  (`<Compile Include=… Link=…/>`) for the channel names only. The stub never calls `UpdateRing.For`
+  and never decides a downgrade — that is the app's job.
+- **Its tests live in `tests/ClaudeUsageTraySetupStub.Tests`**, which references the stub only. That
+  project and `tests/ClaudeUsageTray.Tests` both export `ClaudeUsageTray.Core.UpdateRing`, so one test
+  project referencing both is CS0433. Same rule as the app: decisions are pure functions there.
+- **Published in CI only** (`.github/workflows/setup-stub.yml`, on push to `main` when its paths
+  change). `dotnet publish` needs the MSVC linker for ILC; `dotnet build`, `dotnet test` and
+  `dotnet run --project src/ClaudeUsageTraySetupStub -- --help` work locally without it.
+- **The `setup-stub` release must never become `/releases/latest`.** It is created with
+  `--latest=false`, and both workflows assert that `latest` still resolves to a `v*` tag. If that
+  assertion ever fails, unset "latest" on the offending release; do not remove the assertion.
+- `release.yml` copies `ClaudeUsageTraySetup.exe` from the `setup-stub` release onto each release. The
+  `win-beta` mirror on stable releases is also what the stub's beta fallback downloads — a third
+  reason that mirror is mandatory.
+- Testing a ring switch by hand stops and relaunches the installed tray and stages a cross-ring
+  package. `--ring stable` against a stable install is the safe idempotence check (exit `0`);
+  `--silent` alone against any install must exit `3004`.
+
 ## Design docs
 
 `docs/superpowers/spec*/` holds the design doc per feature and `docs/superpowers/plans/` the
