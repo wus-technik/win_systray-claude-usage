@@ -69,4 +69,23 @@ public class CredentialsReaderTests : IDisposable
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".claude", ".credentials.json"),
             CredentialsReader.DefaultPath);
+
+    [Fact]
+    public void Status_MissingFile_IsMissing()
+        => Assert.Equal(CredentialStatus.Missing,
+            CredentialsReader.Status(Path.Combine(_dir, "nope.json"), Now));
+
+    [Fact]
+    public void Status_ValidToken_IsValid()
+        => Assert.Equal(CredentialStatus.Valid, CredentialsReader.Status(
+            WriteFixture(CredsJson("dummy-token-abc", Now.AddHours(2).ToUnixTimeMilliseconds())), Now));
+
+    [Fact]
+    public void Status_ExpiredToken_IsUnusable()
+        => Assert.Equal(CredentialStatus.Unusable, CredentialsReader.Status(
+            WriteFixture(CredsJson("dummy-token-abc", Now.AddMinutes(-1).ToUnixTimeMilliseconds())), Now));
+
+    [Fact]
+    public void Status_MalformedFile_IsUnusable()
+        => Assert.Equal(CredentialStatus.Unusable, CredentialsReader.Status(WriteFixture("{ nope"), Now));
 }

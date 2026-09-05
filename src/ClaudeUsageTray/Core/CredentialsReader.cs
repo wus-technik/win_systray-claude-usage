@@ -44,4 +44,16 @@ public static class CredentialsReader
             return null;
         }
     }
+
+    /// <summary>Existence plus the same validation <see cref="TryReadAccessToken"/> applies. The token
+    /// itself is not returned or retained.</summary>
+    public static CredentialStatus Status(string path, DateTimeOffset now)
+    {
+        bool exists;
+        try { exists = File.Exists(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        { return CredentialStatus.Unusable; }
+        if (!exists) return CredentialStatus.Missing;
+        return TryReadAccessToken(path, now) is null ? CredentialStatus.Unusable : CredentialStatus.Valid;
+    }
 }

@@ -366,4 +366,30 @@ public class UsageCacheReaderTests : IDisposable
         Assert.Null(c!.Used);
         Assert.Equal(73, c.Percent);   // legacy utilization, since spend had no money to trust
     }
+
+    [Fact]
+    public void Status_MissingFile_IsMissing()
+        => Assert.Equal(ConfigStatus.Missing, UsageCacheReader.Status(Path.Combine(_dir, "nope.json")));
+
+    [Fact]
+    public void Status_FileWithoutTheKey_IsNoUsageKey()
+        => Assert.Equal(ConfigStatus.NoUsageKey,
+            UsageCacheReader.Status(WriteFixture("""{ "oauthAccount": {}, "userID": "x" }""")));
+
+    [Fact]
+    public void Status_FileWithTheKey_IsUnreadable()
+    {
+        // Status is only consulted when TryRead returned null, so "key present" means it did not parse.
+        Assert.Equal(ConfigStatus.Unreadable,
+            UsageCacheReader.Status(WriteFixture("""{ "cachedUsageUtilization": { "utilization": {} } }""")));
+    }
+
+    [Fact]
+    public void Status_MalformedFileWithTheKey_IsUnreadable()
+        => Assert.Equal(ConfigStatus.Unreadable,
+            UsageCacheReader.Status(WriteFixture("""{ "cachedUsageUtilization": { not json""")));
+
+    [Fact]
+    public void Status_MalformedFileWithoutTheKey_IsNoUsageKey()
+        => Assert.Equal(ConfigStatus.NoUsageKey, UsageCacheReader.Status(WriteFixture("{ not json !!")));
 }

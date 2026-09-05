@@ -46,4 +46,26 @@ public static class UsageCacheReader
             return null;
         }
     }
+
+    /// <summary>Why <see cref="TryRead"/> may have returned null, for the no-data message. A guarded
+    /// string search rather than a parse: the file is Claude Code's and can be mid-rewrite.</summary>
+    public static ConfigStatus Status(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return ConfigStatus.Missing;
+            var info = new FileInfo(path);
+            if (info.Length > 32 * 1024 * 1024) return ConfigStatus.Unreadable;
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd().Contains("\"cachedUsageUtilization\"", StringComparison.Ordinal)
+                ? ConfigStatus.Unreadable
+                : ConfigStatus.NoUsageKey;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+            or ArgumentException or NotSupportedException)
+        {
+            return ConfigStatus.Unreadable;
+        }
+    }
 }
