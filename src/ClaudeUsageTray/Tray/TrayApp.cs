@@ -134,7 +134,7 @@ public sealed class TrayApp : ApplicationContext
         var now = DateTimeOffset.UtcNow;
         var desktop = DesktopUsageReader.ReadFirst(DesktopHistoryPath.ByFreshness(
             DesktopHistoryPath.Candidates(_settings.DesktopHistoryPathOverride,
-                DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)));
+                DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)), now);
         _desktopStatus = desktop.Status;
         if (desktop.Snapshot is not null)
         {
