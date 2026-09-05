@@ -39,7 +39,7 @@ Everything that decides is a pure or clock-free type in `Core/`, following `Fetc
 | Type | Kind | Responsibility |
 | --- | --- | --- |
 | `Core/UsageValues.cs` | pure | Enumerates the notifiable values of a snapshot with their severities |
-| `Core/NotificationRules.cs` | stateful, clock-free | Remembers what it last saw; turns readings into transitions |
+| `Core/NotificationRules.cs` | stateful, clock-free | Remembers what it last saw; turns readings into transitions; owns arming |
 | `Tray/ToastPresenter.cs` | WinForms/WinRT | Shows a toast; routes a click to the popup |
 
 ### `Core/UsageValues.cs`
@@ -52,8 +52,20 @@ public sealed record UsageValue(string Key, string Label, int Percent, Severity 
 
 Keys are stable across polls and are what the transition state is filed under: `"5h"`, `"7d"`,
 `"credits"`, and each scoped limit's `Label` — which `ScopedLimit` already documents as its dedup
-key, so this introduces no new identity scheme. Absent values produce no row, upholding the
-"absent data means no row" invariant: a limit the account does not have can never be notified about.
+key, so this introduces no new identity scheme. Keys compare `OrdinalIgnoreCase`, matching the dedup
+in `UsageJson.ReadScopedLimits` (`UsageJson.cs:58`); otherwise a label whose case changed would read
+as one key vanishing and another appearing. Absent values produce no row, upholding the "absent data
+means no row" invariant: a limit the account does not have can never be notified about.
+
+`Label` is the popup's caption text — "5-hour window", "7-day window", "{Label} weekly", "Credits" —
+so that a toast and the row it refers to cannot be worded differently.
+
+**`UsageValues` enumerates every scoped limit, including ones the popup withholds.** `UsagePopup`
+draws only `PopupRows.ForScopedLimits(...).Visible`, capped at four. Notifying on all of them is
+correct — CLAUDE.md forbids filtering on `is_active`, and a limit being pushed below a display cap
+says nothing about whether it matters — but it means the earlier phrasing "a toast fires exactly
+when a row turns red in the popup" is too strong. The guarantee is narrower and still worth having:
+**where the popup does draw a value, the toast and the bar agree about its colour.**
 
 Severity comes from `SeverityRules.ForSettings`, with the elapsed fraction from
 `TimeMarker.ElapsedFraction` — five hours for the 5-hour window, seven days for the 7-day and the
@@ -69,10 +81,10 @@ bar next to it, which is the exact drift this type exists to prevent.
 
 **This type exists to prevent drift, not to save typing.** That computation is currently written
 out twice, in `TrayApp` (~line 327) and `UsagePopup` (lines 98 and 193). A third copy inside the
-notifier would make "a toast fires exactly when a row turns red in the popup" a coincidence that
-holds until someone edits one of the three. `TrayApp` and `UsagePopup` are therefore rewired onto
-`UsageValues` as part of this work — the one place where this feature changes existing code, and the
-reason it is in scope.
+notifier would make the toast's agreement with the bar beside it a coincidence that holds until
+someone edits one of the three. `TrayApp` and `UsagePopup` are therefore rewired onto `UsageValues`
+as part of this work — the one place where this feature changes existing code, and the reason it is
+in scope. `UsagePopup.ParseSeverity` is private today and moves to `Core` with the rest.
 
 ### `Core/NotificationRules.cs`
 
@@ -85,34 +97,44 @@ public sealed record Notification(string Title, string Body, string Argument);
 `Argument` is the toast's activation payload, so a future second toast action does not need a new
 plumbing path. Today there is exactly one value.
 
+**Arming is decided here, not in `TrayApp`.** `DisplayChoice` carries no cache-versus-live
+provenance, so if arming were an `if` in the UI layer none of the arming tests would exercise the
+code that ships — the failure mode CLAUDE.md names explicitly. `NotificationRules` therefore takes
+`NoteLiveOutcome(LiveOutcome outcome)` with `Snapshot | Unauthorized | RateLimited | Failed |
+NoToken`, and `TrayApp` only relays outcomes it already distinguishes at `TrayApp.cs:194-232` and
+`:170`.
+
 #### Usage transitions
 
 `OnUsage(DisplayChoice choice, Settings settings, DateTimeOffset now)` returns zero or one
 notification, applying these rules in order:
 
-1. **Not armed yet → record as baseline, notify nothing.** See *Arming* below.
-2. **The notification fingerprint changed → re-baseline every key, notify nothing.** See
-   *Configuration changes* below.
-3. **Stale → nothing, and the remembered state is left untouched.** Not merely a skip: because
-   nothing is recorded, a crossing that happened during the stale gap is still compared against the
-   pre-stale state and fires once when fresh data returns. Recording during staleness would swallow
-   it silently.
-4. **A different `UsageSource` than last time → re-baseline, notify nothing.** Claude Code and the
-   Desktop history are different measurements of different things; switching between them moves a
-   number without anything having happened. This case bypasses the timestamp comparison in rule 5
-   entirely: the two streams' timestamps are not comparable.
-5. **`snapshot.FetchedAt` not strictly newer than the last evaluated one → nothing.** Equal counts
-   as not newer, so the 30 s cache re-read of an unchanged file evaluates nothing.
-6. Per key, notify when severity crossed **from below the configured level to at or above it**.
-7. Keys absent from this evaluation are **evicted**.
-8. All crossings from one evaluation coalesce into **one** toast.
+1. **Stale → nothing, and no state is recorded.** First, before anything else. Because nothing is
+   recorded, a crossing that happened during the stale gap is still compared against the pre-stale
+   state and fires once when fresh data returns; recording during staleness would swallow it
+   silently. Running this check *first* also means the unarmed startup phase can never baseline
+   itself against an hours-old cache.
+2. **The notification fingerprint changed → clear all state, notify nothing.** Cleared rather than
+   re-recorded, so the next admissible evaluation becomes an ordinary first-sight baseline through
+   rule 4. See *Configuration changes*.
+3. **A different `UsageSource` than last time → clear all state, notify nothing.** Claude Code and
+   the Desktop history are different measurements of different things; switching between them moves
+   a number without anything having happened.
+4. **Not armed yet → record as baseline, notify nothing.** See *Arming*.
+5. Per key, notify when severity crossed **from below the configured level to at or above it**, and
+   the key is *re-armed* only after it drops back to `Green`. See *Hysteresis*.
+6. Keys absent from this evaluation are **evicted**.
+7. All crossings from one evaluation coalesce into **one** toast.
 
-Rule 5 is a belt-and-braces guard rather than the primary defence against a live → cache failover.
-The primary defence already exists: cache and live both feed `_cliSnapshot` through
-`SnapshotPrecedence.IsNewer`, which is strictly `>`, so an older `.claude.json` read cannot replace
-a fresher live snapshot in the first place. **The invariant to state plainly is that notifications
-only ever see adopted snapshots.** Rule 5 then covers what precedence does not: the Desktop-history
-stream, which is selected by `SourceSelection` rather than merged by precedence.
+**There is deliberately no rule comparing `FetchedAt` against the last evaluated one.** An earlier
+draft had one as the live → cache failover guard; it was wrong twice over. It was redundant — both
+streams are already guarded by `SnapshotPrecedence.IsNewer` before they are stored (`_cliSnapshot`
+in `TrayApp.Refresh`/`OnApiFetchCompleted`, `_desktopSnapshot` at `TrayApp.cs:139`), and the switch
+*between* streams is rule 3 — so **notifications only ever see adopted snapshots**, which is the
+invariant that actually does the work. And it was harmful: treating an unchanged timestamp as
+"nothing to do" would have made a pace crossing driven by the clock alone unnotifiable, which is a
+genuine crossing and the main reason evaluation belongs on the 30 s tick. Edge-triggering on the
+remembered per-key predicate already makes re-evaluating unchanged data a no-op.
 
 **First sight is always baseline.** A key not seen before is recorded without notifying. This covers
 startup into an already-red state, and also a scoped limit the payload only just began reporting —
@@ -135,10 +157,41 @@ evaluations with an advancing timestamp and an unchanged source: rules 3–5 all
 toasted about a limit that was already red when the app launched. That is precisely the storm the
 issue forbids.
 
-The usage trigger is therefore **armed only once the first live fetch cycle has settled** — the
-first `OnApiFetchCompleted`, whatever its outcome — or immediately if no live fetch can be attempted
-at all (no credentials file, or a rejected token), since then the cache or the Desktop history is
-all there will ever be. Everything before that point records baseline and notifies nothing.
+Arming happens on the first **terminal** live outcome, which is not the same as the first outcome:
+
+- a snapshot (adopted or not), or `401`/`403` — the token's owner will not refresh it soon — or no
+  usable token at the first `StartApiFetch` (no credentials file): **arms**;
+- `429` or a network error: **does not arm.** A rate-limited first fetch is the documented common
+  case (CLAUDE.md, *Working with the live usage endpoint*), and arming on it would restore the exact
+  bug this rule exists to prevent: baseline from cache, then the first *successful* fetch minutes
+  later reveals a limit that was already red and toasts about it;
+- as a backstop, the **third concluded attempt** arms regardless, so a permanently offline machine
+  still gets usage notifications from cache or Desktop history rather than being silent forever.
+  With the 5/10/20-minute backoff this bounds the unarmed window at roughly 15 minutes.
+
+The evaluation that arms is itself a baseline: arming records state and returns no notification, so
+the first live reading can never be a transition. Note that a *rejected* token cannot arm at
+startup — `_rejectedToken` is only set inside `OnApiFetchCompleted` (`TrayApp.cs:216`), so that path
+has by definition already produced a terminal outcome.
+
+With rule 1 running first, arming is not the only thing standing between a stale cache and a false
+toast — a startup cache older than `StalenessMinutes` records nothing at all. Arming is what covers
+the remaining case: a cache that is *fresh* by timestamp but behind the live figure.
+
+#### Hysteresis
+
+The pace ratio is `percent / (elapsed × 100)`, so it **falls as the window elapses**. A value sitting
+near `RedRatio` (1.75) therefore crosses into red, drops back to orange minutes later on the clock
+alone, and crosses again on the next usage — repeatedly, within one window. `TrayApp.cs:325` notes
+the badge deliberately has no hysteresis because a flickering badge is cheap; a flickering toast is
+not, and "a limit that sits red for four hours must produce exactly one toast" would be violated by
+the clock rather than by the user.
+
+**A key that has notified is re-armed only when it returns to `Green`** — not merely when it drops
+below the configured level. Leaving is still silent. This is exit hysteresis rather than a cooldown
+timer: it needs no duration constant, stays a pure function of the severities already computed, and
+expresses the actual intent, which is that the situation genuinely recovered rather than that enough
+minutes passed.
 
 #### Configuration changes
 
@@ -149,9 +202,17 @@ every severity at once; changing `NotifyLevel` from `Red` to `Orange` makes an a
 cross a line that just moved under it.
 
 All of these are the same failure, so they get one fix rather than three. `NotificationRules` holds
-a **fingerprint** of the settings that can change a verdict — thresholds, pace mode, staleness
-allowances, and the notify level — and when it changes, every key is silently re-baselined against
-the new rules. The user's own edit is never news.
+a **fingerprint** of the settings that can change a verdict — thresholds, pace mode, both staleness
+allowances, and the notify level — and when it changes, all state is cleared and rebuilt from the
+next admissible evaluation. The user's own edit is never news. A genuine crossing that coincides
+exactly with a settings save is swallowed; that is one missed toast in exchange for never toasting
+about an edit, and it is the same trade already accepted for a renamed scoped limit.
+
+**The on/off switches are deliberately not in the fingerprint.** `usageNotifications.enabled` and a
+source's `notify` do not change any verdict, so `OnUsage` and `OnStatus` always evaluate and always
+record; the flag only suppresses the returned notification at the end. Turning notifications off and
+on again therefore cannot fire a toast for a crossing that happened while they were off — which is
+what would happen if evaluation stopped and the state went stale.
 
 **Leaving the level is remembered but silent.** Red is one-way. A limit leaves red mainly because
 its window reset — a clock event the popup already predicts — and announcing it would roughly double
@@ -181,7 +242,13 @@ Claude's filter has no dialog control, so a README-only JSON key must not be abl
 notification is not always-visible, is separately switchable, and for OpenAI the filter *is*
 dialog-controlled — the user who narrowed it said what they wanted to hear about.
 
-- **First reading per source is baseline.** Launching into a degraded platform is not a transition.
+- **A null `Status` is not a reading.** `Render()` runs from the constructor before the first status
+  fetch completes, and `StatusMonitor.Sources()` yields entries whose `Status` is null until then.
+  Nothing is recorded and no transition is derived for such a source. Collapsing null into "not
+  relevant" — the shape `UsagePopup.cs:116` uses for drawing — would make the first fetch of an
+  already-degraded page a false → true transition and toast at startup.
+- **First reading per source is baseline**, where "reading" means the first non-null
+  `PlatformStatus`. Launching into a degraded platform is not a transition.
 - **A disabled source drops its state**, so re-enabling re-baselines instead of firing a toast about
   an outage that started while the source was off.
 - **A changed watch filter re-baselines that source.** `StatusMonitor.ApplyEnabled` deliberately
@@ -210,12 +277,25 @@ healthy: a watched Codex incident can end while an unrelated Sora incident is st
 page the user can go and read. The two cases are therefore distinguished by `status.Degraded`:
 
 - `Degraded == false` → "All systems operational".
-- `Degraded == true` → the watched disruption is over but the page is not clear; the text says so,
-  naming what remains only to the extent `StatusDetail` already words it.
+- `Degraded == true` → the watched disruption is over but the page is not clear. The body is exactly
+  `StatusDetail.Header(source, status, relevant: false, stale: false)`, which already words this
+  state ("OpenAI status: Partial outage · outside your watched components") — and is the same string
+  the popup shows, so the two cannot disagree. `StatusDetail.Rows` is not usable here: it filters by
+  the watch filter and so returns nothing at all for the unwatched remainder.
 
-Per the existing logging rule, notification text may name limits and percentages but never money
-amounts, currency, or account-specific model names beyond the payload labels already shown on
-screen.
+### Logging
+
+"I never got a toast" is the report this feature will generate, and none of its decisions are
+visible today. `fetch.log` therefore gains one line per emitted notification and per suppression,
+naming the reason — unarmed, stale, fingerprint change, source switch, hysteresis, switched off, or
+Windows-side disabled.
+
+**The existing log rule is unchanged and constrains this.** The log may carry percentages, outcomes,
+and the fixed keys `5h`, `7d` and `credits` — but **never scoped-limit labels**, which are exactly
+the account-specific model names the rule forbids, nor money amounts or currency. A suppressed or
+emitted notification about a scoped limit is logged by count, not by name. The toast itself may name
+the limit: it is shown to the user who owns the account, on their own screen, and the popup already
+shows the same label.
 
 ### Settings
 
@@ -289,8 +369,18 @@ Consequences for the implementation:
   default. Overriding the default is what keeps `src/ClaudeUsageTraySetupStub` and its test project
   on `net10.0-windows`: the NativeAOT stub has no WinForms and no notifications, and pulling the
   Windows SDK projection into an ILC build buys nothing. Neither `build-release.ps1` nor either
-  workflow hardcodes a TFM, so packaging is unaffected. The test project needs the bump only because
-  it references the app; nothing in it touches WinRT.
+  workflow hardcodes a TFM, so the build scripts run unchanged. The test project needs the bump only
+  because it references the app; nothing in it touches WinRT. The bump also sets the supported-OS
+  floor at Windows 10 2004 (10.0.19041).
+- **The bump costs 24.2 MB, measured, and that is accepted.** A self-contained `win-x64` publish goes
+  from **118.6 MB to 142.8 MB (+20 %)**, entirely from `Microsoft.Windows.SDK.NET.dll` (23.7 MB) and
+  `WinRT.Runtime.dll` (0.5 MB). Velopack deltas mean a user pays it once, on first install or when
+  that assembly changes, not on every update. It buys Action Center persistence — the toast you
+  missed while away is still there, which is much of the point of the feature — and a per-app entry
+  in Windows notification settings. The alternatives were weighed and rejected: `ShowBalloonTip`
+  costs 0 MB but loses both of those, and hand-written activation-factory interop costs 0 MB but
+  puts ~200 lines of the least reviewable code in the repo into the layer that is supposed to decide
+  nothing.
 - **The AUMID is `"velopack." + packId`.** `AppInfo` gains a `PackId` constant and derives the AUMID
   from it. Velopack builds the shortcut's ID that way, and **nothing today checks that `AppInfo` and
   `vpk --packId` agree** — a silent mismatch costs every notification with no other symptom. A test
@@ -302,7 +392,27 @@ Consequences for the implementation:
   completions, wrapped in the same `catch (InvalidOperationException)` for the shutting-down case.
 - **Live toast objects are held.** The `ToastNotification` and its event subscriptions are kept
   referenced until a terminal event (`Activated`, `Dismissed`, `Failed`), so a click on a toast the
-  GC has collected cannot silently do nothing.
+  GC has collected cannot silently do nothing. At most one live toast is held per tag, and replacing
+  a tag drops the previous reference rather than waiting for a `Dismissed` that a replacement may
+  never deliver. `Dismissed` and `Failed` arrive off-thread like `Activated`, so the bookkeeping is
+  marshalled the same way.
+- **Stale toasts are cleared at startup.** Toasts persist in Action Center across process exit, so
+  after a Quit or the update restart (`TrayApp.cs:441`, `:510`) a click activates the shortcut,
+  launches a second instance, and `SingleInstance.TryAcquire` exits it — the click appears to do
+  nothing. Clearing this AUMID's history on startup means no toast in Action Center is ever older
+  than the running process, and therefore none is ever un-actionable.
+- **Usage toasts expire.** `ExpirationTime` is set to the window's `ResetsAt` where known, and a few
+  hours otherwise, so Action Center stops asserting a red 5-hour window days after it reset. When a
+  key leaves red under the *Hysteresis* rule, its toast is removed from history — the silent exit
+  stays silent, but it stops leaving a false claim behind.
+- **Failure is graduated, not absolute.** A failure to *create* the notifier is permanent (that is
+  the unregistered-AUMID case the probe measured, and it does not heal). A failure of an individual
+  `Show()` — the notification platform restarting, say — disables toasts only after three
+  consecutive failures, each logged. Both still guarantee nothing throws.
+- **Windows-side disablement is visible in the log.** `ToastNotifier.Setting` returning
+  `DisabledForApplication`, `DisabledForUser` or `DisabledByGroupPolicy` is not an exception —
+  `Show()` simply does nothing, leaving an in-app checkbox that lies. The value is logged once per
+  session whenever it is not `Enabled`.
 - **Every WinRT call is wrapped**, and on any failure the presenter becomes a permanent no-op. The
   probe returned two different failure modes for an unregistered AUMID across two runs, so neither
   can be relied on and both must be survivable. This is the existing "nothing in the read paths
@@ -322,17 +432,19 @@ site is safer than sprinkling calls through `Refresh`, `OnApiFetchCompleted` and
 
 `Render()` is reached from startup, the 30 s cache tick, the `FileSystemWatcher` debounce, both
 fetch completions, a settings save, the update-restart path and a manual refresh. Every one of those
-is either a genuine data change or covered by a guard: the timestamp rule absorbs the repeated
-reads, and the fingerprint rule absorbs the settings save. Notably, the 30 s tick means evaluation
-happens on **time-only** changes too — which is intended, because pace severity genuinely moves with
-the clock, and a value crossing into red purely because the window elapsed is a real crossing.
+is either a genuine data change or absorbed by a guard: edge-triggering makes a repeated read of
+unchanged data a no-op, and the fingerprint rule absorbs the settings save. The 30 s tick means
+evaluation happens on **time-only** changes too, which is required rather than merely tolerated:
+pace severity moves with the clock, so a value crossing into red purely because the window elapsed
+is a real crossing, and the *Hysteresis* rule is what stops the same clock from flapping it.
 
 ## Error handling
 
 - A failed status fetch produces no transition; `StatusMonitor` keeps last-known-good.
 - A stale snapshot produces no notification and no state change.
 - A malformed settings file falls back per field; notifications default to on.
-- Any WinRT failure disables toasts for the process lifetime and touches nothing else.
+- A WinRT failure disables toasts — permanently if the notifier could not be created, after three
+  consecutive failures if `Show()` is what failed — and touches nothing else.
 - The remembered state is in-memory only and does not survive a restart. This is correct rather than
   a limitation: after a restart the first reading is a baseline, so an auto-update restart in the
   middle of a red period cannot re-announce it.
@@ -343,12 +455,18 @@ the clock, and a value crossing into red purely because the window elapsed is a 
 
 - Baseline on first sight — at startup, and for a scoped limit that appears mid-session.
 - **Arming:** a cache read showing green followed by a first live fetch showing red notifies
-  nothing; a *second* live fetch that then crosses does notify. Also the no-credentials case, where
-  arming happens immediately.
+  nothing; a *second* live fetch that then crosses does notify. A first fetch that returns `429` or
+  a network error does **not** arm — a later successful fetch showing red still notifies nothing —
+  while `401` and the no-credentials case arm immediately, and the third concluded attempt arms
+  regardless.
 - A limit sitting red across many polls produces exactly one notification.
-- Stale readings notify nothing, and a crossing that spans a stale gap still fires once afterwards.
-- A snapshot with an older `FetchedAt` notifies nothing, and one with an **equal** `FetchedAt`
-  notifies nothing (the 30 s re-read of an unchanged cache file).
+- **Clock-only crossing:** the same snapshot evaluated at an advancing `now` until the pace ratio
+  passes `RedRatio` produces exactly one notification. This is the case the deleted timestamp rule
+  would have made impossible.
+- **Hysteresis:** red → orange (by the clock) → red produces one notification, not two; red → green
+  → red produces two.
+- Stale readings notify nothing and record nothing, and a crossing that spans a stale gap still
+  fires once afterwards.
 - A Claude Code → Desktop-history switch re-baselines silently, in both directions.
 - **Configuration changes re-baseline silently:** raising `StalenessMinutes` so an old snapshot
   becomes fresh; lowering `Thresholds.Red` under an existing value; toggling `PaceColors`; and
@@ -356,6 +474,10 @@ the clock, and a value crossing into red purely because the window elapsed is a 
 - Both notify levels, including green → red under level `Orange` firing once, not twice.
 - Several simultaneous crossings coalesce into one notification.
 - A scoped limit that vanishes and returns is re-baselined, not announced (key eviction).
+- **Switching notifications off and on again** notifies nothing for a crossing that happened while
+  they were off (evaluation continues; only the output is suppressed).
+- A null status followed by a degraded status notifies nothing; a degraded status followed by a
+  different degraded status notifies nothing.
 - Status transitions in both directions, per source and independently.
 - An OpenAI component outside the watch filter notifies nothing; one inside it notifies.
 - Disabling and re-enabling a source notifies nothing; **widening the watch filter over an unchanged
@@ -368,8 +490,26 @@ the clock, and a value crossing into red purely because the window elapsed is a 
 - `AppInfo.PackId` matches the pack id used by `build-release.ps1` and `release.yml`.
 
 `ToastPresenter` is not unit-testable and therefore decides nothing. It is verified by hand against
-an installed local build using the `Update.exe apply` flow in CLAUDE.md: both triggers, the click
-opening the popup, Action Center persistence, and a `dotnet run` staying silent instead of throwing.
+an installed local build using the `Update.exe apply` flow in CLAUDE.md:
+
+- both triggers fire, and the click opens the popup — **from the toast banner and from Action
+  Center**, since the two differ in who holds the foreground;
+- the popup takes focus and closes on click-away. `UsagePopup` positions at `Cursor.Position` and
+  closes in `OnDeactivate`, so a popup shown without foreground rights would never receive the
+  deactivate that closes it and would sit there `TopMost`. If Windows refuses foreground to a
+  background process here, the behaviour is documented rather than fought;
+- the popup appears on the monitor the toast was on, at the right DPI;
+- toasts persist in Action Center, and stale ones from a previous process are gone after a restart;
+- a `dotnet run` from source stays silent instead of throwing;
+- with Windows notifications switched off for the app, nothing throws and `fetch.log` says why.
+
+### Wiring the settings through
+
+Three hand-written copy paths silently drop new settings fields and must be listed in the plan:
+`SettingsDialog.Draft()` rebuilds the `openai` entry from scratch (`SettingsDialog.cs:427-431`),
+`SettingsDialog`'s clone copies fields one by one (`:481-488`), and `TrayApp.ApplySettings`
+(`TrayApp.cs:540-547`) copies the edited values across. All three need the new `notify` and
+`usageNotifications` fields, and a round-trip test through the dialog catches it if one is missed.
 
 ## Success criteria
 
@@ -382,6 +522,8 @@ opening the popup, Action Center persistence, and a `dotnet run` staying silent 
 - Editing settings — thresholds, pace, staleness, notify level, watch filter — raises nothing on its
   own, whatever it does to the colours on screen.
 - A recovery toast never claims the platform is healthy while its page still reports a disruption.
+- A limit hovering at the pace boundary produces one toast, not one every few minutes.
+- Clicking a toast left over from a previous process never launches a second instance that exits.
 - Every trigger is individually switchable, and the usage trigger's level is configurable.
 - Clicking a toast opens the popup.
 - A `dotnet run` from source raises no toast and no exception.
@@ -389,6 +531,14 @@ opening the popup, Action Center persistence, and a `dotnet run` staying silent 
 ## Out of scope
 
 - Notifications for leaving red. One-way by decision, recorded above.
+- **Notifying about a change *within* an ongoing disruption.** A second incident opening, or an
+  impact going minor → major, leaves `IsRelevant` true and is silent. The transition being watched is
+  "is something wrong", not "what exactly is wrong".
+- **Suppressing the re-baseline when the display source flaps.** A user with both Claude Code and
+  the Desktop history will flip between them whenever Claude Code idles past `StalenessMinutes` while
+  the desktop history is still inside its own allowance. Each flip clears state (rule 3) and swallows
+  any crossing that coincides with it. Accepted: the alternative is comparing numbers that measure
+  different things.
 - Actionable toast buttons beyond the click-to-open. `Argument` exists so adding one later is not a
   re-plumbing.
 - In-app quiet hours or a minimum interval between toasts. Delegated to Focus Assist and the
