@@ -155,6 +155,19 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsTests.cs` inside the class:
     }
 
     [Fact]
+    public void NotifyFor_DefaultsOnForKnownSourcesEvenBeforeNormalization_AndOffForUnknownIds()
+    {
+        // new Settings() has an empty StatusSources until Load/Save normalizes it; the tests and any
+        // code path that constructs settings directly must still get the documented default.
+        var s = new Settings();
+        Assert.True(s.NotifyFor("claude"));
+        Assert.True(s.NotifyFor("openai"));
+        Assert.False(s.NotifyFor("gemini"));
+        s.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Notify = false };
+        Assert.False(s.NotifyFor("openai"));
+    }
+
+    [Fact]
     public void Notifications_RoundTripThroughSave()
     {
         var path = PathFor("settings.json");
@@ -294,9 +307,13 @@ In the `sources[source.Id] = entry is null ? ... : new StatusSourceSettings { ..
 After `EnabledSources()` add:
 
 ```csharp
-    /// <summary>Whether a source's transitions should toast. Unknown ids are silent.</summary>
+    /// <summary>Whether a source's transitions should toast. Unknown ids are silent. A known source
+    /// with no entry yet — a Settings constructed in code rather than loaded, before NormalizeFields
+    /// has run — gets the default, on; otherwise every status toast would depend on whether Load
+    /// happened to run first.</summary>
     public bool NotifyFor(string sourceId)
-        => StatusSources.TryGetValue(sourceId, out var entry) && entry is { Notify: true };
+        => StatusSourceRegistry.ById(sourceId) is not null
+           && (!StatusSources.TryGetValue(sourceId, out var entry) || entry is not { Notify: false });
 ```
 
 - [ ] **Step 4: Run the tests**
@@ -716,6 +733,14 @@ public class NotificationRulesUsageTests
     }
 
     [Fact]
+    public void ARepeatedStaleReadingLogsStaleOnce()
+    {
+        var rules = ArmedAt(10);
+        Assert.Contains(rules.OnUsage(Stale(Snap(10, T0.AddMinutes(1))), Absolute(), T0.AddMinutes(1)).Log, l => l.Contains("stale"));
+        Assert.Empty(rules.OnUsage(Stale(Snap(10, T0.AddMinutes(2))), Absolute(), T0.AddMinutes(2)).Log);
+    }
+
+    [Fact]
     public void LeavingRedIsSilent_ReturningAfterGreenNotifiesAgain()
     {
         var rules = ArmedAt(90);
@@ -726,12 +751,30 @@ public class NotificationRulesUsageTests
     }
 
     [Fact]
+    public void ACoalescedToastIsRetractedAsSoonAsAnyOfItsKeysLeavesTheLevel()
+    {
+        // The toast said "5-hour window and 7-day window are now red". When 5h drops back, that
+        // sentence is false, so the toast goes — even though 7d is still red (the badge still says so).
+        var rules = new NotificationRules();
+        rules.NoteLiveOutcome(LiveOutcome.Snapshot);
+        rules.OnUsage(Fresh(Snap(10, T0, seven: 10)), Absolute(), T0);
+        Assert.NotNull(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 90)), Absolute(), T0.AddMinutes(1)).Notification);
+        var partial = rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(2), seven: 90)), Absolute(), T0.AddMinutes(2));
+        Assert.Null(partial.Notification);
+        Assert.True(partial.RemoveUsageToast);
+        // 7d never left red: still no second toast for it.
+        Assert.Null(rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(3), seven: 91)), Absolute(), T0.AddMinutes(3)).Notification);
+    }
+
+    [Fact]
     public void Hysteresis_RedToOrangeToRedIsOneToast_RedToGreenToRedIsTwo()
     {
         var rules = ArmedAt(10);
         Assert.NotNull(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1))), Absolute(), T0.AddMinutes(1)).Notification);
         Assert.Null(rules.OnUsage(Fresh(Snap(70, T0.AddMinutes(2))), Absolute(), T0.AddMinutes(2)).Notification);   // orange
-        Assert.Null(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(3))), Absolute(), T0.AddMinutes(3)).Notification);   // red again: silent
+        var latched = rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(3))), Absolute(), T0.AddMinutes(3));               // red again: silent
+        Assert.Null(latched.Notification);
+        Assert.Contains(latched.Log, l => l.Contains("hysteresis"));
         Assert.Null(rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(4))), Absolute(), T0.AddMinutes(4)).Notification);   // green re-arms
         Assert.NotNull(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(5))), Absolute(), T0.AddMinutes(5)).Notification);
     }
@@ -740,10 +783,12 @@ public class NotificationRulesUsageTests
     public void ClockOnlyCrossing_TheSameSnapshotTurnsRedAsTheWindowElapses()
     {
         // Pace on (50/85). 30 % used, 5-hour window resetting at T0 + 4 h 30. Twenty minutes before
-        // T0 the elapsed fraction is 0.033 — inside SeverityRules' dead zone, so the absolute
-        // thresholds decide: Green. At T0 the fraction reaches 0.10, the ratio is 30 / 10 = 3.0 ≥
-        // 1.75: Red. Nothing but the clock moved. This is the case the deleted timestamp rule would
-        // have made unnotifiable. By minute 60 the ratio is back to 1.0 (Green), which re-arms.
+        // T0 the elapsed fraction is 0.033 — inside SeverityRules' dead zone (0.10), so the absolute
+        // thresholds decide: Green. Around T0 the fraction leaves the dead zone (in doubles
+        // 1 - 0.9 lands a hair under 0.10, so it is minute 5 with fraction 0.117 rather than minute 0)
+        // and the ratio is 30 / 11.7 ≈ 2.6, above RedRatio 1.75: Red. Nothing but the clock moved.
+        // This is the case the deleted timestamp rule would have made unnotifiable. By minute 60 the
+        // ratio is back to 1.0 (Green), which re-arms — still one toast in the whole run.
         var settings = new Settings();
         var snapshot = new UsageSnapshot(T0, new WindowUsage(30, T0.AddHours(4.5)), null);
         var rules = new NotificationRules();
@@ -1072,6 +1117,7 @@ public sealed partial class NotificationRules
         foreach (var gone in _keys.Keys.Where(k => !present.Contains(k)).ToList()) _keys.Remove(gone);
 
         var crossed = new List<UsageValue>();
+        var latched = new List<UsageValue>();
         bool exited = false;
         foreach (var value in values)
         {
@@ -1083,7 +1129,11 @@ public sealed partial class NotificationRules
                 _keys[value.Key] = new KeyState { Above = above, Notified = above };
                 continue;
             }
-            if (above && !state.Above && !state.Notified && _armed) crossed.Add(value);
+            if (above && !state.Above && _armed)
+            {
+                if (!state.Notified) crossed.Add(value);
+                else latched.Add(value);   // red → orange → red on the clock: one toast, not two
+            }
             if (!above && state.Above && state.Notified) exited = true;
             if (value.Severity == Severity.Green) state.Notified = false;   // hysteresis exit
             else if (above && !state.Above && _armed) state.Notified = true;
@@ -1101,8 +1151,13 @@ public sealed partial class NotificationRules
             return new(null, log, false);
         }
 
-        bool anyNotifiedAbove = _keys.Values.Any(k => k.Above && k.Notified);
-        bool remove = exited && !anyNotifiedAbove;
+        // One tag holds one toast, and its body may name several keys. The moment any of them leaves
+        // the level the toast asserts something false, so it is retracted whole; a key still red is
+        // still red on the badge and in the popup, which is where a persistent claim belongs.
+        bool remove = exited;
+
+        if (latched.Count > 0)
+            log.Add($"notify[usage]: hysteresis; {Describe(latched)} re-entered the level but stays latched until green");
 
         if (crossed.Count == 0) return new(null, log, remove);
 
@@ -1613,7 +1668,13 @@ public sealed class ToastPresenter : IDisposable
 
             var tag = notification.Tag;
             toast.Activated += (_, _) => Marshal(() => { Forget(tag, toast); _onActivated(); });
-            toast.Dismissed += (_, _) => Marshal(() => Forget(tag, toast));
+            // Dismissed(TimedOut) only means the banner slid into Action Center, where it can still be
+            // clicked — so the object must stay referenced. Only the user closing it or the app hiding
+            // it ends its life; a replacement under the same tag drops it via the dictionary anyway.
+            toast.Dismissed += (_, e) => Marshal(() =>
+            {
+                if (e.Reason != ToastDismissalReason.TimedOut) Forget(tag, toast);
+            });
             toast.Failed += (_, e) => Marshal(() =>
             {
                 Forget(tag, toast);
