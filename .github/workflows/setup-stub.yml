@@ -1,0 +1,89 @@
+name: Setup stub
+
+# Publishes ClaudeUsageTraySetup.exe to the permanent `setup-stub` release. main only: a push on any
+# feature branch would otherwise --clobber the canonical production asset. The paths filter includes
+# the linked shared source, which would otherwise change without the stub being rebuilt.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/ClaudeUsageTraySetupStub/**"
+      - "src/ClaudeUsageTray/Core/UpdateRing.cs"
+      - ".github/workflows/setup-stub.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Test
+        run: dotnet test tests/ClaudeUsageTraySetupStub.Tests --configuration Release
+
+      - name: Publish (NativeAOT)
+        shell: pwsh
+        # Needs the MSVC linker, which is why the stub is published here and not locally. SourceRevisionId
+        # lands in the informational version that `--version` prints.
+        run: dotnet publish src/ClaudeUsageTraySetupStub --configuration Release --runtime win-x64 -p:SourceRevisionId=${{ github.sha }} -o artifacts/stub
+
+      - name: Smoke test the binary
+        shell: pwsh
+        run: |
+          $exe = "artifacts/stub/ClaudeUsageTraySetup.exe"
+          if (-not (Test-Path $exe)) { throw "publish produced no exe" }
+          $size = (Get-Item $exe).Length
+          Write-Host ("ClaudeUsageTraySetup.exe is {0:N1} MB" -f ($size / 1MB))
+          if ($size -gt 8MB) { throw "stub is unexpectedly large ($size bytes): did AOT trimming fail?" }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "--version exited $LASTEXITCODE" }
+          & $exe --ring nightly
+          if ($LASTEXITCODE -ne 3001) { throw "--ring nightly exited $LASTEXITCODE, expected 3001" }
+
+      - name: Ensure the setup-stub release exists and is never 'latest'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # GitHub picks the newest non-draft, non-prerelease release as /releases/latest. A plain release
+        # here would take that title and break both the README's install link and the stub's own stable
+        # resolution — only when the stub is republished, the worst time to find out. --latest=false is
+        # sticky on the release object; it is asserted below anyway.
+        run: |
+          gh release view setup-stub --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create setup-stub --repo $env:GITHUB_REPOSITORY --latest=false --target main `
+              --title "Claude Usage Tray Setup (permanent link)" `
+              --notes "Version-independent installer. Download ClaudeUsageTraySetup.exe and run it; it installs the newest release for the ring you pick (stable or beta) or switches the ring of an existing install. Rebuilt automatically when its source changes."
+            if ($LASTEXITCODE -ne 0) { throw "could not create the setup-stub release" }
+          }
+
+      - name: Upload the exe
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload setup-stub artifacts/stub/ClaudeUsageTraySetup.exe --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw "upload failed" }
+
+      - name: Assert /releases/latest still resolves to a v* tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $latest = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Host "No latest release yet (no stable release published so far)."; exit 0 }
+          if ($latest -notmatch '^v\d') {
+            throw "/releases/latest resolves to '$latest'. The README link and the stub's stable resolution depend on it being a v* tag; unset 'latest' on that release."
+          }
+          Write-Host "/releases/latest -> $latest"

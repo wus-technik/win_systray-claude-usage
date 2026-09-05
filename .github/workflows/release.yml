@@ -66,6 +66,19 @@ jobs:
       - name: Test
         run: dotnet test --configuration Release --no-restore
 
+      - name: Assert /releases/latest resolves to a v* tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # The setup stub's stable resolution and the README's install link are both built on
+        # /releases/latest/download. If some other release (the permanent setup-stub one) has taken the
+        # 'latest' title, fail here rather than ship an update onto a broken install path.
+        run: |
+          $latest = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Host "No latest release yet."; exit 0 }
+          if ($latest -notmatch '^v\d') { throw "/releases/latest resolves to '$latest', not a v* tag. Unset 'latest' on that release before releasing." }
+          Write-Host "/releases/latest -> $latest"
+
       - name: Check for existing public releases
         id: check_releases
         shell: pwsh
@@ -151,3 +164,18 @@ jobs:
             dnx --yes vpk --version 1.2.0 @mirrorArgs
             if ($LASTEXITCODE -ne 0) { throw "vpk upload failed for mirror channel '$env:MIRROR_CHANNEL'" }
           }
+
+      - name: Attach the setup stub
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Copied, not rebuilt: identical bytes on every release, no AOT cost here, and the stub only
+        # changes when its own inputs do (setup-stub.yml's paths filter). Missing stub release = warn,
+        # not fail: the first release after this workflow lands may run before the stub has ever built.
+        run: |
+          gh release view setup-stub --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) { Write-Host "::warning::No setup-stub release yet; ClaudeUsageTraySetup.exe not attached."; exit 0 }
+          gh release download setup-stub --repo $env:GITHUB_REPOSITORY --pattern ClaudeUsageTraySetup.exe --dir artifacts/stub
+          if ($LASTEXITCODE -ne 0) { throw "could not download ClaudeUsageTraySetup.exe from the setup-stub release" }
+          gh release upload "v$env:VERSION" artifacts/stub/ClaudeUsageTraySetup.exe --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw "could not attach ClaudeUsageTraySetup.exe to v$env:VERSION" }
