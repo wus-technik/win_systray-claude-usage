@@ -8,7 +8,7 @@ namespace ClaudeUsageTray.Tray;
 public sealed class UsagePopup : Form
 {
     public UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now,
-        PlatformStatus? platformStatus = null, string? lastFetchStatus = null, string? noDataText = null)
+        IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null, string? noDataText = null)
     {
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
         Text = AppInfo.Name;
@@ -27,7 +27,7 @@ public sealed class UsagePopup : Form
             Dock = DockStyle.Fill,
         };
 
-        AddPlatformStatus(layout, platformStatus, settings, now);
+        AddPlatformStatus(layout, statusSources, settings, now);
 
         if (choice.Snapshot is not { } snapshot)
         {
@@ -100,66 +100,68 @@ public sealed class UsagePopup : Form
         AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings, elapsed), elapsed);
     }
 
-    /// <summary>The page's own banner is the single source of truth — exactly what the user would
-    /// see at status.claude.com — so it is shown verbatim. A disruption is the first thing seen,
-    /// hence above the usage rows, and it still renders in the no-data state.</summary>
-    private static void AddPlatformStatus(TableLayoutPanel layout, PlatformStatus? status,
+    /// <summary>One block per watched source, in registry order. Each banner is the page's own
+    /// wording, verbatim — exactly what the user would see on the status page — so two healthy
+    /// sources produce two lines rather than one merged sentence neither page wrote. Disruptions sit
+    /// above the usage rows and still render in the no-data state.</summary>
+    private static void AddPlatformStatus(TableLayoutPanel layout, IReadOnlyList<SourceView>? sources,
         Settings settings, DateTimeOffset now)
     {
-        bool stale = status is not null
-            && now - status.FetchedAt > TimeSpan.FromMinutes(settings.StalenessMinutes);
-
-        string header;
-        Color color;
-        if (status is null)
+        if (sources is null) return;
+        foreach (var view in sources)
         {
-            header = "Claude status: unavailable";
-            color = SystemColors.GrayText;
-        }
-        else if (status.Degraded)
-        {
-            header = $"Claude status: {StatusText(status)}";
-            // DarkOrange for a minor banner; Firebrick for major/critical and for any unknown
-            // indicator, which the Degraded rule already treats as a disruption.
-            color = status.Indicator == "minor" ? Color.DarkOrange : Color.Firebrick;
-        }
-        else
-        {
-            header = $"Claude status: {StatusText(status)}";
-            color = SystemColors.GrayText;
-        }
-        if (stale) header += " · stale";
+            var status = view.Status;
+            bool stale = status is not null
+                && now - status.FetchedAt > TimeSpan.FromMinutes(settings.StalenessMinutes);
+            bool relevant = status is not null && StatusDetail.IsRelevant(status, view.Filter);
 
-        layout.Controls.Add(WrappingLabel(header, color, new Padding(0, 0, 0, 2)));
+            layout.Controls.Add(WrappingLabel(
+                StatusDetail.Header(view.Source, status, relevant, stale),
+                Colour(StatusDetail.Emphasis(status, relevant)),
+                new Padding(0, 0, 0, 2)));
 
-        if (status is not { Degraded: true }) return;
+            if (status is null || !relevant) continue;
 
-        var shown = status.Incidents.Take(3).ToList();
-        foreach (var incident in shown)
-        {
-            layout.Controls.Add(WrappingLabel(DescribeIncident(incident, now),
-                SystemColors.ControlText, new Padding(0, 0, 0, 0)));
-            if (incident.Shortlink is { } link)
+            const int MaxRows = 3;
+            foreach (var row in StatusDetail.Rows(status, view.Filter, now, MaxRows))
             {
-                var details = new LinkLabel { Text = "Details", AutoSize = true, Margin = new Padding(0, 0, 0, 0) };
+                layout.Controls.Add(WrappingLabel(row.Text, SystemColors.ControlText, new Padding(0)));
+                if (row.Link is not { } link) continue;
+                var details = new LinkLabel { Text = "Details", AutoSize = true, Margin = new Padding(0) };
                 details.LinkClicked += (_, _) => OpenUrl(link);
                 layout.Controls.Add(details);
             }
-        }
-        if (status.Incidents.Count > shown.Count)
-        {
-            layout.Controls.Add(new Label
+
+            int hidden = StatusDetail.HiddenCount(status, view.Filter, MaxRows);
+            if (hidden > 0)
             {
-                Text = $"+{status.Incidents.Count - shown.Count} more",
-                AutoSize = true,
-                ForeColor = SystemColors.GrayText,
-                Margin = new Padding(0, 2, 0, 0),
-            });
+                layout.Controls.Add(new Label
+                {
+                    Text = $"+{hidden} more",
+                    AutoSize = true,
+                    ForeColor = SystemColors.GrayText,
+                    Margin = new Padding(0, 2, 0, 0),
+                });
+            }
+
+            var page = new LinkLabel
+            {
+                Text = view.Source.PageLabel, AutoSize = true, Margin = new Padding(0, 2, 0, 4),
+            };
+            var url = view.Source.PageUrl;
+            page.LinkClicked += (_, _) => OpenUrl(url);
+            layout.Controls.Add(page);
         }
-        var page = new LinkLabel { Text = "status.claude.com", AutoSize = true, Margin = new Padding(0, 2, 0, 4) };
-        page.LinkClicked += (_, _) => OpenUrl("https://status.claude.com");
-        layout.Controls.Add(page);
     }
+
+    /// <summary>DarkOrange for a minor banner; Firebrick for major/critical and for any indicator we
+    /// do not recognise, which the Degraded rule already treats as a disruption.</summary>
+    private static Color Colour(StatusEmphasis emphasis) => emphasis switch
+    {
+        StatusEmphasis.Warning => Color.DarkOrange,
+        StatusEmphasis.Alert => Color.Firebrick,
+        _ => SystemColors.GrayText,
+    };
 
     /// <summary>A label for page-supplied text, which has no length limit we control: banner wording
     /// and incident detail wrap at the bar width and grow downwards instead of stretching the
@@ -174,28 +176,6 @@ public sealed class UsagePopup : Form
         ForeColor = color,
         Margin = margin,
     };
-
-    /// <summary>The page's banner text, verbatim; the indicator name only when the banner is
-    /// empty, which the live page does not send but the parser tolerates.</summary>
-    private static string StatusText(PlatformStatus status)
-        => string.IsNullOrWhiteSpace(status.Description) ? status.Indicator : status.Description;
-
-    /// <summary>One incident row: name, status with initial capital, impact when not
-    /// none/missing, affected components, and age.</summary>
-    private static string DescribeIncident(PlatformIncident incident, DateTimeOffset now)
-    {
-        var parts = new List<string> { $"{incident.Name} — {Capitalize(incident.Status)}" };
-        if (!string.IsNullOrEmpty(incident.Impact) && incident.Impact != "none")
-            parts.Add(incident.Impact);
-        if (incident.Components.Count > 0)
-            parts.Add(string.Join(", ", incident.Components));
-        if (incident.UpdatedAt is { } updated)
-            parts.Add($"updated {RelativeTime.Ago(updated, now)}");
-        return string.Join(" · ", parts);
-    }
-
-    private static string Capitalize(string s)
-        => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     private static void OpenUrl(string url)
     {

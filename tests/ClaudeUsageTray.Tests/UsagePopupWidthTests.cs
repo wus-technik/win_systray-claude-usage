@@ -20,11 +20,14 @@ public class UsagePopupWidthTests : IDisposable
 
     private int WidthWith(PlatformStatus? status)
     {
-        var popup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now, status);
+        var popup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now, Claude(status));
         _open.Add(popup);
         popup.PerformLayout();
         return popup.PreferredSize.Width;
     }
+
+    private static IReadOnlyList<SourceView>? Claude(PlatformStatus? status)
+        => status is null ? null : [new SourceView(StatusSourceRegistry.Claude, status, [])];
 
     private static PlatformStatus Degraded(string description, params PlatformIncident[] incidents)
         => new("claude", Now, "major", description, incidents, []);
@@ -78,14 +81,14 @@ public class UsagePopupWidthTests : IDisposable
     public void LongIncidentTextGrowsThePopupDownwards()
     {
         var baselinePopup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now,
-            Degraded("Elevated errors", Incident("Short")));
+            Claude(Degraded("Elevated errors", Incident("Short"))));
         _open.Add(baselinePopup);
         baselinePopup.PerformLayout();
         var baseline = baselinePopup.PreferredSize.Height;
 
-        var widePopup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now, Degraded("Elevated errors", Incident(
+        var widePopup = new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now, Claude(Degraded("Elevated errors", Incident(
             "Elevated error rates and substantially increased latency affecting the Messages API, "
-            + "streaming responses, and tool use across all first-party surfaces")));
+            + "streaming responses, and tool use across all first-party surfaces"))));
         _open.Add(widePopup);
         widePopup.PerformLayout();
 
@@ -113,7 +116,7 @@ public class UsagePopupWidthTests : IDisposable
 
     private int WidthWith(DisplayChoice choice, PlatformStatus? status)
     {
-        var popup = new UsagePopup(choice, new Settings(), Now, status);
+        var popup = new UsagePopup(choice, new Settings(), Now, Claude(status));
         _open.Add(popup);
         popup.PerformLayout();
         return popup.PreferredSize.Width;

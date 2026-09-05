@@ -422,7 +422,7 @@ public sealed class TrayApp : ApplicationContext
         if (_popup is { IsDisposed: false }) { _popup.Close(); }
         var now = DateTimeOffset.UtcNow;
         _popup = new UsagePopup(SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings),
-            _settings, now, _statusMonitor.Status("claude"), _lastFetchStatus, _noDataText);
+            _settings, now, _statusMonitor.Sources(), _lastFetchStatus, _noDataText);
         _popup.Show();
         _popup.Activate();
     }
