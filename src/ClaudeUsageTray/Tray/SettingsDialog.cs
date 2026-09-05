@@ -61,6 +61,11 @@ public sealed class SettingsDialog : Form
         Text = "Use beta releases (pre-release builds, may be unstable)",
         AutoSize = true,
     };
+    private readonly CheckBox _watchOpenAi = new()
+        { Name = "watchOpenAi", Text = "Watch OpenAI status", AutoSize = true };
+    private readonly TextBox _openAiComponents = new() { Name = "openAiComponents", Width = 240 };
+    private readonly Label _openAiComponentsCaption = new()
+        { Text = "Components (comma-separated, blank = all)", AutoSize = true };
     private readonly UpdateOptions _updates;
     private UpdateAvailability _updateState;
     private string? _releaseNotes;
@@ -135,6 +140,9 @@ public sealed class SettingsDialog : Form
         layout.Controls.Add(Heading("Colour thresholds"));
         layout.Controls.Add(Spinners(("Orange at", _orange, "%"), ("Red above", _red, "%")));
         layout.Controls.Add(Indent(_paceColors));
+        layout.Controls.Add(_watchOpenAi);
+        layout.Controls.Add(Indent(_openAiComponentsCaption));
+        layout.Controls.Add(Indent(_openAiComponents));
         layout.Controls.Add(Indent(_preview));
         layout.Controls.Add(Indent(_previewCaption));
 
@@ -329,7 +337,7 @@ public sealed class SettingsDialog : Form
         int order = 0;
         foreach (var control in new Control[]
                  { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   _desktopStaleness, _betaReleases, reset, cancel, save })
+                   _desktopStaleness, _betaReleases, _watchOpenAi, _openAiComponents, reset, cancel, save })
             control.TabIndex = order++;
         return row;
     }
@@ -347,6 +355,11 @@ public sealed class SettingsDialog : Form
         // Null is resolved at startup (Program.cs) against the installed channel; falling back to
         // false here only covers a dialog constructed straight from a file, as the tests do.
         _betaReleases.Checked = source.UseBetaReleases ?? false;
+        var openAi = source.StatusSources.GetValueOrDefault("openai");
+        _watchOpenAi.Checked = openAi?.Enabled ?? false;
+        _openAiComponents.Text = ComponentFilter.Format(
+            openAi?.Components ?? [.. StatusSourceRegistry.OpenAi.DefaultComponents]);
+        _openAiComponents.Enabled = _watchOpenAi.Checked;
         _suspendSync = false;
         SetThresholds(source.Thresholds.Orange, source.Thresholds.Red, source.StalenessMinutes,
             source.DesktopStalenessHours);
@@ -381,6 +394,7 @@ public sealed class SettingsDialog : Form
         _orange.ValueChanged += (_, _) => SyncRangesAndPreview();
         _red.ValueChanged += (_, _) => SyncRangesAndPreview();
         _paceColors.CheckedChanged += (_, _) => SyncRangesAndPreview();
+        _watchOpenAi.CheckedChanged += (_, _) => _openAiComponents.Enabled = _watchOpenAi.Checked;
         _preview.Paint += (_, e) => UsageBar.Paint(e.Graphics, _preview.Width, _preview.Height,
             PreviewPercent, PreviewSeverity(), PreviewFraction());
     }
@@ -409,6 +423,12 @@ public sealed class SettingsDialog : Form
         draft.DesktopStalenessHours = (int)_desktopStaleness.Value;
         draft.RunAtStartup = _startup.Checked;
         draft.UseBetaReleases = _betaReleases.Checked;
+        // The typed filter is kept even when unchecked, so turning the source back on does not lose it.
+        draft.StatusSources["openai"] = new StatusSourceSettings
+        {
+            Enabled = _watchOpenAi.Checked,
+            Components = [.. ComponentFilter.Parse(_openAiComponents.Text)],
+        };
         return draft;
     }
 
@@ -458,5 +478,13 @@ public sealed class SettingsDialog : Form
         UseBetaReleases = source.UseBetaReleases,
         ConfigPathOverride = source.ConfigPathOverride,
         DesktopHistoryPathOverride = source.DesktopHistoryPathOverride,
+        StatusSources = source.StatusSources.ToDictionary(
+            e => e.Key,
+            e => e.Value is null ? null : new StatusSourceSettings
+            {
+                Enabled = e.Value.Enabled,
+                Components = e.Value.Components is null ? null : [.. e.Value.Components],
+            },
+            StringComparer.OrdinalIgnoreCase),
     };
 }

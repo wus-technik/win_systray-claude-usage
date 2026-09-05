@@ -241,4 +241,76 @@ public class SettingsDialogTests : IDisposable
         Spinner(Dialog(live), "desktopStaleness").Value = 24;
         Assert.Equal(3, live.DesktopStalenessHours);
     }
+
+    private static CheckBox WatchOpenAi(SettingsDialog d) => Find<CheckBox>(d, "watchOpenAi");
+    private static TextBox OpenAiComponents(SettingsDialog d) => Find<TextBox>(d, "openAiComponents");
+
+    private static T Find<T>(Control root, string name) where T : Control
+        => root.Controls.Find(name, searchAllChildren: true).OfType<T>().Single();
+
+    [Fact]
+    public void OpenAiCheckbox_ReflectsSettings_AndDrivesTheDraft()
+    {
+        var settings = new Settings();
+        settings.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Components = ["codex"] };
+        var dialog = Dialog(settings);
+
+        Assert.True(WatchOpenAi(dialog).Checked);
+        Assert.Equal("codex", OpenAiComponents(dialog).Text);
+
+        OpenAiComponents(dialog).Text = "codex, login";
+        var draft = dialog.Draft();
+        Assert.True(draft.StatusSources["openai"]!.Enabled);
+        Assert.Equal(["codex", "login"], draft.StatusSources["openai"]!.Components);
+    }
+
+    [Fact]
+    public void ComponentsField_IsOnlyEnabledWhileWatching()
+    {
+        var dialog = Dialog(new Settings());
+        Assert.False(WatchOpenAi(dialog).Checked);
+        Assert.False(OpenAiComponents(dialog).Enabled);
+
+        WatchOpenAi(dialog).Checked = true;
+        Assert.True(OpenAiComponents(dialog).Enabled);
+    }
+
+    [Fact]
+    public void UncheckedOpenAi_KeepsTheTypedFilterForNextTime()
+    {
+        var dialog = Dialog(new Settings());
+        WatchOpenAi(dialog).Checked = true;
+        OpenAiComponents(dialog).Text = "codex";
+        WatchOpenAi(dialog).Checked = false;
+
+        var draft = dialog.Draft();
+        Assert.False(draft.StatusSources["openai"]!.Enabled);
+        Assert.Equal(["codex"], draft.StatusSources["openai"]!.Components);
+    }
+
+    /// <summary>The Claude filter is an advanced JSON-only key with no control here; the dialog must
+    /// carry it through a save instead of resetting it to the default.</summary>
+    [Fact]
+    public void ClaudeFilter_SurvivesTheRoundTrip()
+    {
+        var settings = new Settings();
+        settings.StatusSources["claude"] = new StatusSourceSettings { Enabled = true, Components = ["api"] };
+        var draft = Dialog(settings).Draft();
+        Assert.Equal(["api"], draft.StatusSources["claude"]!.Components);
+    }
+
+    /// <summary>"Reset to defaults" is scoped to the colour thresholds and staleness (see
+    /// ResetLeavesTheDisplayModeAlone). Which status pages are watched is a preference of the same
+    /// kind as the display mode, not a colour.</summary>
+    [Fact]
+    public void ResetLeavesTheOpenAiSourceAlone()
+    {
+        var settings = new Settings();
+        settings.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Components = ["codex"] };
+        var dialog = Dialog(settings);
+        Button(dialog, "reset").PerformClick();
+
+        Assert.True(WatchOpenAi(dialog).Checked);
+        Assert.Equal("codex", OpenAiComponents(dialog).Text);
+    }
 }
