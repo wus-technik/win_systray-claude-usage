@@ -47,8 +47,11 @@ Everything that decides is a pure or clock-free type in `Core/`, following `Fetc
 `Enumerate(snapshot, settings, now)` returns one row per notifiable value:
 
 ```csharp
-public sealed record UsageValue(string Key, string Label, int Percent, Severity Severity);
+public sealed record UsageValue(string Key, string Label, int Percent, Severity Severity, DateTimeOffset? ResetsAt);
 ```
+
+`ResetsAt` travels with the value so the toast expiry (*Usage toasts expire*) is a pure function of
+the crossing rather than a second lookup in the presenter.
 
 Keys are stable across polls and are what the transition state is filed under: `"5h"`, `"7d"`,
 `"credits"`, and each scoped limit's `Label` — which `ScopedLimit` already documents as its dedup
@@ -91,11 +94,16 @@ in scope. `UsagePopup.ParseSeverity` is private today and moves to `Core` with t
 Holds the remembered state, takes `now` from the caller, returns what to show:
 
 ```csharp
-public sealed record Notification(string Title, string Body, string Argument);
+public sealed record Notification(string Title, string Body, string Argument, string Tag, DateTimeOffset? ExpiresAt);
 ```
 
 `Argument` is the toast's activation payload, so a future second toast action does not need a new
-plumbing path. Today there is exactly one value.
+plumbing path. Today there is exactly one value. `Tag` and `ExpiresAt` are decided here, not in
+`ToastPresenter`, which must decide nothing. `OnUsage` returns them inside a
+`NotificationOutcome(Notification?, Log, RemoveUsageToast)` so the log lines and the toast retraction
+on leaving red are also decisions made in `Core`. `RemoveUsageToast` is true whenever a notified key
+leaves the level **or stops being reported by the payload**; the single usage toast is retracted
+whole, since its body may name several keys and any one of them leaving makes the sentence false.
 
 **Arming is decided here, not in `TrayApp`.** `DisplayChoice` carries no cache-versus-live
 provenance, so if arming were an `if` in the UI layer none of the arming tests would exercise the
@@ -421,6 +429,8 @@ Consequences for the implementation:
 - **`Group = "claudeusagetray"`, `Tag = "usage"` or `"status:{sourceId}"`**, so a newer toast of a
   kind replaces its predecessor in Action Center rather than stacking a history of superseded states.
 - `Activated` calls `TrayApp.ShowPopup()`.
+- **`Windows.UI.Notifications` declares its own `Notification` type.** `ToastPresenter.cs` resolves
+  the collision with a file-local alias to the Core record; the record keeps its name.
 
 ### Where it runs
 

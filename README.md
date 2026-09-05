@@ -203,9 +203,11 @@ percentages only — **never** money amounts, currency, or account-specific mode
 
 **Right-click → `Settings…`** covers everything except the two path overrides: which icons to show,
 run-at-startup, the two colour thresholds, pace colouring, the two staleness cutoffs, and the
-**Watch OpenAI status** checkbox with its comma-separated component field. Saving applies
-at once — the badges and the popup repaint, no restart. A preview bar shows where the thresholds land
-before you commit them, and the two spinners constrain each other so `orange` can never reach `red`.
+**Watch OpenAI status** checkbox with its comma-separated component field, and a **Notifications**
+group — whether a limit turning red (or orange) raises a Windows toast, and whether a Claude or
+OpenAI status change does. Saving applies at once — the badges and the popup repaint, no restart. A
+preview bar shows where the thresholds land before you commit them, and the two spinners constrain
+each other so `orange` can never reach `red`.
 
 Its **About** section names the running version and splits updating into the two decisions it
 actually is. The **⟳** button checks GitHub Releases straight away rather than waiting for the
@@ -241,7 +243,8 @@ file gives no way to tell which of the two was meant.
 | `useBetaReleases` | offer pre-release builds too; `false` means stable releases only | unset — follows the channel the app was installed from |
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
 | `desktopHistoryPathOverride` | explicit path to the desktop app's `plan-usage-history.json`; file-only, and re-read at launch | unset |
-| `statusSources` | which status pages to watch, and which of their components matter | `claude` on watching everything, `openai` off with the default filter |
+| `statusSources` | which status pages to watch, which of their components matter, and whether a change should toast | `claude` on watching everything, `openai` off with the default filter |
+| `usageNotifications` | `{ "enabled": true, "level": "red" }` — toast when a limit crosses into `red`, or into `orange` or red with `"level": "orange"` | as shown |
 
 ### `statusSources`
 
@@ -249,8 +252,8 @@ Which public status pages the tray watches, and which of their components matter
 
 ```json
 "statusSources": {
-  "claude": { "enabled": true,  "components": [] },
-  "openai": { "enabled": false, "components": ["codex", "responses", "login", "vs code extension"] }
+  "claude": { "enabled": true,  "notify": true, "components": [] },
+  "openai": { "enabled": false, "notify": true, "components": ["codex", "responses", "login", "vs code extension"] }
 }
 ```
 
@@ -259,6 +262,8 @@ Which public status pages the tray watches, and which of their components matter
 - `components` — case-insensitive substring match against the page's component names; `"codex"`
   matches `Codex API`, `Codex Web`, and `Codex in ChatGPT Desktop`. An empty list watches every
   component.
+- `notify` — raise a Windows toast when the page's *watched* state changes, in both directions. On by
+  default. Kept when `enabled` is off, so turning a page off and on again keeps the choice.
 
 A disruption affecting none of your watched components still shows the page's banner, greyed and
 marked `· outside your watched components`, and adds nothing to the tooltip. A disruption the page
@@ -269,6 +274,29 @@ an outage the page could not classify.
 tooltip and leaves the badge alone, because it says nothing about your Claude usage headroom. The
 `claude` entry accepts a `components` filter too — an advanced, JSON-only setting that narrows the
 popup rows and the tooltip but never the badge.
+
+### Notifications
+
+Two moments raise a real Windows toast — it lands in Action Center, obeys Focus Assist, and has its own
+entry under *Settings → System → Notifications* as **Claude Usage Tray**, so quiet hours are Windows'
+job and not duplicated here. Clicking a toast opens the usage popup.
+
+- **A limit turns red.** Whichever rule decided the colour — the pace ratio or the absolute ceiling —
+  and for every value the popup can show: the two windows, each scoped weekly limit, and credits.
+  Exactly one toast per red period: a value hovering at the pace boundary as the clock moves does not
+  toast again until it has been back to green. Leaving red is silent — the window reset, which the
+  popup already predicted. `"level": "orange"` notifies on the crossing into orange instead (once,
+  even if it goes straight to red).
+- **A watched status page changes state**, both ways, naming the incident in the page's own words.
+  For OpenAI only the watched components count, so a Sora outage stays quiet while a Codex one does
+  not. A recovery toast never claims a page is healthy while it still reports a disruption you are
+  not watching.
+
+Launching into an already-red or already-degraded state raises nothing, and neither does editing
+settings — thresholds, pace colouring, staleness, the level, the watch filter — whatever it does to
+the colours on screen. Every emitted or suppressed toast is one line in `fetch.log` naming why.
+
+Toasts need the Start Menu shortcut the installer creates; a `dotnet run` from source shows none.
 
 ## Privacy
 

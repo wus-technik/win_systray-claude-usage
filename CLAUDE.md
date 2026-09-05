@@ -35,8 +35,8 @@ Two-layer split, and it is load-bearing:
 
 **Put new logic in `Core/` as a pure function and unit-test it.** Adding a decision to `TrayApp` or a
 paint method is how this codebase becomes untestable — the reason `FetchScheduler`, `StatusScheduler`,
-`SeverityRules`, `PopupRows`, `TimeMarker`, and `SnapshotPrecedence` exist as separate state machines
-is that each was pulled out of the UI to be testable.
+`SeverityRules`, `PopupRows`, `TimeMarker`, `SnapshotPrecedence`, `UsageValues`, and `NotificationRules`
+exist as separate state machines is that each was pulled out of the UI to be testable.
 
 ### Data flow
 
@@ -62,6 +62,12 @@ status) that owns the floors, backoff, and budget. `TrayApp` enforces single-fli
 the UI thread. Fetch outcomes land in `%APPDATA%\ClaudeUsageTray\fetch.log` — percentages and
 outcomes only, **never** money amounts, currency, or account-specific model names.
 
+**Notifications** are evaluated once per `Render()` by `NotificationRules` (usage crossings with
+arming, hysteresis and a settings fingerprint; per-source status transitions on `IsRelevant`) and
+shown by `Tray/ToastPresenter`, which decides nothing and never throws. Every value's severity comes
+from `UsageValues` — the badge, the popup bar and the toast all call it, so they cannot disagree. See
+`docs/superpowers/specs/2026-09-05-desktop-notifications-design.md` before touching any of this.
+
 ### Non-negotiable invariants
 
 - **The token is read-only.** Never write, refresh, or log credential material anywhere, `fetch.log`
@@ -73,6 +79,10 @@ outcomes only, **never** money amounts, currency, or account-specific model name
   show up with no app update.
 - **Absent data means no row.** Never render a placeholder `0 %` or `—` for a limit the account
   does not have.
+- **Toasts never name scoped limits in the log.** `fetch.log` may carry `5h`, `7d`, `credits` and
+  counts; a scoped limit's label is an account-specific model name and is logged as `scoped=N`.
+- **The app and its tests target `net10.0-windows10.0.19041.0`; nothing else does.** The setup stub
+  stays on `net10.0-windows` — pulling the Windows SDK projection into a NativeAOT build buys nothing.
 
 ## Working with the live usage endpoint
 

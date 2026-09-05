@@ -8,6 +8,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [Unreleased]
+
+### Added
+
+- **Desktop notifications.** A Windows toast when a usage limit turns red — whichever rule coloured
+  it — and one each way when a watched status page goes down or recovers, in the page's own words.
+  Exactly one toast per red period, none at launch into an already-red state, none for a settings
+  edit, and a recovery toast that never claims a page is healthy while it still reports a disruption
+  outside your watched components. Toasts land in Action Center and follow Focus Assist; clicking one
+  opens the popup. New **Notifications** group in Settings, plus `usageNotifications` and a per-source
+  `notify` key in `settings.json`, all on by default.
+
+### Changed
+
+- The installed size grows by about 24 MB (the Windows SDK projection that toasts need). Velopack
+  deltas mean you download it once. The supported Windows floor is now Windows 10 2004 (build 19041).
+
 ## [0.7.3-beta.2] - 2026-09-05
 
 ### Added
