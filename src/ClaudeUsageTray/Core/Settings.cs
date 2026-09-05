@@ -5,6 +5,51 @@ namespace ClaudeUsageTray.Core;
 
 public enum DisplayMode { FiveHour, SevenDay, Both }
 
+/// <summary>The lowest severity a usage crossing must reach to notify. Not <see cref="Severity"/>:
+/// its Green member would be a meaningless notification level.</summary>
+public enum NotifyLevel { Orange, Red }
+
+/// <summary>The usage trigger's switch and level. Its own object because it carries a level; the
+/// status triggers are a plain bool on each source.</summary>
+public sealed class UsageNotificationSettings
+{
+    public bool Enabled { get; set; } = true;
+    public NotifyLevel Level { get; set; } = NotifyLevel.Red;
+}
+
+/// <summary>Reads usageNotifications field by field so a bad level resets the level alone. The
+/// default enum converter would throw JsonException for "purple", and Settings.Load answers a
+/// JsonException with full defaults — which would reset thresholds and display mode for a typo.</summary>
+public sealed class TolerantUsageNotificationsConverter : JsonConverter<UsageNotificationSettings>
+{
+    public override UsageNotificationSettings Read(ref Utf8JsonReader reader, Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        var result = new UsageNotificationSettings();
+        if (reader.TokenType != JsonTokenType.StartObject) { reader.Skip(); return result; }
+
+        using var doc = JsonDocument.ParseValue(ref reader);
+        foreach (var property in doc.RootElement.EnumerateObject())
+        {
+            if (property.NameEquals("enabled") && property.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                result.Enabled = property.Value.GetBoolean();
+            else if (property.NameEquals("level") && property.Value.ValueKind == JsonValueKind.String
+                && Enum.TryParse<NotifyLevel>(property.Value.GetString(), ignoreCase: true, out var level)
+                && Enum.IsDefined(level))
+                result.Level = level;
+        }
+        return result;
+    }
+
+    public override void Write(Utf8JsonWriter writer, UsageNotificationSettings value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteBoolean("enabled", value.Enabled);
+        writer.WriteString("level", JsonNamingPolicy.CamelCase.ConvertName(value.Level.ToString()));
+        writer.WriteEndObject();
+    }
+}
+
 public sealed class Thresholds
 {
     public int Orange { get; set; } = ThresholdRules.DefaultOrange;
@@ -41,6 +86,9 @@ public static class ThresholdRules
 public sealed class StatusSourceSettings
 {
     public bool Enabled { get; set; }
+    /// <summary>Toast when this source's relevant state flips. Defaults on: whoever enabled a page
+    /// did it to hear about its outages. Independent of Enabled so an off/on cycle keeps the choice.</summary>
+    public bool Notify { get; set; } = true;
     public List<string>? Components { get; set; }
 }
 
@@ -119,6 +167,11 @@ public sealed class Settings
     [JsonConverter(typeof(TolerantStatusSourcesConverter))]
     public Dictionary<string, StatusSourceSettings?> StatusSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The usage trigger. Non-null after Load; the converter keeps a bad level from resetting
+    /// unrelated settings.</summary>
+    [JsonConverter(typeof(TolerantUsageNotificationsConverter))]
+    public UsageNotificationSettings UsageNotifications { get; set; } = new();
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -170,6 +223,9 @@ public sealed class Settings
         if (StalenessMinutes < 0) StalenessMinutes = ThresholdRules.DefaultStalenessMinutes;
         if (DesktopStalenessHours <= 0) DesktopStalenessHours = ThresholdRules.DefaultDesktopStalenessHours;
 
+        UsageNotifications ??= new UsageNotificationSettings();
+        if (!Enum.IsDefined(UsageNotifications.Level)) UsageNotifications.Level = NotifyLevel.Red;
+
         StatusSources ??= new(StringComparer.OrdinalIgnoreCase);
         var sources = new Dictionary<string, StatusSourceSettings?>(StringComparer.OrdinalIgnoreCase);
         foreach (var source in StatusSourceRegistry.All)
@@ -186,6 +242,7 @@ public sealed class Settings
                 : new StatusSourceSettings
                 {
                     Enabled = entry.Enabled,
+                    Notify = entry.Notify,
                     Components = entry.Components is null
                         ? [.. source.DefaultComponents]
                         : [.. ComponentFilter.Normalize(entry.Components)],
@@ -206,4 +263,12 @@ public sealed class Settings
         }
         return result;
     }
+
+    /// <summary>Whether a source's transitions should toast. Unknown ids are silent. A known source
+    /// with no entry yet — a Settings constructed in code rather than loaded, before NormalizeFields
+    /// has run — gets the default, on; otherwise every status toast would depend on whether Load
+    /// happened to run first.</summary>
+    public bool NotifyFor(string sourceId)
+        => StatusSourceRegistry.ById(sourceId) is not null
+           && (!StatusSources.TryGetValue(sourceId, out var entry) || entry is not { Notify: false });
 }

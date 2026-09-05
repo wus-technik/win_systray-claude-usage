@@ -275,4 +275,80 @@ public class SettingsTests : IDisposable
         }
         finally { File.Delete(path); }
     }
+
+    [Fact]
+    public void Notifications_DefaultOn_RedOnly_PerSourceOn()
+    {
+        var s = LoadJson("""{ "displayMode": "both" }""");
+        Assert.True(s.UsageNotifications.Enabled);
+        Assert.Equal(NotifyLevel.Red, s.UsageNotifications.Level);
+        Assert.True(s.StatusSources["claude"]!.Notify);
+        Assert.True(s.StatusSources["openai"]!.Notify);
+        Assert.True(s.NotifyFor("claude"));
+    }
+
+    [Fact]
+    public void NotifyFor_DefaultsOnForKnownSourcesEvenBeforeNormalization_AndOffForUnknownIds()
+    {
+        // new Settings() has an empty StatusSources until Load/Save normalizes it; the tests and any
+        // code path that constructs settings directly must still get the documented default.
+        var s = new Settings();
+        Assert.True(s.NotifyFor("claude"));
+        Assert.True(s.NotifyFor("openai"));
+        Assert.False(s.NotifyFor("gemini"));
+        s.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Notify = false };
+        Assert.False(s.NotifyFor("openai"));
+    }
+
+    [Fact]
+    public void Notifications_RoundTripThroughSave()
+    {
+        var path = PathFor("settings.json");
+        var s = new Settings { UsageNotifications = new UsageNotificationSettings { Enabled = false, Level = NotifyLevel.Orange } };
+        s.StatusSources["openai"] = new StatusSourceSettings { Enabled = false, Notify = false, Components = ["codex"] };
+        s.Save(path);
+        var json = File.ReadAllText(path);
+        Assert.Contains("\"usageNotifications\"", json);
+        Assert.Contains("\"level\": \"orange\"", json);
+        Assert.Contains("\"notify\": false", json);
+
+        var loaded = Settings.Load(path);
+        Assert.False(loaded.UsageNotifications.Enabled);
+        Assert.Equal(NotifyLevel.Orange, loaded.UsageNotifications.Level);
+        // Stored independently of enabled: turning the source off and on again keeps the choice.
+        Assert.False(loaded.StatusSources["openai"]!.Enabled);
+        Assert.False(loaded.StatusSources["openai"]!.Notify);
+        Assert.Equal(["codex"], loaded.StatusSources["openai"]!.Components);
+    }
+
+    [Fact]
+    public void Notifications_InvalidLevel_ResetsOnlyTheLevel()
+    {
+        var s = LoadJson("""
+            { "stalenessMinutes": 42,
+              "usageNotifications": { "enabled": false, "level": "purple" } }
+            """);
+        Assert.Equal(NotifyLevel.Red, s.UsageNotifications.Level);   // invalid → default
+        Assert.False(s.UsageNotifications.Enabled);                  // valid sibling → preserved
+        Assert.Equal(42, s.StalenessMinutes);                        // unrelated → preserved
+    }
+
+    [Fact]
+    public void Notifications_MalformedObject_FallsBackToDefaultsAlone()
+    {
+        var s = LoadJson("""{ "stalenessMinutes": 42, "usageNotifications": 7 }""");
+        Assert.True(s.UsageNotifications.Enabled);
+        Assert.Equal(NotifyLevel.Red, s.UsageNotifications.Level);
+        Assert.Equal(42, s.StalenessMinutes);
+    }
+
+    [Fact]
+    public void SourceNotify_MissingOrMalformed_IsTrue()
+    {
+        Assert.True(LoadJson("""{ "statusSources": { "openai": { "enabled": true } } }""")
+            .StatusSources["openai"]!.Notify);
+        // A malformed entry resets that entry alone (existing rule), and the reset entry notifies.
+        Assert.True(LoadJson("""{ "statusSources": { "openai": { "enabled": true, "notify": "maybe" } } }""")
+            .StatusSources["openai"]!.Notify);
+    }
 }
