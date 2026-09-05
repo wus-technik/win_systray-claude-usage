@@ -74,6 +74,16 @@ public class ReleaseSelectionTests
     }
 
     [Fact]
+    public void HttpAssetUrlsAreSkipped()
+    {
+        // The API response is the only input choosing what gets executed on the operator's machine.
+        var httpOnly = Release("v0.8.0", false, BetaAsset).Replace("https://", "http://");
+        var releases = Parse($"[{httpOnly}, {Release("v0.7.2", false, BetaAsset)}]");
+
+        Assert.Equal("0.7.2", ReleaseSelection.Select(releases, Ring.Beta)!.Version!.ToString());
+    }
+
+    [Fact]
     public void NothingUsableYieldsNull()
     {
         Assert.Null(ReleaseSelection.Select([], Ring.Beta));

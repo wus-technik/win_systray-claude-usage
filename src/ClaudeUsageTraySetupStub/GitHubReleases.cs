@@ -45,7 +45,8 @@ public static class ReleaseSelection
             var asset = release.Assets?.FirstOrDefault(a =>
                 string.Equals(a.Name, assetName, StringComparison.OrdinalIgnoreCase));
             if (asset?.BrowserDownloadUrl is null
-                || !Uri.TryCreate(asset.BrowserDownloadUrl, UriKind.Absolute, out var url)) continue;
+                || !Uri.TryCreate(asset.BrowserDownloadUrl, UriKind.Absolute, out var url)
+                || url.Scheme != Uri.UriSchemeHttps) continue;
             if (best is null || version.CompareTo(best.Version) > 0)
                 best = new ResolvedBuild(ring, channel, version, url, asset.Digest, ResolvedVia.Api);
         }

@@ -186,6 +186,11 @@ Verified against the shipped Setup 1.2.0 binary rather than the docs: it accepts
 all dialogs and answers 'yes' to all prompts"), `--installto DIR`, `--debug`, and trailing
 `-- EXE_ARGS`.
 
+`ClaudeUsageTraySetup.exe` is a WinExe: a shell that invokes it directly (`&` in pwsh, a bare call
+in cmd) does not block and does not see its exit code, so a caller that needs the result — CI, a
+deployment script — must wait explicitly; deployment agents (Intune, SCCM, PSAppDeployToolkit)
+already do this.
+
 **`--installto` is deliberately not exposed.** Nothing in the app supports a relocated install: the
 stub's own detection and relaunch read a fixed `%LOCALAPPDATA%\WusTechnik.ClaudeUsageTray`, so an
 install placed elsewhere would read as "not installed" on the next run and be installed a second time

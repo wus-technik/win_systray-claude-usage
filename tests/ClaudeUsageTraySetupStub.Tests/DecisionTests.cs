@@ -21,6 +21,7 @@ public class DecisionTests
     [InlineData(Ring.Beta, false)]
     [InlineData(Ring.Beta, true)]
     [InlineData(Ring.Stable, true)]
+    [InlineData(Ring.Stable, false)]
     public void FreshWithARingInstallsIt(Ring ring, bool silent)
         => Assert.Equal(new Decision(Step.Install, ring), Flow.Decide(Opts(ring, silent), null, null));
 

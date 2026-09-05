@@ -139,10 +139,12 @@ internal sealed class SetupRun(StubOptions options, SetupLog log, HttpClient htt
 
             // allowInJobFallback: true — this exit code must be read even when breakaway was denied.
             using var setup = NativeProcess.Start(setupPath, effective.Silent ? "--silent" : "", tryBreakaway: true, allowInJobFallback: true);
-            if (setup is null) return Fail(ExitCode.DownloadFailed, "Setup.exe could not be started.", setupPath);
+            if (setup is null) return Fail(ExitCode.AppControlFailed, "Setup.exe could not be started.", setupPath);
             if (!setup.BrokeAwayFromJob) log.Write("setup: breakaway from job denied; Setup.exe runs inside the caller's job");
             var code = setup.WaitForExit();
             log.Write($"setup: exit {code}");
+            if (code < 0)
+                return Fail(ExitCode.AppControlFailed, "Setup.exe finished but its exit code could not be read.", setupPath);
             if (code != 0)
                 return Report(code, $"Setup.exe exited with code {code}.", "See %LOCALAPPDATA%\\WusTechnik.ClaudeUsageTray\\Velopack.log if it exists.", isError: true);
 

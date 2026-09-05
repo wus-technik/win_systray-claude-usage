@@ -70,6 +70,12 @@ move an existing install between the two rings.
 ClaudeUsageTraySetup.exe --ring stable|beta --silent [--token <t>]
 ```
 
+The launcher is a windowed program, so a plain shell call returns immediately with no exit code;
+from a script wait for it explicitly — `Start-Process ClaudeUsageTraySetup.exe -ArgumentList
+'--silent','--ring','stable' -Wait -PassThru` in PowerShell (`.ExitCode` carries the result),
+`start /wait ClaudeUsageTraySetup.exe --silent --ring stable` in cmd. Intune, SCCM and
+PSAppDeployToolkit already wait on the process handle.
+
 Always pass `--ring`: with `--silent` and no ring on a machine that already has the app, the
 launcher changes nothing and exits `3004`, because a default would silently drag a deliberate beta
 opt-in back to stable. Running it repeatedly with the same `--ring` is idempotent and exits `0`.
@@ -96,7 +102,7 @@ itself completes when the user accepts **Restart to update** — the launcher ne
 | `3002` | No release found for the ring (or API unavailable in silent mode) |
 | `3003` | Download failed, or the file was empty, not an executable, or failed its digest check |
 | `3004` | `--silent` without `--ring` on an existing install |
-| `3005` | Could not stop or restart the app, or the settings write did not persist |
+| `3005` | Could not stop or restart the app, could not start Setup.exe, or the settings write did not persist |
 | `3006` | Cancelled |
 
 Diagnostics land in `%APPDATA%\ClaudeUsageTray\setup.log`. `ClaudeUsageTraySetup.exe --version`
