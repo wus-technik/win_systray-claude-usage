@@ -131,9 +131,19 @@ public sealed class ToastPresenter : IDisposable
         if (_live.TryGetValue(tag, out var current) && ReferenceEquals(current, toast)) _live.Remove(tag);
     }
 
+    // Both halves are guarded: dispatch itself can fail during shutdown, and the posted callback
+    // (realistically _onActivated, i.e. TrayApp.ShowPopup) can throw once it runs on the UI thread —
+    // either must not become an unhandled exception from a toast click.
     private void Marshal(Action action)
     {
-        try { _sync.BeginInvoke(action); }
+        try
+        {
+            _sync.BeginInvoke(() =>
+            {
+                try { action(); }
+                catch (Exception e) { _log($"toast: callback failed ({e.GetType().Name})"); }
+            });
+        }
         catch (InvalidOperationException) { /* app shutting down */ }
     }
 
