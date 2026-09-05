@@ -86,7 +86,7 @@ public static IReadOnlyList<string> ByFreshness(IEnumerable<string> candidates);
   `<localAppData>\Packages\Claude_*\LocalCache\Roaming\Claude\plan-usage-history.json` found by
   enumerating `Packages` for directories matching `Claude_*` (the publisher hash is not hardcoded).
   A missing or unreadable `Packages` directory contributes nothing.
-- `Freshest` is replaced by `ByFreshness(candidates)`: the existing candidates ordered by
+- `ByFreshness(candidates)` returns the existing candidates ordered by
   `LastWriteTimeUtc`, newest first. The caller tries `DesktopUsageReader.TryRead` on each in turn
   and keeps the first snapshot, so a half-written or malformed newer file cannot mask an older
   usable one. The ordering key is the **usage file's own** write time, never its directory's: on
