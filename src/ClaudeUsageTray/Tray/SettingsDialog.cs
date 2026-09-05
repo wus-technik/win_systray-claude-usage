@@ -66,6 +66,17 @@ public sealed class SettingsDialog : Form
     private readonly TextBox _openAiComponents = new() { Name = "openAiComponents", Width = 240 };
     private readonly Label _openAiComponentsCaption = new()
         { Text = "Components (comma-separated, blank = all)", AutoSize = true };
+    private readonly CheckBox _notifyUsage = new()
+        { Name = "notifyUsage", Text = "Notify when a limit turns", AutoSize = true };
+    private readonly ComboBox _notifyLevel = new()
+        { Name = "notifyLevel", DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
+    private readonly CheckBox _notifyClaude = new()
+        { Name = "notifyClaude", Text = "Notify when Claude platform status changes", AutoSize = true };
+    private readonly CheckBox _notifyOpenAi = new()
+        { Name = "notifyOpenAi", Text = "Notify when OpenAI platform status changes", AutoSize = true };
+
+    /// <summary>Combo rows in NotifyLevel order, so SelectedIndex casts straight to the enum.</summary>
+    private static readonly string[] LevelLabels = ["Red only", "Orange and red"];
     private readonly UpdateOptions _updates;
     private UpdateAvailability _updateState;
     private string? _releaseNotes;
@@ -145,6 +156,17 @@ public sealed class SettingsDialog : Form
         layout.Controls.Add(Indent(_openAiComponents));
         layout.Controls.Add(Indent(_preview));
         layout.Controls.Add(Indent(_previewCaption));
+
+        layout.Controls.Add(Heading("Notifications"));
+        _notifyLevel.Items.AddRange(LevelLabels);
+        var usageRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(16, 0, 0, 2) };
+        _notifyUsage.Margin = new Padding(0, 4, 4, 0);
+        _notifyLevel.Margin = new Padding(0);
+        usageRow.Controls.Add(_notifyUsage);
+        usageRow.Controls.Add(_notifyLevel);
+        layout.Controls.Add(usageRow);
+        layout.Controls.Add(Indent(_notifyClaude));
+        layout.Controls.Add(Indent(_notifyOpenAi));
 
         layout.Controls.Add(Heading("Refresh"));
         layout.Controls.Add(Spinners(
@@ -337,7 +359,8 @@ public sealed class SettingsDialog : Form
         int order = 0;
         foreach (var control in new Control[]
                  { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   _desktopStaleness, _betaReleases, _watchOpenAi, _openAiComponents, reset, cancel, save })
+                   _desktopStaleness, _betaReleases, _watchOpenAi, _openAiComponents,
+                   _notifyUsage, _notifyLevel, _notifyClaude, _notifyOpenAi, reset, cancel, save })
             control.TabIndex = order++;
         return row;
     }
@@ -360,6 +383,12 @@ public sealed class SettingsDialog : Form
         _openAiComponents.Text = ComponentFilter.Format(
             openAi?.Components ?? [.. StatusSourceRegistry.OpenAi.DefaultComponents]);
         _openAiComponents.Enabled = _watchOpenAi.Checked;
+        _notifyUsage.Checked = source.UsageNotifications.Enabled;
+        _notifyLevel.SelectedIndex = IndexOf(source.UsageNotifications.Level);
+        _notifyLevel.Enabled = _notifyUsage.Checked;
+        _notifyClaude.Checked = source.StatusSources.GetValueOrDefault("claude")?.Notify ?? true;
+        _notifyOpenAi.Checked = openAi?.Notify ?? true;
+        _notifyOpenAi.Enabled = _watchOpenAi.Checked;
         _suspendSync = false;
         SetThresholds(source.Thresholds.Orange, source.Thresholds.Red, source.StalenessMinutes,
             source.DesktopStalenessHours);
@@ -394,7 +423,12 @@ public sealed class SettingsDialog : Form
         _orange.ValueChanged += (_, _) => SyncRangesAndPreview();
         _red.ValueChanged += (_, _) => SyncRangesAndPreview();
         _paceColors.CheckedChanged += (_, _) => SyncRangesAndPreview();
-        _watchOpenAi.CheckedChanged += (_, _) => _openAiComponents.Enabled = _watchOpenAi.Checked;
+        _watchOpenAi.CheckedChanged += (_, _) =>
+        {
+            _openAiComponents.Enabled = _watchOpenAi.Checked;
+            _notifyOpenAi.Enabled = _watchOpenAi.Checked;   // disabled, not unchecked: the choice survives
+        };
+        _notifyUsage.CheckedChanged += (_, _) => _notifyLevel.Enabled = _notifyUsage.Checked;
         _preview.Paint += (_, e) => UsageBar.Paint(e.Graphics, _preview.Width, _preview.Height,
             PreviewPercent, PreviewSeverity(), PreviewFraction());
     }
@@ -423,14 +457,32 @@ public sealed class SettingsDialog : Form
         draft.DesktopStalenessHours = (int)_desktopStaleness.Value;
         draft.RunAtStartup = _startup.Checked;
         draft.UseBetaReleases = _betaReleases.Checked;
-        // The typed filter is kept even when unchecked, so turning the source back on does not lose it.
+        draft.UsageNotifications = new UsageNotificationSettings
+        {
+            Enabled = _notifyUsage.Checked,
+            Level = LevelAt(_notifyLevel.SelectedIndex),
+        };
+        // The typed filter and the notify choice are kept even when unchecked, so turning the source
+        // back on does not lose either.
         draft.StatusSources["openai"] = new StatusSourceSettings
         {
             Enabled = _watchOpenAi.Checked,
+            Notify = _notifyOpenAi.Checked,
             Components = [.. ComponentFilter.Parse(_openAiComponents.Text)],
+        };
+        // Claude has no enabled/components controls; only its notify flag is edited here.
+        var claude = draft.StatusSources.GetValueOrDefault("claude");
+        draft.StatusSources["claude"] = new StatusSourceSettings
+        {
+            Enabled = claude?.Enabled ?? true,
+            Notify = _notifyClaude.Checked,
+            Components = claude?.Components is null ? null : [.. claude.Components],
         };
         return draft;
     }
+
+    private static int IndexOf(NotifyLevel level) => level == NotifyLevel.Orange ? 1 : 0;
+    private static NotifyLevel LevelAt(int index) => index == 1 ? NotifyLevel.Orange : NotifyLevel.Red;
 
     /// <summary>Persists the draft, reporting whether it stuck. The update path saves without closing,
     /// since it is about to restart the app instead.</summary>
@@ -478,11 +530,17 @@ public sealed class SettingsDialog : Form
         UseBetaReleases = source.UseBetaReleases,
         ConfigPathOverride = source.ConfigPathOverride,
         DesktopHistoryPathOverride = source.DesktopHistoryPathOverride,
+        UsageNotifications = new UsageNotificationSettings
+        {
+            Enabled = source.UsageNotifications.Enabled,
+            Level = source.UsageNotifications.Level,
+        },
         StatusSources = source.StatusSources.ToDictionary(
             e => e.Key,
             e => e.Value is null ? null : new StatusSourceSettings
             {
                 Enabled = e.Value.Enabled,
+                Notify = e.Value.Notify,
                 Components = e.Value.Components is null ? null : [.. e.Value.Components],
             },
             StringComparer.OrdinalIgnoreCase),

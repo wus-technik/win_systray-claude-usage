@@ -313,4 +313,79 @@ public class SettingsDialogTests : IDisposable
         Assert.True(WatchOpenAi(dialog).Checked);
         Assert.Equal("codex", OpenAiComponents(dialog).Text);
     }
+
+    private static ComboBox Combo(SettingsDialog d, string name) => Find<ComboBox>(d, name);
+    private static CheckBox Check(SettingsDialog d, string name) => Find<CheckBox>(d, name);
+
+    [Fact]
+    public void Notifications_ReflectSettings_AndDriveTheDraft()
+    {
+        var settings = new Settings { UsageNotifications = new UsageNotificationSettings { Enabled = false, Level = NotifyLevel.Orange } };
+        settings.StatusSources["claude"] = new StatusSourceSettings { Enabled = true, Notify = false, Components = [] };
+        settings.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Notify = false, Components = ["codex"] };
+        var dialog = Dialog(settings);
+
+        Assert.False(Check(dialog, "notifyUsage").Checked);
+        Assert.Equal("Orange and red", Combo(dialog, "notifyLevel").SelectedItem);
+        Assert.False(Check(dialog, "notifyClaude").Checked);
+        Assert.False(Check(dialog, "notifyOpenAi").Checked);
+
+        Check(dialog, "notifyUsage").Checked = true;
+        Combo(dialog, "notifyLevel").SelectedIndex = 0;   // "Red only"
+        Check(dialog, "notifyClaude").Checked = true;
+        Check(dialog, "notifyOpenAi").Checked = true;
+
+        var draft = dialog.Draft();
+        Assert.True(draft.UsageNotifications.Enabled);
+        Assert.Equal(NotifyLevel.Red, draft.UsageNotifications.Level);
+        Assert.True(draft.StatusSources["claude"]!.Notify);
+        Assert.True(draft.StatusSources["openai"]!.Notify);
+        Assert.Equal(["codex"], draft.StatusSources["openai"]!.Components);   // untouched by the notify edit
+
+        // The live settings were never touched.
+        Assert.False(settings.UsageNotifications.Enabled);
+        Assert.False(settings.StatusSources["openai"]!.Notify);
+    }
+
+    [Fact]
+    public void Notifications_DefaultsRoundTripUnchanged()
+    {
+        // The three copy paths (Draft rebuilds openai, Clone copies field by field, ApplySettings
+        // copies across) each silently drop a field they were not taught about.
+        var draft = Dialog(new Settings()).Draft();
+        Assert.True(draft.UsageNotifications.Enabled);
+        Assert.Equal(NotifyLevel.Red, draft.UsageNotifications.Level);
+        Assert.True(draft.StatusSources["claude"]!.Notify);
+        Assert.True(draft.StatusSources["openai"]!.Notify);
+    }
+
+    [Fact]
+    public void OpenAiNotify_IsOnlyEnabledWhileWatching_ButKeepsItsValue()
+    {
+        var dialog = Dialog(new Settings());
+        Assert.False(Check(dialog, "notifyOpenAi").Enabled);
+        WatchOpenAi(dialog).Checked = true;
+        Assert.True(Check(dialog, "notifyOpenAi").Enabled);
+        Check(dialog, "notifyOpenAi").Checked = false;
+        WatchOpenAi(dialog).Checked = false;
+        Assert.False(dialog.Draft().StatusSources["openai"]!.Notify);   // the choice survives the off cycle
+    }
+
+    [Fact]
+    public void LevelIsOnlyEnabledWhileUsageNotificationsAreOn()
+    {
+        var dialog = Dialog(new Settings());
+        Assert.True(Combo(dialog, "notifyLevel").Enabled);
+        Check(dialog, "notifyUsage").Checked = false;
+        Assert.False(Combo(dialog, "notifyLevel").Enabled);
+    }
+
+    [Fact]
+    public void ResetLeavesNotificationsAlone()
+    {
+        var dialog = Dialog(new Settings { UsageNotifications = new UsageNotificationSettings { Enabled = false, Level = NotifyLevel.Orange } });
+        Button(dialog, "reset").PerformClick();
+        Assert.False(dialog.Draft().UsageNotifications.Enabled);
+        Assert.Equal(NotifyLevel.Orange, dialog.Draft().UsageNotifications.Level);
+    }
 }
