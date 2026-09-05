@@ -17,6 +17,19 @@ public static partial class StatusDetail
     public static int HiddenCount(PlatformStatus status, IReadOnlyList<string> filter, int max)
         => Math.Max(0, Selected(status, filter, DateTimeOffset.MinValue).Count - max);
 
+    /// <summary>The disruption in one line and the page's own words, for a toast body: watched
+    /// incident names; failing those, watched components with their statuses (the OpenAI shape,
+    /// which sends no incidents); empty when the payload identifies nothing. Same selection as
+    /// <see cref="Rows"/> minus the age text, which would be stale the moment a toast persists.</summary>
+    public static string Summary(PlatformStatus status, IReadOnlyList<string> filter)
+    {
+        var incidents = status.Incidents.Where(i => IncidentWatched(i, filter)).Select(i => i.Name).ToList();
+        if (incidents.Count > 0) return string.Join(", ", incidents);
+        return string.Join(", ", status.Components
+            .Where(c => ComponentFilter.Matches(c.Name, filter))
+            .Select(c => $"{c.Name} — {Unfold(c.Status)}"));
+    }
+
     /// <summary>The header line: the source's name and the page's own banner text, verbatim. A
     /// disruption the filter excluded says so, so an empty section never looks like a parse
     /// failure.</summary>
