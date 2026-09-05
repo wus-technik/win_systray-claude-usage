@@ -4,7 +4,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <RootNamespace>ClaudeUsageTray</RootNamespace>
     <AssemblyName>ClaudeUsageTray</AssemblyName>
-    <Version>0.7.3-beta.1</Version>
+    <Version>0.7.3-beta.2</Version>
     <!-- Authorship. Set here rather than at the vpk call sites so the exe's file properties, the
          Windows apps list and anything else reading assembly metadata pick it up for free. The
          ampersand is written as an XML entity; MSBuild would reject a bare & . -->

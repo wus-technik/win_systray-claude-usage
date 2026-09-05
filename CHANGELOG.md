@@ -8,6 +8,33 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [0.7.3-beta.2] - 2026-09-05
+
+### Added
+
+- **OpenAI status as an optional second source.** For anyone running Codex next to Claude Code, the
+  popup can now show status.openai.com's banner under Claude's, in the page's own words. It is off
+  by default; tick **Watch OpenAI status** in Settings to turn it on. An OpenAI disruption appears in
+  the popup and the tooltip but never marks the tray icon — the badge still means "Claude is
+  degraded, which is why your numbers may have stopped moving." Each page is polled on its own
+  schedule, so one page timing out cannot delay or blank the other.
+- **Watched components.** OpenAI's page lists 25 components, most of them irrelevant to a Codex user,
+  so the new setting comes with a comma-separated component filter (default `codex, responses,
+  login, vs code extension`, matched as case-insensitive substrings). A disruption that only affects
+  unwatched components shows a grey banner marked *outside your watched components* and adds nothing
+  to the tooltip; one the page cannot attribute to any component is always shown in full. The
+  filter never hides the badge.
+- **`statusSources`** in `settings.json`, one entry per page with `enabled` and `components`. The
+  `claude` entry accepts a filter too, as an advanced file-only setting that narrows the popup rows
+  and the tooltip but not the badge. An existing settings file keeps today's behaviour and gains
+  the key on its next save.
+
+### Changed
+
+- Popup incident and component rows, the status headers, and the tooltip's status suffix are now
+  built by the same rules for both pages. When the tooltip runs long, the usage text is what gets
+  shortened, so the `· Claude: …` suffix that explains a warning badge always survives.
+
 ## [0.7.3-beta.1] - 2026-09-05
 
 ### Added
@@ -141,6 +168,7 @@ them.
 
 [Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.3-beta.1...HEAD
 [0.7.3-beta.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3-beta.1
+[0.7.3-beta.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3-beta.2
 [0.7.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.2
 [0.7.2-beta.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.2-beta.2
 [0.7.2-beta.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.2-beta.1
