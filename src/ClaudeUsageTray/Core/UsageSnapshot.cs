@@ -1,5 +1,9 @@
 namespace ClaudeUsageTray.Core;
 
+/// <summary>Which program produced the data. The cache file and the live API are both Claude
+/// Code's; the distinction the user sees is Claude Code versus the Claude Desktop history.</summary>
+public enum UsageSource { ClaudeCode, DesktopHistory }
+
 /// <summary>Usage for one rolling window. Percent is the raw integer from the cache (may exceed 100).</summary>
 public sealed record WindowUsage(int Percent, DateTimeOffset? ResetsAt);
 
@@ -33,4 +37,6 @@ public sealed record UsageSnapshot(
 {
     /// <summary>Empty means absent. Never null to consumers, whatever the caller passed.</summary>
     public IReadOnlyList<ScopedLimit> ScopedLimits { get; init; } = ScopedLimits ?? [];
+
+    public UsageSource Source { get; init; } = UsageSource.ClaudeCode;
 }
