@@ -239,6 +239,16 @@ file gives no way to tell which of the two was meant.
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
 | `desktopHistoryPathOverride` | explicit path to the desktop app's `plan-usage-history.json`; file-only, and re-read at launch | unset |
 
+## Privacy
+
+The app sends no telemetry and has no install or machine identifier. Its only network traffic is
+the Claude usage API, the Claude status page, and the Velopack update feed on GitHub Releases.
+
+The project's only usage metric is GitHub's public download counter on release assets. A
+scheduled workflow snapshots those counters once a day into the `stats` branch, which adds a
+history of aggregate public numbers and nothing about any user or machine. See
+`docs/download-stats.md` for what the numbers mean.
+
 ## Development
 
 ```powershell
