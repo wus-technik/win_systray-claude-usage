@@ -56,4 +56,15 @@ public static class SeverityRules
         => settings.PaceColors
             ? ForPace(percent, elapsedFraction, settings.Thresholds.Orange, settings.Thresholds.Red)
             : For(percent, settings.Thresholds.Orange, settings.Thresholds.Red);
+
+    /// <summary>The usage payload's own severity word for credits, or null when it says nothing we
+    /// recognise. Exact match on purpose: the three words are the API's, and a new one must fall
+    /// through to the thresholds rather than be guessed at.</summary>
+    public static Severity? FromPayload(string? payloadSeverity) => payloadSeverity switch
+    {
+        "critical" => Severity.Red,
+        "warning" => Severity.Orange,
+        "normal" => Severity.Green,
+        _ => null,
+    };
 }

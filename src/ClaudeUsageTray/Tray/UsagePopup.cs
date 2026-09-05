@@ -41,8 +41,8 @@ public sealed class UsagePopup : Form
             // Staleness is decided by SourceSelection with each source's own allowance; recomputing
             // it here against StalenessMinutes would flag a desktop-only user most of the time.
             bool stale = choice.Stale;
-            AddWindowRow(layout, "5-hour window", snapshot.FiveHour, TimeSpan.FromHours(5), settings, now);
-            AddWindowRow(layout, "7-day window", snapshot.SevenDay, TimeSpan.FromDays(7), settings, now);
+            AddWindowRow(layout, "5-hour window", snapshot.FiveHour, UsageValues.FiveHourPeriod, settings, now);
+            AddWindowRow(layout, "7-day window", snapshot.SevenDay, UsageValues.SevenDayPeriod, settings, now);
 
             var rows = PopupRows.ForScopedLimits(snapshot.ScopedLimits);
             foreach (var limit in rows.Visible) AddScopedRow(layout, limit, settings, now);
@@ -97,7 +97,7 @@ public sealed class UsagePopup : Form
         var resets = usage.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
         var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
         AddCaption(layout, $"{title} — {usage.Percent}%{resets}{PaceSuffix(usage.Percent, elapsed, settings)}");
-        AddBar(layout, usage.Percent, SeverityFor(usage.Percent, settings, elapsed), elapsed);
+        AddBar(layout, usage.Percent, UsageValues.WindowSeverity(usage, period, settings, now), elapsed);
     }
 
     /// <summary>One block per watched source, in registry order. Each banner is the page's own
@@ -190,19 +190,16 @@ public sealed class UsagePopup : Form
         Settings settings, DateTimeOffset now)
     {
         var resets = limit.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
-        var elapsed = TimeMarker.ElapsedFraction(limit.ResetsAt, TimeSpan.FromDays(7), now);
+        var elapsed = TimeMarker.ElapsedFraction(limit.ResetsAt, UsageValues.SevenDayPeriod, now);
         AddCaption(layout, $"{limit.Label} weekly — {limit.Percent}%{resets}{PaceSuffix(limit.Percent, elapsed, settings)}");
-        AddBar(layout, limit.Percent, SeverityFor(limit.Percent, settings, elapsed), elapsed);
+        AddBar(layout, limit.Percent, UsageValues.ScopedSeverity(limit, settings, now), elapsed);
     }
 
     private static void AddCreditRow(TableLayoutPanel layout, CreditUsage credits, Settings settings)
     {
         AddCaption(layout, $"Credits — {CreditFormat.Describe(credits)}");
-        // Credits prefer the payload's own severity: it can encode account state, such as a cap
-        // already being reached, that a percentage alone cannot express. Windows and scoped limits
-        // deliberately keep the user's configurable thresholds instead.
-        AddBar(layout, credits.Percent,
-            ParseSeverity(credits.PayloadSeverity) ?? SeverityFor(credits.Percent, settings));
+        // Severity computed by UsageValues so the toast and this bar cannot disagree; see its doc comment.
+        AddBar(layout, credits.Percent, UsageValues.CreditSeverity(credits, settings));
 
         if (CreditFormat.DescribeState(credits.State) is { } state)
         {
@@ -219,9 +216,6 @@ public sealed class UsagePopup : Form
     private static void AddCaption(TableLayoutPanel layout, string text)
         => layout.Controls.Add(new Label { Text = text, AutoSize = true, Margin = new Padding(0, 6, 0, 2) });
 
-    private static Severity SeverityFor(int percent, Settings settings, double? elapsedFraction = null)
-        => SeverityRules.ForSettings(settings, percent, elapsedFraction);
-
     /// <summary>Names the number behind the colour, but only when pace is what decided it: a colour
     /// that no longer means "percent used" reads as a bug unless the caption says so.</summary>
     private static string PaceSuffix(int percent, double? elapsedFraction, Settings settings)
@@ -231,14 +225,6 @@ public sealed class UsagePopup : Form
             SeverityRules.PaceRatio(percent, elapsedFraction, settings.Thresholds.Red));
         return described.Length == 0 ? "" : $" · {described}";
     }
-
-    private static Severity? ParseSeverity(string? payloadSeverity) => payloadSeverity switch
-    {
-        "critical" => Severity.Red,
-        "warning" => Severity.Orange,
-        "normal" => Severity.Green,
-        _ => null,
-    };
 
     private static void AddBar(TableLayoutPanel layout, int percent, Severity severity,
         double? elapsedFraction = null)

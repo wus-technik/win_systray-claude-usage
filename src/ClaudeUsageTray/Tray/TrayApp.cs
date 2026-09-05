@@ -289,10 +289,10 @@ public sealed class TrayApp : ApplicationContext
         bool degraded = _statusMonitor.BadgeDegraded();
 
         if (_iconFive is not null)
-            Apply(_iconFive, '5', choice, choice.Snapshot?.FiveHour, "5h", TimeSpan.FromHours(5),
+            Apply(_iconFive, '5', choice, choice.Snapshot?.FiveHour, "5h", UsageValues.FiveHourPeriod,
                 clockwise: true, degraded, now);
         if (_iconSeven is not null)
-            Apply(_iconSeven, '7', choice, choice.Snapshot?.SevenDay, "7d", TimeSpan.FromDays(7),
+            Apply(_iconSeven, '7', choice, choice.Snapshot?.SevenDay, "7d", UsageValues.SevenDayPeriod,
                 clockwise: false, degraded, now);
 
         _updatedItem.Text = _settingsSaveFailed
@@ -325,9 +325,7 @@ public sealed class TrayApp : ApplicationContext
             // No hysteresis: fetches are minutes apart and the ratio only moves fast early in a
             // period, which SeverityRules' dead zone already keeps out of the badge.
             var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
-            var severity = _settings.PaceColors
-                ? SeverityRules.ForPace(usage.Percent, elapsed, _settings.Thresholds.Orange, _settings.Thresholds.Red)
-                : SeverityRules.For(usage.Percent, _settings.Thresholds.Orange, _settings.Thresholds.Red);
+            var severity = UsageValues.WindowSeverity(usage, period, _settings, now);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
                 dimmed: choice.Stale, size, warning: degraded);
             icon.Text = WithStatus(BuildTooltip(label, usage, elapsed, choice, now), now);
