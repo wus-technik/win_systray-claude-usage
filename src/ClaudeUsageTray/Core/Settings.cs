@@ -19,6 +19,10 @@ public static class ThresholdRules
     public const int DefaultRed = 85;
     public const int DefaultStalenessMinutes = 15;
 
+    /// <summary>The desktop app samples usage only while someone works in it, so gaps of an hour are
+    /// normal; a minutes-scale cutoff would flag a desktop-only user as stale most of the time.</summary>
+    public const int DefaultDesktopStalenessHours = 3;
+
     public static bool IsValidPair(int orange, int red)
         => orange >= 0 && orange < red && red <= 100;
 
@@ -37,6 +41,11 @@ public sealed class Settings
     public DisplayMode DisplayMode { get; set; } = DisplayMode.Both;
     public Thresholds Thresholds { get; set; } = new();
     public int StalenessMinutes { get; set; } = ThresholdRules.DefaultStalenessMinutes;
+
+    /// <summary>Staleness allowance for the Claude Desktop history source, in hours. Separate from
+    /// <see cref="StalenessMinutes"/> because the two sources have cadences an order of magnitude apart.</summary>
+    public int DesktopStalenessHours { get; set; } = ThresholdRules.DefaultDesktopStalenessHours;
+
     public bool RunAtStartup { get; set; } = true;
 
     /// <summary>Colour bars and badges by usage against elapsed time rather than by raw percent.
@@ -53,6 +62,11 @@ public sealed class Settings
     public bool? UseBetaReleases { get; set; }
 
     public string? ConfigPathOverride { get; set; }
+
+    /// <summary>Explicit path to the desktop app's plan-usage-history.json. File-only, like
+    /// <see cref="ConfigPathOverride"/>; two real locations already exist in the wild and a third
+    /// should not need a release.</summary>
+    public string? DesktopHistoryPathOverride { get; set; }
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -103,5 +117,6 @@ public sealed class Settings
             Thresholds.Red = ThresholdRules.DefaultRed;
         }
         if (StalenessMinutes < 0) StalenessMinutes = ThresholdRules.DefaultStalenessMinutes;
+        if (DesktopStalenessHours <= 0) DesktopStalenessHours = ThresholdRules.DefaultDesktopStalenessHours;
     }
 }

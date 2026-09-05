@@ -162,4 +162,43 @@ public class SettingsTests : IDisposable
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "ClaudeUsageTray", "settings.json"),
             Settings.DefaultPath);
+
+    [Fact]
+    public void RoundTrip_PreservesDesktopKeys()
+    {
+        var path = PathFor("settings.json");
+        new Settings
+        {
+            DesktopStalenessHours = 6,
+            DesktopHistoryPathOverride = @"C:\alt\plan-usage-history.json",
+        }.Save(path);
+        var loaded = Settings.Load(path);
+
+        Assert.Equal(6, loaded.DesktopStalenessHours);
+        Assert.Equal(@"C:\alt\plan-usage-history.json", loaded.DesktopHistoryPathOverride);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-4")]
+    public void Load_NonPositiveDesktopStaleness_ResetsToDefault(string value)
+    {
+        var path = PathFor("settings.json");
+        File.WriteAllText(path, $$$"""{ "desktopStalenessHours": {{{value}}}, "stalenessMinutes": 7 }""");
+        var loaded = Settings.Load(path);
+
+        Assert.Equal(ThresholdRules.DefaultDesktopStalenessHours, loaded.DesktopStalenessHours);
+        Assert.Equal(7, loaded.StalenessMinutes); // only the invalid field resets
+    }
+
+    [Fact]
+    public void Load_FileWithoutDesktopKeys_UsesDefaults()
+    {
+        var path = PathFor("settings.json");
+        File.WriteAllText(path, """{ "stalenessMinutes": 15 }""");
+        var loaded = Settings.Load(path);
+
+        Assert.Equal(3, loaded.DesktopStalenessHours);
+        Assert.Null(loaded.DesktopHistoryPathOverride);
+    }
 }
