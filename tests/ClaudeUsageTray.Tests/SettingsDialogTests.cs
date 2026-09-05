@@ -205,4 +205,40 @@ public class SettingsDialogTests : IDisposable
 
     private static Button Button(SettingsDialog dialog, string name)
         => (Button)dialog.Controls.Find(name, searchAllChildren: true).Single();
+
+    [Fact]
+    public void DesktopStaleness_RoundTripsThroughTheDraft()
+    {
+        var dialog = Dialog(new Settings { DesktopStalenessHours = 6, DesktopHistoryPathOverride = @"C:\alt\h.json" });
+        Assert.Equal(6, Spinner(dialog, "desktopStaleness").Value);
+
+        Spinner(dialog, "desktopStaleness").Value = 12;
+        var draft = dialog.Draft();
+        Assert.Equal(12, draft.DesktopStalenessHours);
+        Assert.Equal(@"C:\alt\h.json", draft.DesktopHistoryPathOverride); // file-only, carried through untouched
+    }
+
+    [Fact]
+    public void DesktopStaleness_SpinnerRangeIsOneToOneSixtyEight()
+    {
+        var spinner = Spinner(Dialog(new Settings()), "desktopStaleness");
+        Assert.Equal(1, spinner.Minimum);
+        Assert.Equal(168, spinner.Maximum);
+    }
+
+    [Fact]
+    public void Reset_RestoresDesktopStaleness()
+    {
+        var dialog = Dialog(new Settings { DesktopStalenessHours = 48 });
+        Button(dialog, "reset").PerformClick();
+        Assert.Equal(ThresholdRules.DefaultDesktopStalenessHours, dialog.Draft().DesktopStalenessHours);
+    }
+
+    [Fact]
+    public void DesktopStaleness_DoesNotTouchTheLiveSettings()
+    {
+        var live = new Settings { DesktopStalenessHours = 3 };
+        Spinner(Dialog(live), "desktopStaleness").Value = 24;
+        Assert.Equal(3, live.DesktopStalenessHours);
+    }
 }

@@ -33,6 +33,7 @@ public sealed class SettingsDialog : Form
     private readonly NumericUpDown _red = new() { Name = "red", Minimum = 1, Maximum = 100, Width = 60 };
     private readonly CheckBox _paceColors = new() { Name = "paceColors", Text = "Colour by pace (usage against time elapsed)", AutoSize = true };
     private readonly NumericUpDown _staleness = new() { Name = "staleness", Minimum = 0, Maximum = 1440, Width = 60 };
+    private readonly NumericUpDown _desktopStaleness = new() { Name = "desktopStaleness", Minimum = 1, Maximum = 168, Width = 60 };
     private readonly Panel _preview = new() { Name = "preview", Width = UsageBar.DefaultWidth, Height = UsageBar.DefaultHeight };
     private readonly Label _previewCaption = new() { Name = "previewCaption", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Label _error = new() { Name = "error", AutoSize = true, ForeColor = Color.Firebrick, Visible = false };
@@ -138,7 +139,9 @@ public sealed class SettingsDialog : Form
         layout.Controls.Add(Indent(_previewCaption));
 
         layout.Controls.Add(Heading("Refresh"));
-        layout.Controls.Add(Spinners(("Treat data as stale after", _staleness, "minutes")));
+        layout.Controls.Add(Spinners(
+            ("Treat data as stale after", _staleness, "minutes"),
+            ("Claude Desktop history stale after", _desktopStaleness, "hours")));
 
         layout.Controls.Add(Heading("About"));
         layout.Controls.Add(BuildAbout());
@@ -326,7 +329,7 @@ public sealed class SettingsDialog : Form
         int order = 0;
         foreach (var control in new Control[]
                  { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   _betaReleases, reset, cancel, save })
+                   _desktopStaleness, _betaReleases, reset, cancel, save })
             control.TabIndex = order++;
         return row;
     }
@@ -345,17 +348,18 @@ public sealed class SettingsDialog : Form
         // false here only covers a dialog constructed straight from a file, as the tests do.
         _betaReleases.Checked = source.UseBetaReleases ?? false;
         _suspendSync = false;
-        SetThresholds(source.Thresholds.Orange, source.Thresholds.Red, source.StalenessMinutes);
+        SetThresholds(source.Thresholds.Orange, source.Thresholds.Red, source.StalenessMinutes,
+            source.DesktopStalenessHours);
     }
 
     private void ResetThresholdsToDefaults()
     {
         _paceColors.Checked = new Settings().PaceColors;
         SetThresholds(ThresholdRules.DefaultOrange, ThresholdRules.DefaultRed,
-            ThresholdRules.DefaultStalenessMinutes);
+            ThresholdRules.DefaultStalenessMinutes, ThresholdRules.DefaultDesktopStalenessHours);
     }
 
-    private void SetThresholds(int orange, int red, int stalenessMinutes)
+    private void SetThresholds(int orange, int red, int stalenessMinutes, int desktopStalenessHours)
     {
         // The two spinners constrain each other, so a straight assignment could be clipped by a range
         // still describing the previous pair. Widen both, assign, then let the sync re-narrow them.
@@ -366,6 +370,8 @@ public sealed class SettingsDialog : Form
         _orange.Value = orange;
         _red.Value = red;
         _staleness.Value = Math.Clamp(stalenessMinutes, (int)_staleness.Minimum, (int)_staleness.Maximum);
+        _desktopStaleness.Value = Math.Clamp(desktopStalenessHours,
+            (int)_desktopStaleness.Minimum, (int)_desktopStaleness.Maximum);
         _suspendSync = false;
         SyncRangesAndPreview();
     }
@@ -400,6 +406,7 @@ public sealed class SettingsDialog : Form
         draft.Thresholds = new Thresholds { Orange = (int)_orange.Value, Red = (int)_red.Value };
         draft.PaceColors = _paceColors.Checked;
         draft.StalenessMinutes = (int)_staleness.Value;
+        draft.DesktopStalenessHours = (int)_desktopStaleness.Value;
         draft.RunAtStartup = _startup.Checked;
         draft.UseBetaReleases = _betaReleases.Checked;
         return draft;
@@ -445,9 +452,11 @@ public sealed class SettingsDialog : Form
         DisplayMode = source.DisplayMode,
         Thresholds = new Thresholds { Orange = source.Thresholds.Orange, Red = source.Thresholds.Red },
         StalenessMinutes = source.StalenessMinutes,
+        DesktopStalenessHours = source.DesktopStalenessHours,
         RunAtStartup = source.RunAtStartup,
         PaceColors = source.PaceColors,
         UseBetaReleases = source.UseBetaReleases,
         ConfigPathOverride = source.ConfigPathOverride,
+        DesktopHistoryPathOverride = source.DesktopHistoryPathOverride,
     };
 }
