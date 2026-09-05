@@ -12,6 +12,8 @@
 
 **Issue:** [#17](https://github.com/wus-technik/win_systray-claude-usage/issues/17) — every commit in this plan ends its body with `Refs #17` so the issue timeline picks the work up; the final commit of the last task uses `Closes #17`.
 
+**Revised 2026-09-05** against `main` at 0.7.3-beta.1, after an independent review. The desktop-history work shipped between the plan's first draft and now changed `UsagePopup` and `TrayApp`: both take a `DisplayChoice`, not a snapshot, and the popup carries a `noDataText` argument. Tasks 9 and 10 were rewritten for that. The same review added the `ComposeTooltip` step in Task 6 (the badge suffix could still be trimmed away), fixed `StatusMonitor.Accept` leaving a source in flight after a discarded result (Task 7), added the missing `StatusSources` copy in `ApplySettings` (Task 9), and took the OpenAI controls out of the dialog's *Reset to defaults* (Task 11).
+
 ## Global Constraints
 
 - **Pure logic goes in `src/ClaudeUsageTray/Core/`**, WinForms only in `src/ClaudeUsageTray/Tray/`. No clocks and no threads in `Core/`: every time-dependent function takes a caller-supplied `DateTimeOffset now`.
@@ -38,6 +40,8 @@
 **Interfaces:**
 - Consumes: nothing.
 - Produces: `StatusSource(string Id, string DisplayName, string SummaryUrl, string PageUrl, string PageLabel, bool RaisesBadge, IReadOnlyList<string> DefaultComponents)`; `StatusSourceRegistry.Claude`, `.OpenAi`, `.All` (`IReadOnlyList<StatusSource>`, Claude first), `.ById(string? id)` returning `StatusSource?`; `SourceView(StatusSource Source, PlatformStatus? Status, IReadOnlyList<string> Filter)`.
+
+**Before Step 1, check the live component list once.** The OpenAI default filter (`codex`, `responses`, `login`, `vs code extension`) was derived from the 25 components the page listed on 2026-08-26, and that page renames and adds components. Fetch `https://status.openai.com/api/v2/summary.json` a single time (unauthenticated, no rate-limit concern, unrelated to the usage endpoint), list `components[].name`, and decide whether a component a Codex user depends on is missing from the default. If you change the default, change it in this task's test, the registry, Task 12's README snippet, and the spec's *Component filter* section together. If you keep it, note what you saw in the commit body so the decision is recorded.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -876,7 +880,9 @@ git commit -m "feat: select status detail rows in Core" -m "Refs #17"
 
 **Interfaces:**
 - Consumes: `SourceView` (Task 1), `StatusDetail.IsRelevant` (Task 4).
-- Produces: `StatusDetail.TooltipSuffix(IReadOnlyList<SourceView> sources, DateTimeOffset now, int stalenessMinutes, int available)` → `string`.
+- Produces: `StatusDetail.TooltipSuffix(IReadOnlyList<SourceView> sources, DateTimeOffset now, int stalenessMinutes, int available)` → `string`; `StatusDetail.ComposeTooltip(string usageText, IReadOnlyList<SourceView> sources, DateTimeOffset now, int stalenessMinutes, int limit = StatusDetail.TooltipLimit)` → `string`; `StatusDetail.TooltipLimit` (`127`, the `NotifyIcon.Text` hard limit).
+
+**Why two functions:** `TooltipSuffix` alone cannot keep the spec's promise that the badge-raising suffix survives. `TrayApp.TrimTooltip` cuts the *finished* string from the end, so a long usage tooltip followed by the Claude suffix loses exactly the text that explains the marker on the icon. `ComposeTooltip` therefore assembles the whole tooltip in Core: it reserves room for the badge-raising suffixes first, shortens the *usage text* when they would not fit, and only then offers the leftover budget to the non-badge suffixes. `TrimTooltip` in `TrayApp` stays as a last-resort guard that should never fire.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -950,6 +956,45 @@ public class StatusDetailTooltipTests
         Assert.Equal(" · Claude: Major outage",
             Suffix(0, View(StatusSourceRegistry.Claude, "major", "Major outage")));
     }
+
+    private static string Compose(string usageText, params SourceView[] views)
+        => StatusDetail.ComposeTooltip(usageText, views, Now, stalenessMinutes: 15);
+
+    [Fact]
+    public void Compose_ShortTextGetsEverySuffix()
+        => Assert.Equal("5h 40% · Claude: Major outage · OpenAI: Partial System Outage",
+            Compose("5h 40%",
+                View(StatusSourceRegistry.OpenAi, "minor", "Partial System Outage"),
+                View(StatusSourceRegistry.Claude, "major", "Major outage")));
+
+    /// <summary>100 + 23 fits; the 32-character OpenAI piece would not, so it is dropped whole and
+    /// the usage text is left alone.</summary>
+    [Fact]
+    public void Compose_DropsTheNonBadgeSuffixBeforeTouchingTheUsageText()
+    {
+        var usage = new string('x', 100);
+        Assert.Equal(usage + " · Claude: Major outage",
+            Compose(usage,
+                View(StatusSourceRegistry.Claude, "major", "Major outage"),
+                View(StatusSourceRegistry.OpenAi, "minor", "Partial System Outage")));
+    }
+
+    /// <summary>The badge-raising suffix is the text that explains the marker on the icon. When even
+    /// it does not fit, the usage text is what gets shortened — TrayApp.TrimTooltip would cut the
+    /// suffix instead.</summary>
+    [Fact]
+    public void Compose_ShortensTheUsageTextToKeepTheBadgeSuffix()
+    {
+        var text = Compose(new string('x', 120), View(StatusSourceRegistry.Claude, "major", "Major outage"));
+        Assert.True(text.Length <= StatusDetail.TooltipLimit);
+        Assert.EndsWith("… · Claude: Major outage", text);
+        Assert.StartsWith("xxxx", text);
+    }
+
+    [Fact]
+    public void Compose_WithNoRelevantSource_ReturnsTheUsageTextUnchanged()
+        => Assert.Equal("5h 40%", Compose("5h 40%",
+            View(StatusSourceRegistry.Claude, "none", "All Systems Operational")));
 }
 ```
 
@@ -988,12 +1033,33 @@ Append to `src/ClaudeUsageTray/Core/StatusDetailRows.cs`, inside `partial class 
         }
         return text;
     }
+
+    /// <summary>NotifyIcon.Text hard limit.</summary>
+    public const int TooltipLimit = 127;
+
+    /// <summary>The complete tray tooltip. Badge-raising suffixes are reserved first — when the usage
+    /// text plus those suffixes would not fit, the usage text is shortened, never the suffix — and the
+    /// non-badge suffixes get whatever budget is left, dropped whole when it is not enough. Doing this
+    /// here rather than in TrayApp is what makes the "badge suffix survives" rule a tested fact
+    /// instead of a hope about trim order.</summary>
+    public static string ComposeTooltip(string usageText, IReadOnlyList<SourceView> sources,
+        DateTimeOffset now, int stalenessMinutes, int limit = TooltipLimit)
+    {
+        var badge = TooltipSuffix(sources.Where(v => v.Source.RaisesBadge).ToList(), now, stalenessMinutes, limit);
+        var room = limit - badge.Length;
+        var head = usageText.Length <= room ? usageText
+            : room <= 1 ? ""
+            : usageText[..(room - 1)] + "…";
+        var text = head + badge;
+        return text + TooltipSuffix(sources.Where(v => !v.Source.RaisesBadge).ToList(), now, stalenessMinutes,
+            available: limit - text.Length);
+    }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusDetailTooltipTests`
-Expected: PASS, 7 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1094,6 +1160,19 @@ public class StatusMonitorTests
         Assert.Null(m.Status("claude"));
     }
 
+    /// <summary>A discarded result still ends the fetch: the source must not stay in flight forever
+    /// (TakeDue skips in-flight sources), and it is treated as a failure so a misbehaving endpoint
+    /// backs off like any other.</summary>
+    [Fact]
+    public void MismatchedResult_DoesNotLeaveTheSourceStuckInFlight()
+    {
+        var m = Both();
+        m.TakeDue(T0);
+        m.Accept("claude", Ok("openai", T0, "major"), T0);
+        Assert.Empty(m.TakeDue(T0.AddSeconds(30)).Where(s => s.Id == "claude"));        // backed off 1 min
+        Assert.Contains("claude", m.TakeDue(T0.AddMinutes(1)).Select(s => s.Id));          // then due again
+    }
+
     [Fact]
     public void CompletionForASourceDisabledMidFlight_IsDiscarded()
     {
@@ -1138,6 +1217,19 @@ public class StatusMonitorTests
 
         m.Accept("claude", new PlatformStatus("claude", T0, "major", "Partial outage", [],
             [new PlatformComponent("Sora", "major_outage")]), T0);
+        Assert.True(m.BadgeDegraded());
+    }
+
+    /// <summary>The spec's deliberate asymmetry: a hand-written Claude filter narrows the popup rows
+    /// and the tooltip, never the badge. A README-only JSON key must not be able to disarm the
+    /// tray's single most important warning.</summary>
+    [Fact]
+    public void BadgeDegraded_IgnoresAClaudeFilterThatExcludesTheAffectedComponent()
+    {
+        var m = new StatusMonitor([(Claude, ["api"])]);
+        m.TakeDue(T0);
+        m.Accept("claude", new PlatformStatus("claude", T0, "major", "Partial outage", [],
+            [new PlatformComponent("Claude.ai", "major_outage")]), T0);
         Assert.True(m.BadgeDegraded());
     }
 }
@@ -1204,10 +1296,16 @@ public sealed class StatusMonitor
     {
         var entry = Find(sourceId);
         if (entry is null) return false;
-        if (result is not null && !string.Equals(result.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
-            return false;
 
+        // The fetch is over either way. Clearing InFlight before any early return is what keeps a
+        // discarded result from parking the source out of TakeDue for good.
         entry.InFlight = false;
+        if (result is not null && !string.Equals(result.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            entry.Scheduler.RecordFailure(now);   // something is wrong with this source; back off, do not store
+            return false;
+        }
+
         if (result is null)
         {
             // Keep the last-known-good state: a dead endpoint degrades to stale, never to blank.
@@ -1263,7 +1361,7 @@ public sealed class StatusMonitor
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusMonitorTests`
-Expected: PASS, 11 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1493,11 +1591,13 @@ git commit -m "feat: configure status sources and watch filters in settings" -m 
 ### Task 9: Wire TrayApp to the monitor
 
 **Files:**
-- Modify: `src/ClaudeUsageTray/Tray/TrayApp.cs` (fields ~28-37, `StartStatusFetch`/`OnStatusFetchCompleted` ~192-236, `Render`/`Apply` ~240-292, `StatusSuffix` ~316-324, popup construction ~350, dispose ~519)
+- Modify: `src/ClaudeUsageTray/Tray/TrayApp.cs` (fields ~30-37, `StartStatusFetch`/`OnStatusFetchCompleted` ~237-282, `Render`/`Apply` ~285-343, `TrimTooltip`/`StatusSuffix` ~394-404, `ShowPopup` ~428-435, `ApplySettings` ~530-565, dispose ~613). Line numbers are from `main` at 0.7.3-beta.1; search by member name, not by number.
 
 **Interfaces:**
-- Consumes: `StatusMonitor`, `StatusDetail`, `Settings.EnabledSources()`, `PlatformStatusApi.FetchAsync(http, source, now, ct)`.
+- Consumes: `StatusMonitor`, `StatusDetail.ComposeTooltip`, `Settings.EnabledSources()`, `PlatformStatusApi.FetchAsync(http, source, now, ct)`.
 - Produces: nothing new — this task rewires existing behaviour. `UsagePopup` still receives a single `PlatformStatus?` until Task 10.
+
+**What must not change:** `TrayApp` since 0.7.3 selects between the Claude Code snapshot and the Claude Desktop history via `SourceSelection.Choose`, and the resulting `DisplayChoice` flows through `Render` → `Apply` → `BuildTooltip` (the tooltip names the source, and `choice.Stale` dims the icon). This task touches only the *status* half of those signatures. Keep `DisplayChoice choice` everywhere it is today.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1579,45 +1679,55 @@ In `Render`, replace the `degraded` and `statusStale` locals:
         bool degraded = _statusMonitor.BadgeDegraded();
 ```
 
-Delete the `statusStale` local and drop that parameter from `Apply` and its two call sites — staleness is now decided per source inside `StatusDetail.TooltipSuffix`. Update `Apply`'s signature to `(NotifyIcon icon, char digit, WindowUsage? usage, string label, TimeSpan period, bool clockwise, bool stale, bool degraded, DateTimeOffset now)` and change both `icon.Text` assignments:
+Delete the `statusStale` local and its comment, and drop **only** that parameter from `Apply` and its two call sites — staleness is now decided per source inside `StatusDetail.TooltipSuffix`. `Apply`'s signature becomes `(NotifyIcon icon, char digit, DisplayChoice choice, WindowUsage? usage, string label, TimeSpan period, bool clockwise, bool degraded, DateTimeOffset now)`; `choice` stays because the no-data sentence and `BuildTooltip` read it. Change both `icon.Text` assignments, keeping their existing arguments:
 
 ```csharp
-            icon.Text = WithStatus("No Claude usage data yet — run Claude Code.", now);
+            icon.Text = WithStatus(noDataText, now);
             // ...
-            icon.Text = WithStatus(BuildTooltip(label, usage, elapsed, stale, now), now);
+            icon.Text = WithStatus(BuildTooltip(label, usage, elapsed, choice, now), now);
 ```
 
 Replace `StatusSuffix` with:
 
 ```csharp
-    /// <summary>The usage tooltip plus every relevant disruption. Assembled before trimming so the
-    /// badge-raising source's suffix cannot be the part that gets cut: TooltipSuffix drops the
-    /// non-badge suffixes whole when they do not fit the remaining budget.</summary>
+    /// <summary>The usage tooltip plus every relevant disruption, composed in Core so the badge-raising
+    /// suffix is reserved before anything is cut (StatusDetail.ComposeTooltip). TrimTooltip stays as
+    /// the last-resort guard for the NotifyIcon limit; after ComposeTooltip it should never fire.</summary>
     private string WithStatus(string text, DateTimeOffset now)
-        => TrimTooltip(text + StatusDetail.TooltipSuffix(_statusMonitor.Sources(), now,
-            _settings.StalenessMinutes, available: 127 - text.Length));
+        => TrimTooltip(StatusDetail.ComposeTooltip(text, _statusMonitor.Sources(), now, _settings.StalenessMinutes));
 ```
 
-At the popup construction site, pass the source views (the `UsagePopup` signature changes in Task 10; make both edits together if the build order bites):
+`TrimTooltip` itself is unchanged. `BuildTooltip` is unchanged.
+
+In `ShowPopup`, pass the source views instead of `_status` (the `UsagePopup` signature changes in Task 10; make both edits together if the build order bites). Everything else in the call stays — the `DisplayChoice` first argument and the trailing `_noDataText`:
 
 ```csharp
-        _popup = new UsagePopup(_snapshot, _settings, DateTimeOffset.UtcNow,
-            _statusMonitor.Sources(), _lastFetchStatus);
+        _popup = new UsagePopup(SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings),
+            _settings, now, _statusMonitor.Sources(), _lastFetchStatus, _noDataText);
 ```
 
-Where settings are applied after the dialog saves (search for where `_settings` fields are copied and `ApplyDisplayMode()` is called), add:
+In `ApplySettings(Settings edited)`, the live settings are updated **field by field** (`_settings.DisplayMode = edited.DisplayMode;` and so on) — nothing copies a field that is not listed there. Add the new map to that block, then apply it to the monitor:
+
+```csharp
+        _settings.UseBetaReleases = edited.UseBetaReleases;
+        _settings.StatusSources = edited.StatusSources;   // the dialog's Clone (Task 11) already deep-copied it
+```
+
+and after `PersistSettings();` / `ApplyDisplayMode();`, before `Refresh();`:
 
 ```csharp
         _statusMonitor.ApplyEnabled(_settings.EnabledSources());
-        StartStatusFetch();   // a newly enabled source is immediately due
+        StartStatusFetch();   // a newly enabled source is immediately due; a source that stays keeps its state
 ```
+
+Forgetting the first line is the failure mode to test for by hand in Step 5: the checkbox would appear to work in the dialog, be written to disk by nothing, and change nothing at runtime.
 
 - [ ] **Step 5: Run the suite and smoke-test**
 
 Run: `dotnet test`
 Expected: PASS (Task 10 updates the popup tests; if `UsagePopup` has not been changed yet, do Tasks 9 and 10 in one build).
 
-Then: `dotnet run --project src/ClaudeUsageTray`, open the popup, confirm the Claude banner still renders and the icon still behaves. Check `%APPDATA%\ClaudeUsageTray\fetch.log` for `status[claude]: ok: …`. **Do not** trigger repeated manual refreshes against the usage endpoint while testing.
+Then: `dotnet run --project src/ClaudeUsageTray`, open the popup, confirm the Claude banner still renders and the icon still behaves. Check `%APPDATA%\ClaudeUsageTray\fetch.log` for `status[claude]: ok: …`. Once Task 11 exists, also tick *Watch OpenAI status*, save, and confirm both that `settings.json` now carries `"openai": { "enabled": true, … }` and that `fetch.log` shows `status[openai]: attempt` within a second. **Do not** trigger repeated manual refreshes against the usage endpoint while testing.
 
 - [ ] **Step 6: Commit**
 
@@ -1632,12 +1742,13 @@ git commit -m "refactor: move tray status state into StatusMonitor" -m "Refs #17
 
 **Files:**
 - Modify: `src/ClaudeUsageTray/Tray/UsagePopup.cs` (constructor signature ~9-30, `AddPlatformStatus` ~101-158, delete `StatusText`/`DescribeIncident`/`Capitalize` ~177-192)
-- Test: `tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs`
+- Test: `tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs` (four `new UsagePopup(…)` calls pass a `PlatformStatus?` as the 4th argument)
+- Test: `tests/ClaudeUsageTray.Tests/UsagePopupSourceTests.cs` (passes `null` positionally as the 4th argument — still compiles, no change needed; listed so nobody "fixes" it)
 - Test: `tests/ClaudeUsageTray.Tests/UsagePopupStatusTests.cs` (create)
 
 **Interfaces:**
-- Consumes: `SourceView`, `StatusDetail.Header/Rows/HiddenCount/Emphasis/IsRelevant`, `StatusEmphasis`.
-- Produces: `UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now, IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null)`.
+- Consumes: `SourceView`, `StatusDetail.Header/Rows/HiddenCount/Emphasis/IsRelevant`, `StatusEmphasis`, `DisplayChoice` (existing, `Core/SourceSelection.cs`).
+- Produces: `UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now, IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null, string? noDataText = null)`. **Only the 4th parameter changes** — from `PlatformStatus? platformStatus` to the source list. The first parameter has been `DisplayChoice` since 0.7.3 (it carries the snapshot plus a `Stale` flag for the desktop-history fallback) and `noDataText` is the no-data sentence; both stay exactly as they are.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1663,7 +1774,9 @@ public class UsagePopupStatusTests : IDisposable
 
     private List<Label> Labels(params SourceView[] sources)
     {
-        var popup = new UsagePopup(null, new Settings(), Now, sources, null);
+        // No usage snapshot: the status blocks come first in the layout, so they are labels[0..n]
+        // and the single no-data sentence follows them.
+        var popup = new UsagePopup(new DisplayChoice(null, Stale: false), new Settings(), Now, sources);
         _open.Add(popup);
         popup.CreateControl();
         return popup.Controls.Cast<Control>()
@@ -1706,7 +1819,7 @@ public class UsagePopupStatusTests : IDisposable
             [new("Sora", "major_outage")], ["codex"]));
         Assert.Equal("OpenAI status: Partial System Outage · outside your watched components", labels[0].Text);
         Assert.Equal(SystemColors.GrayText, labels[0].ForeColor);
-        Assert.Single(labels);
+        Assert.DoesNotContain(labels.Skip(1), l => l.Text.Contains("Sora"));   // labels[1] is the no-data sentence
     }
 
     [Fact]
@@ -1716,7 +1829,8 @@ public class UsagePopupStatusTests : IDisposable
             components: [], filter: ["codex"]));
         Assert.Equal("OpenAI status: Service Disruption", labels[0].Text);
         Assert.Equal(Color.Firebrick, labels[0].ForeColor);
-        Assert.Single(labels);
+        Assert.Equal(NoDataReason.Default, labels[1].Text);                      // nothing between header and no-data
+        Assert.Equal(2, labels.Count);
     }
 
     [Fact]
@@ -1735,11 +1849,11 @@ Expected: FAIL — build error, `UsagePopup` takes a `PlatformStatus?`, not a so
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, change the constructor parameter and the call:
+In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, change the 4th constructor parameter and the call; leave `choice` and `noDataText` alone:
 
 ```csharp
-    public UsagePopup(UsageSnapshot? snapshot, Settings settings, DateTimeOffset now,
-        IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null)
+    public UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now,
+        IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null, string? noDataText = null)
     {
         // ...
         AddPlatformStatus(layout, statusSources, settings, now);
@@ -1812,16 +1926,14 @@ Replace `AddPlatformStatus` and delete the now-unused `StatusText`, `DescribeInc
     };
 ```
 
-Update `tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs` to build a `SourceView` from its `Degraded` helper and pass a one-element list into the popup:
+Update `tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs`: each of its four `new UsagePopup(new DisplayChoice(Snapshot, false), new Settings(), Now, <status>)` calls passes a `PlatformStatus?` as the 4th argument. Add one helper and route those arguments through it, changing nothing else about the tests:
 
 ```csharp
-    private int WidthWith(PlatformStatus? status)
-    {
-        IReadOnlyList<SourceView>? sources =
-            status is null ? null : [new SourceView(StatusSourceRegistry.Claude, status, [])];
-        // ... unchanged: construct UsagePopup with `sources`, CreateControl(), return Width
-    }
+    private static IReadOnlyList<SourceView>? Claude(PlatformStatus? status)
+        => status is null ? null : [new SourceView(StatusSourceRegistry.Claude, status, [])];
 ```
+
+`UsagePopupSourceTests` passes `null` in that position and keeps compiling as-is.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -1908,6 +2020,21 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
         var draft = Dialog(settings).Draft();
         Assert.Equal(["api"], draft.StatusSources["claude"]!.Components);
     }
+
+    /// <summary>"Reset to defaults" is scoped to the colour thresholds and staleness (see
+    /// ResetLeavesTheDisplayModeAlone). Which status pages are watched is a preference of the same
+    /// kind as the display mode, not a colour.</summary>
+    [Fact]
+    public void ResetLeavesTheOpenAiSourceAlone()
+    {
+        var settings = new Settings();
+        settings.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Components = ["codex"] };
+        var dialog = Dialog(settings);
+        Button(dialog, "reset").PerformClick();
+
+        Assert.True(WatchOpenAi(dialog).Checked);
+        Assert.Equal("codex", OpenAiComponents(dialog).Text);
+    }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1945,12 +2072,12 @@ In `LoadFrom(Settings source)` (~line 293), alongside `_paceColors.Checked = sou
         _openAiComponents.Enabled = _watchOpenAi.Checked;
 ```
 
-In the defaults reset (~line 300), alongside `_paceColors.Checked = new Settings().PaceColors;`:
+**Do not touch `ResetThresholdsToDefaults`.** The button is deliberately scoped to thresholds and staleness — its comment in the dialog and `ResetLeavesTheDisplayModeAlone` both say so — and which pages are watched is a preference like the display mode, not a colour.
+
+In the tab-order list at the end of the button-row builder (`foreach (var control in new Control[] { _modeFive, … _betaReleases, reset, cancel, save })`), insert the two new controls after `_betaReleases` so Tab reaches them in reading order:
 
 ```csharp
-        _watchOpenAi.Checked = false;
-        _openAiComponents.Text = ComponentFilter.Format(StatusSourceRegistry.OpenAi.DefaultComponents);
-        _openAiComponents.Enabled = false;
+                   _desktopStaleness, _betaReleases, _watchOpenAi, _openAiComponents, reset, cancel, save })
 ```
 
 In the event wiring (~line 324):
@@ -2079,5 +2206,8 @@ After Task 12, walk the spec's success-criteria list against a running build:
 - [ ] Unwatched-component disruption → grey banner with `· outside your watched components`, no rows, no tooltip suffix.
 - [ ] Unclassifiable disruption → coloured banner, no rows, tooltip suffix present.
 - [ ] Claude disruption → badge warns, incidents listed with `Details` links.
+- [ ] Claude disruption while the 7d tooltip is at its longest (pace gloss, desktop-history source label) → the tooltip still ends with `· Claude: …`; the usage text, not the suffix, is what got the `…`.
+- [ ] Tick *Watch OpenAI status* in the dialog and save → `settings.json` shows `"openai": { "enabled": true, … }` and `fetch.log` shows `status[openai]: attempt` within a second, with no restart. Untick and save → the next minute's log shows only `status[claude]`.
+- [ ] *Reset to defaults* in the dialog leaves the OpenAI checkbox and its component text untouched.
 - [ ] Point one source at an unreachable host → the other keeps its 60 s cadence and its data (`fetch.log` shows the failing source backing off alone).
 - [ ] An existing `settings.json` loads unchanged in behaviour and gains the `statusSources` key on the next save.
