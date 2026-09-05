@@ -57,16 +57,23 @@ internal static unsafe class NativeProcess
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern bool CloseHandle(IntPtr handle);
 
-    /// <summary>Breakaway first; when the job forbids it (ERROR_ACCESS_DENIED) the child is started
-    /// inside the job so the caller can at least wait for it and read its exit code. Null when even
-    /// that fails.</summary>
-    public static StartedProcess? Start(string exe, string arguments, bool tryBreakaway)
+    /// <summary>Breakaway first when <paramref name="tryBreakaway"/>; when the job forbids it
+    /// (ERROR_ACCESS_DENIED), <paramref name="allowInJobFallback"/> decides whether the child is
+    /// started inside the job anyway. A caller that only wants a detached, un-waited-for child (the
+    /// tray relaunch: a denied breakaway must not silently produce a second, job-bound copy racing the
+    /// one started via explorer.exe) passes false and gets null instead. Setup.exe launching (a later
+    /// task) passes true, because it must wait and read the child's exit code even when breakaway was
+    /// denied. Null on any other failure, as before.</summary>
+    public static StartedProcess? Start(string exe, string arguments, bool tryBreakaway, bool allowInJobFallback)
     {
         var commandLine = string.IsNullOrEmpty(arguments) ? $"\"{exe}\"" : $"\"{exe}\" {arguments}";
-        if (tryBreakaway && TryCreate(exe, commandLine, CreateBreakawayFromJob, out var info))
+        if (!tryBreakaway)
+            return TryCreate(exe, commandLine, 0, out var plain) ? new StartedProcess(plain.hProcess, brokeAwayFromJob: false) : null;
+        if (TryCreate(exe, commandLine, CreateBreakawayFromJob, out var info))
             return new StartedProcess(info.hProcess, brokeAwayFromJob: true);
-        if (tryBreakaway && Marshal.GetLastPInvokeError() != ErrorAccessDenied && Marshal.GetLastPInvokeError() != 0)
-            return null;
+        var error = Marshal.GetLastPInvokeError();
+        if (error != ErrorAccessDenied && error != 0) return null;
+        if (!allowInJobFallback) return null;
         return TryCreate(exe, commandLine, 0, out info) ? new StartedProcess(info.hProcess, brokeAwayFromJob: false) : null;
     }
 

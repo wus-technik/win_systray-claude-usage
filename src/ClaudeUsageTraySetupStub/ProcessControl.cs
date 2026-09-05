@@ -73,6 +73,7 @@ public static class ProcessControl
         {
             try { process.Kill(); process.WaitForExit((int)timeout.TotalMilliseconds); }
             catch (Exception e) when (e is Win32Exception or InvalidOperationException) { }
+            finally { process.Dispose(); }
         }
         var deadline = DateTime.UtcNow + timeout;
         while (IsTrayMutexHeld())
@@ -83,14 +84,17 @@ public static class ProcessControl
         return true;
     }
 
-    /// <summary>Detached (breakaway from the caller's job). When breakaway is denied, the explorer.exe
-    /// indirection CLAUDE.md uses: Explorer starts the child in its own job, so it survives the shell.</summary>
+    /// <summary>Detached (breakaway from the caller's job) or nothing — never in-job. A denied breakaway
+    /// must not silently start a second, job-bound copy that then races the mutex against the
+    /// explorer.exe indirection below; asking for that fallback (`allowInJobFallback: false`) means
+    /// `Start` returns null instead, so the explorer.exe path always runs and is what actually launched
+    /// the tray. Explorer starts the child in its own job, so it survives the shell.</summary>
     public static bool RelaunchTray(string root)
     {
         var exe = InstallPaths.CurrentExe(root);
         if (!File.Exists(exe)) return false;
-        using var started = NativeProcess.Start(exe, "", tryBreakaway: true);
-        if (started is { BrokeAwayFromJob: true }) return true;
+        using var started = NativeProcess.Start(exe, "", tryBreakaway: true, allowInJobFallback: false);
+        if (started is not null) return true;
         try
         {
             using var explorer = Process.Start(new ProcessStartInfo("explorer.exe", $"\"{exe}\"") { UseShellExecute = false });
@@ -98,7 +102,7 @@ public static class ProcessControl
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException)
         {
-            return started is not null; // inside the job is better than nothing
+            return false;
         }
     }
 }
