@@ -21,6 +21,8 @@ written for the person deciding whether to install it — not for the person who
 - **`desktopStalenessHours`** in Settings (default 3). The desktop app records usage only while
   you work in it, so its data is judged by an hours-scale cutoff rather than the minutes-scale one
   used for Claude Code.
+- **`desktopHistoryPathOverride`** in `settings.json` (file-only), for pointing the tray at a
+  `plan-usage-history.json` in a location it does not know about.
 
 ### Changed
 

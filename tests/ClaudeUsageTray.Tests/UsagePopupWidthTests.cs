@@ -92,4 +92,29 @@ public class UsagePopupWidthTests : IDisposable
         Assert.True(widePopup.PreferredSize.Height > baseline,
             $"expected the wrapped incident to be taller than {baseline}, was {widePopup.PreferredSize.Height}");
     }
+
+    /// <summary>The last-updated line is app-authored text, but "Claude Desktop history · updated
+    /// 5h ago · stale" is still longer than the plain Claude Code line and must not stretch the
+    /// popup past what the bar governs.</summary>
+    [Fact]
+    public void DesktopSourceUpdatedLineDoesNotWidenThePopup()
+    {
+        var baseline = WidthWith(new DisplayChoice(Snapshot, false), null);
+
+        var desktop = new UsageSnapshot(Now.AddHours(-5), new WindowUsage(20, null), new WindowUsage(31, null))
+        {
+            Source = UsageSource.DesktopHistory,
+        };
+        var wide = WidthWith(new DisplayChoice(desktop, true), null);
+
+        Assert.Equal(baseline, wide);
+    }
+
+    private int WidthWith(DisplayChoice choice, PlatformStatus? status)
+    {
+        var popup = new UsagePopup(choice, new Settings(), Now, status);
+        _open.Add(popup);
+        popup.PerformLayout();
+        return popup.PreferredSize.Width;
+    }
 }

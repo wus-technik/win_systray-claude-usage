@@ -25,14 +25,20 @@ public static class DesktopHistoryPath
 
         var list = new List<string>();
         Guard(() => list.Add(Path.Combine(appData, "Claude", FileName)));
+
+        // Glob the package family: the publisher hash is stable in practice but not guaranteed.
+        // Enumeration itself is guarded so one bad package directory cannot drop the classic
+        // %APPDATA% candidate above; each resulting path is then guarded individually so a single
+        // ACL'd/too-long package directory does not drop its siblings either.
+        var packageDirs = new List<string>();
         Guard(() =>
         {
             var packages = Path.Combine(localAppData, "Packages");
             if (!Directory.Exists(packages)) return;
-            // Glob the package family: the publisher hash is stable in practice but not guaranteed.
-            foreach (var dir in Directory.EnumerateDirectories(packages, "Claude_*"))
-                list.Add(Path.Combine(dir, "LocalCache", "Roaming", "Claude", FileName));
+            packageDirs.AddRange(Directory.EnumerateDirectories(packages, "Claude_*"));
         });
+        foreach (var dir in packageDirs)
+            Guard(() => list.Add(Path.Combine(dir, "LocalCache", "Roaming", "Claude", FileName)));
         return list;
     }
 

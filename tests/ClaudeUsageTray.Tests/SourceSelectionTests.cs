@@ -111,4 +111,23 @@ public class SourceSelectionTests
         Assert.Equal(UsageSource.ClaudeCode, choice.Snapshot!.Source);
         Assert.True(choice.Stale);
     }
+
+    [Fact]
+    public void ExactlyFiveMinutesInTheFuture_CountsAsFresh()
+    {
+        var choice = SourceSelection.Choose(null, Desktop(TimeSpan.FromMinutes(-5)), Now, Defaults);
+        Assert.False(choice.Stale);
+        Assert.Equal(TimeSpan.Zero, SourceSelection.Age(choice.Snapshot!, Now));
+    }
+
+    /// <summary>Age(desktop) < Age(cli) is the only tie-break condition -- equal age keeps cli,
+    /// since it is the richer source (reset times, scoped limits, money) whenever there is nothing
+    /// to prefer the desktop history for.</summary>
+    [Fact]
+    public void BothStale_EqualAge_PrefersClaudeCode()
+    {
+        var choice = SourceSelection.Choose(Cli(TimeSpan.FromHours(5)), Desktop(TimeSpan.FromHours(5)), Now, Defaults);
+        Assert.Equal(UsageSource.ClaudeCode, choice.Snapshot!.Source);
+        Assert.True(choice.Stale);
+    }
 }

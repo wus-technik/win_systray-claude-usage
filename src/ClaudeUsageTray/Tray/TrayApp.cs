@@ -50,7 +50,6 @@ public sealed class TrayApp : ApplicationContext
     private DesktopHistoryStatus _desktopStatus = DesktopHistoryStatus.NotFound;
     private string? _noDataText;
     private UsageSource? _lastLoggedSource;
-    private DateTimeOffset? _lastLoggedDesktopAt;
     private bool _settingsSaveFailed;
     private UsagePopup? _popup;
     private SettingsDialog? _settingsDialog;
@@ -101,6 +100,7 @@ public sealed class TrayApp : ApplicationContext
 
     private void Refresh()
     {
+        var now = DateTimeOffset.UtcNow;
         var read = UsageCacheReader.TryRead(_configPath);
         if (read is not null)
         {
@@ -109,7 +109,7 @@ public sealed class TrayApp : ApplicationContext
         }
         else if (!File.Exists(_configPath))
         {
-            if (_cliSnapshot is null || DateTimeOffset.UtcNow - _cliSnapshot.FetchedAt
+            if (_cliSnapshot is null || now - _cliSnapshot.FetchedAt
                 > TimeSpan.FromMinutes(_settings.StalenessMinutes))
             {
                 _cliSnapshot = null;
@@ -118,7 +118,7 @@ public sealed class TrayApp : ApplicationContext
         }
         else if (_cliSnapshot is null || ++_consecutiveReadFailures >= 3)
         {
-            if (_cliSnapshot is null || DateTimeOffset.UtcNow - _cliSnapshot.FetchedAt
+            if (_cliSnapshot is null || now - _cliSnapshot.FetchedAt
                 > TimeSpan.FromMinutes(_settings.StalenessMinutes))
             {
                 _cliSnapshot = null;
@@ -131,7 +131,6 @@ public sealed class TrayApp : ApplicationContext
             _retry.Start(); // likely a partial replace; preserve the last known good snapshot briefly
         }
 
-        var now = DateTimeOffset.UtcNow;
         var desktop = DesktopUsageReader.ReadFirst(DesktopHistoryPath.ByFreshness(
             DesktopHistoryPath.Candidates(_settings.DesktopHistoryPathOverride,
                 DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)), now);
@@ -320,7 +319,12 @@ public sealed class TrayApp : ApplicationContext
         if (usage is null)
         {
             icon.Icon = IconRenderer.RenderNeutral(size, warning: degraded);
-            icon.Text = TrimTooltip((_noDataText ?? NoDataReason.Default) + StatusSuffix(statusStale));
+            // A snapshot can exist and still be missing just this window (e.g. a desktop sample
+            // without fh) -- that is a per-window gap, not the general no-data sentence.
+            string noDataText = choice.Snapshot is not null
+                ? $"{label}: no data"
+                : _noDataText ?? NoDataReason.Default;
+            icon.Text = TrimTooltip(noDataText + StatusSuffix(statusStale));
         }
         else
         {
@@ -365,8 +369,7 @@ public sealed class TrayApp : ApplicationContext
     /// <summary>One line per adopted desktop sample. Percentages and age only.</summary>
     private void LogDesktopSample(DateTimeOffset now)
     {
-        if (_desktopSnapshot is not { } s || s.FetchedAt == _lastLoggedDesktopAt) return;
-        _lastLoggedDesktopAt = s.FetchedAt;
+        if (_desktopSnapshot is not { } s) return;
         string five = s.FiveHour?.Percent.ToString() ?? "-";
         string seven = s.SevenDay?.Percent.ToString() ?? "-";
         _log.Write(now, $"desktop: adopted 5h={five}% 7d={seven}% updated {RelativeTime.Ago(s.FetchedAt, now)}");

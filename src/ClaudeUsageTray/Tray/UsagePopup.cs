@@ -64,13 +64,11 @@ public sealed class UsagePopup : Form
                 ? $"Claude Desktop history · updated {ago}"
                 : $"Last updated {ago}";
             if (stale) updated += " · stale";
-            layout.Controls.Add(new Label
-            {
-                Text = updated,
-                AutoSize = true,
-                ForeColor = stale ? Color.Firebrick : SystemColors.GrayText,
-                Margin = new Padding(0, 8, 0, 0),
-            });
+            // Long enough with the desktop-source prefix and "· stale" together to exceed the bar
+            // width; wrap it like the other page-supplied text rather than stretching the form.
+            var updatedLabel = WrappingLabel(updated, stale ? Color.Firebrick : SystemColors.GrayText,
+                new Padding(0, 8, 0, 0));
+            layout.Controls.Add(updatedLabel);
         }
 
         if (!string.IsNullOrEmpty(lastFetchStatus))
@@ -238,8 +236,11 @@ public sealed class UsagePopup : Form
         }
     }
 
+    // Wrapped at the bar width like the other page-supplied text: a percent, resets-in and pace
+    // suffix can together run past the bar (e.g. "5-hour window — 20% · resets in 3h · 0.5× pace"),
+    // and that combination is not a fixed length the layout can rely on staying short.
     private static void AddCaption(TableLayoutPanel layout, string text)
-        => layout.Controls.Add(new Label { Text = text, AutoSize = true, Margin = new Padding(0, 6, 0, 2) });
+        => layout.Controls.Add(WrappingLabel(text, SystemColors.ControlText, new Padding(0, 6, 0, 2)));
 
     private static Severity SeverityFor(int percent, Settings settings, double? elapsedFraction = null)
         => SeverityRules.ForSettings(settings, percent, elapsedFraction);

@@ -179,6 +179,9 @@ Claude Desktop history steps in when it is not.
    gaps of an hour are normal; it counts as stale after `desktopStalenessHours`. If you only use
    Claude Desktop, this is where your numbers come from. The field meanings are inferred from
    observation, not documented, so a desktop app update can silently change them.
+   On a machine that has both apps but no usable Claude Code credentials, the display switches to
+   this source whenever Claude Code's cache goes stale, so the countdowns, time marker and pace
+   colouring can come and go; `fetch.log` records each switch.
 4. **Platform status** — the public status page at status.claude.com, polled once a minute with
    no auth and no token involved. The page's own banner decides the warning badge; incident
    details are the page's own words.
