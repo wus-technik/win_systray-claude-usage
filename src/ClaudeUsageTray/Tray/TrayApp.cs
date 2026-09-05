@@ -41,7 +41,16 @@ public sealed class TrayApp : ApplicationContext
 
     private NotifyIcon? _iconFive;
     private NotifyIcon? _iconSeven;
-    private UsageSnapshot? _snapshot;
+    // Two sources, one shown: Claude Code's (cache + live, merged by SnapshotPrecedence) and the
+    // Claude Desktop history. SourceSelection picks between them at render time; each slot keeps its
+    // last-known-good value until its own allowance runs out, so a transient read failure never
+    // blanks the display.
+    private UsageSnapshot? _cliSnapshot;
+    private UsageSnapshot? _desktopSnapshot;
+    private DesktopHistoryStatus _desktopStatus = DesktopHistoryStatus.NotFound;
+    private string? _noDataText;
+    private UsageSource? _lastLoggedSource;
+    private DateTimeOffset? _lastLoggedDesktopAt;
     private bool _settingsSaveFailed;
     private UsagePopup? _popup;
     private SettingsDialog? _settingsDialog;
@@ -95,24 +104,24 @@ public sealed class TrayApp : ApplicationContext
         var read = UsageCacheReader.TryRead(_configPath);
         if (read is not null)
         {
-            if (SnapshotPrecedence.IsNewer(read, _snapshot)) _snapshot = read;
+            if (SnapshotPrecedence.IsNewer(read, _cliSnapshot)) _cliSnapshot = read;
             _consecutiveReadFailures = 0;
         }
         else if (!File.Exists(_configPath))
         {
-            if (_snapshot is null || DateTimeOffset.UtcNow - _snapshot.FetchedAt
+            if (_cliSnapshot is null || DateTimeOffset.UtcNow - _cliSnapshot.FetchedAt
                 > TimeSpan.FromMinutes(_settings.StalenessMinutes))
             {
-                _snapshot = null;
+                _cliSnapshot = null;
             }
             _consecutiveReadFailures = 0;
         }
-        else if (_snapshot is null || ++_consecutiveReadFailures >= 3)
+        else if (_cliSnapshot is null || ++_consecutiveReadFailures >= 3)
         {
-            if (_snapshot is null || DateTimeOffset.UtcNow - _snapshot.FetchedAt
+            if (_cliSnapshot is null || DateTimeOffset.UtcNow - _cliSnapshot.FetchedAt
                 > TimeSpan.FromMinutes(_settings.StalenessMinutes))
             {
-                _snapshot = null;
+                _cliSnapshot = null;
             }
             _consecutiveReadFailures = 0;
         }
@@ -121,6 +130,34 @@ public sealed class TrayApp : ApplicationContext
             _retry.Stop();
             _retry.Start(); // likely a partial replace; preserve the last known good snapshot briefly
         }
+
+        var now = DateTimeOffset.UtcNow;
+        var desktop = DesktopUsageReader.ReadFirst(DesktopHistoryPath.ByFreshness(
+            DesktopHistoryPath.Candidates(_settings.DesktopHistoryPathOverride,
+                DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)));
+        _desktopStatus = desktop.Status;
+        if (desktop.Snapshot is not null)
+        {
+            if (SnapshotPrecedence.IsNewer(desktop.Snapshot, _desktopSnapshot))
+            {
+                _desktopSnapshot = desktop.Snapshot;
+                LogDesktopSample(now);
+            }
+        }
+        else if (_desktopSnapshot is not null
+            && SourceSelection.Age(_desktopSnapshot, now) > TimeSpan.FromHours(_settings.DesktopStalenessHours))
+        {
+            _desktopSnapshot = null; // past its allowance and no longer readable: let it go
+        }
+
+        // Computed here, not in Render(): it reads .claude.json again, and Render runs on every tick.
+        _noDataText = _cliSnapshot is null && _desktopSnapshot is null
+            ? NoDataReason.Describe(new NoDataFacts(
+                UsageCacheReader.Status(_configPath),
+                CredentialsReader.Status(CredentialsReader.DefaultPath, now),
+                _desktopStatus))
+            : null;
+
         Render();
     }
 
@@ -132,7 +169,16 @@ public sealed class TrayApp : ApplicationContext
         if (_fetchInFlight) return; // transient; not worth logging on every timer tick
         if (!_fetchScheduler.CanFetch(now)) { _log.Write(now, "skip: budget/backoff gate not open yet"); return; }
         var token = CredentialsReader.TryReadAccessToken(CredentialsReader.DefaultPath, now);
-        if (token is null) { _log.Write(now, "skip: no valid access token (missing/expired/near-expiry)"); return; }
+        if (token is null)
+        {
+            // Normal on a desktop-only machine: the Claude Code the desktop app installs never writes
+            // a credentials file. Say so in the popup rather than leaving "no fetch yet" forever.
+            _lastFetchStatus = CredentialsReader.Status(CredentialsReader.DefaultPath, now) == CredentialStatus.Missing
+                ? "no credentials file · live fetch off"
+                : "no valid credentials · live fetch off";
+            _log.Write(now, "skip: no valid access token (missing/expired/near-expiry)");
+            return;
+        }
         if (token == _rejectedToken) { _log.Write(now, "skip: token previously rejected (401/403); waiting for refresh"); return; }
 
         _fetchInFlight = true;
@@ -155,10 +201,10 @@ public sealed class TrayApp : ApplicationContext
         {
             _fetchScheduler.RecordSuccess();
             _rejectedToken = null;
-            bool adopted = SnapshotPrecedence.IsNewer(result.Snapshot, _snapshot);
+            bool adopted = SnapshotPrecedence.IsNewer(result.Snapshot, _cliSnapshot);
             if (adopted)
             {
-                _snapshot = result.Snapshot;
+                _cliSnapshot = result.Snapshot;
                 _consecutiveReadFailures = 0;
             }
             string five = result.Snapshot.FiveHour?.Percent.ToString() ?? "-";
@@ -241,8 +287,8 @@ public sealed class TrayApp : ApplicationContext
     private void Render()
     {
         var now = DateTimeOffset.UtcNow;
-        bool stale = _snapshot is not null
-            && now - _snapshot.FetchedAt > TimeSpan.FromMinutes(_settings.StalenessMinutes);
+        var choice = SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings);
+        LogSourceChange(choice, now);
         bool degraded = _status is { Degraded: true };
         // A real outage must not vanish because *our* network is down: the state keeps being
         // displayed once fetched, only marked stale.
@@ -250,23 +296,23 @@ public sealed class TrayApp : ApplicationContext
             && now - _status.FetchedAt > TimeSpan.FromMinutes(_settings.StalenessMinutes);
 
         if (_iconFive is not null)
-            Apply(_iconFive, '5', _snapshot?.FiveHour, "5h", TimeSpan.FromHours(5),
-                clockwise: true, stale, degraded, statusStale, now);
+            Apply(_iconFive, '5', choice, choice.Snapshot?.FiveHour, "5h", TimeSpan.FromHours(5),
+                clockwise: true, degraded, statusStale, now);
         if (_iconSeven is not null)
-            Apply(_iconSeven, '7', _snapshot?.SevenDay, "7d", TimeSpan.FromDays(7),
-                clockwise: false, stale, degraded, statusStale, now);
+            Apply(_iconSeven, '7', choice, choice.Snapshot?.SevenDay, "7d", TimeSpan.FromDays(7),
+                clockwise: false, degraded, statusStale, now);
 
         _updatedItem.Text = _settingsSaveFailed
             ? "Settings could not be saved"
-            : _snapshot is null
+            : choice.Snapshot is null
                 ? "No usage data"
-                : $"Updated {RelativeTime.Ago(_snapshot.FetchedAt, now)}";
+                : $"Updated {RelativeTime.Ago(choice.Snapshot.FetchedAt, now)}";
 
         _restartToUpdateItem.Enabled = UpdateCheck.IsUpdateReady;
     }
 
-    private void Apply(NotifyIcon icon, char digit, WindowUsage? usage, string label, TimeSpan period,
-        bool clockwise, bool stale, bool degraded, bool statusStale, DateTimeOffset now)
+    private void Apply(NotifyIcon icon, char digit, DisplayChoice choice, WindowUsage? usage, string label,
+        TimeSpan period, bool clockwise, bool degraded, bool statusStale, DateTimeOffset now)
     {
         int size = IconRenderer.SystemTrayIconSize();
         var old = icon.Icon;
@@ -274,7 +320,7 @@ public sealed class TrayApp : ApplicationContext
         if (usage is null)
         {
             icon.Icon = IconRenderer.RenderNeutral(size, warning: degraded);
-            icon.Text = TrimTooltip("No Claude usage data yet — run Claude Code." + StatusSuffix(statusStale));
+            icon.Text = TrimTooltip((_noDataText ?? NoDataReason.Default) + StatusSuffix(statusStale));
         }
         else
         {
@@ -285,13 +331,13 @@ public sealed class TrayApp : ApplicationContext
                 ? SeverityRules.ForPace(usage.Percent, elapsed, _settings.Thresholds.Orange, _settings.Thresholds.Red)
                 : SeverityRules.For(usage.Percent, _settings.Thresholds.Orange, _settings.Thresholds.Red);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
-                dimmed: stale, size, warning: degraded);
-            icon.Text = TrimTooltip(BuildTooltip(label, usage, elapsed, stale, now) + StatusSuffix(statusStale));
+                dimmed: choice.Stale, size, warning: degraded);
+            icon.Text = TrimTooltip(BuildTooltip(label, usage, elapsed, choice, now) + StatusSuffix(statusStale));
         }
         old?.Dispose();
     }
 
-    private string BuildTooltip(string label, WindowUsage usage, double? elapsedFraction, bool stale,
+    private string BuildTooltip(string label, WindowUsage usage, double? elapsedFraction, DisplayChoice choice,
         DateTimeOffset now)
     {
         var parts = new List<string> { label, $"{usage.Percent}%" };
@@ -303,11 +349,43 @@ public sealed class TrayApp : ApplicationContext
         if (usage.ResetsAt is { } resetsAt)
         {
             parts.Add($"resets in {RelativeTime.In(resetsAt, now)}");
-            if (stale && resetsAt <= now) parts.Add("awaiting refresh"); // cached % may be the prior window
+            if (choice.Stale && resetsAt <= now) parts.Add("awaiting refresh"); // cached % may be the prior window
         }
-        if (stale && _snapshot is not null)
-            parts.Add($"stale · updated {RelativeTime.Ago(_snapshot.FetchedAt, now)}");
+        if (choice.Snapshot is { } snapshot)
+        {
+            bool desktop = snapshot.Source == UsageSource.DesktopHistory;
+            if (choice.Stale)
+                parts.Add($"stale · {(desktop ? "Claude Desktop history · " : "")}updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
+            else if (desktop)
+                parts.Add($"Claude Desktop history · updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
+        }
         return string.Join(" · ", parts);
+    }
+
+    /// <summary>One line per adopted desktop sample. Percentages and age only.</summary>
+    private void LogDesktopSample(DateTimeOffset now)
+    {
+        if (_desktopSnapshot is not { } s || s.FetchedAt == _lastLoggedDesktopAt) return;
+        _lastLoggedDesktopAt = s.FetchedAt;
+        string five = s.FiveHour?.Percent.ToString() ?? "-";
+        string seven = s.SevenDay?.Percent.ToString() ?? "-";
+        _log.Write(now, $"desktop: adopted 5h={five}% 7d={seven}% updated {RelativeTime.Ago(s.FetchedAt, now)}");
+    }
+
+    /// <summary>One line whenever the displayed source changes, so a "shows the wrong numbers" report
+    /// can be traced to which file they came from.</summary>
+    private void LogSourceChange(DisplayChoice choice, DateTimeOffset now)
+    {
+        var source = choice.Snapshot?.Source;
+        if (source == _lastLoggedSource) return;
+        _lastLoggedSource = source;
+        if (source is null) _log.Write(now, "source: none");
+        else if (source == UsageSource.DesktopHistory)
+        {
+            var cli = _cliSnapshot is null ? "absent" : $"stale, updated {RelativeTime.Ago(_cliSnapshot.FetchedAt, now)}";
+            _log.Write(now, $"source: desktop history (claude code {cli})");
+        }
+        else _log.Write(now, "source: claude code");
     }
 
     private static string TrimTooltip(string text)
@@ -347,7 +425,9 @@ public sealed class TrayApp : ApplicationContext
     public void ShowPopup()
     {
         if (_popup is { IsDisposed: false }) { _popup.Close(); }
-        _popup = new UsagePopup(new DisplayChoice(_snapshot, false), _settings, DateTimeOffset.UtcNow, _status, _lastFetchStatus);
+        var now = DateTimeOffset.UtcNow;
+        _popup = new UsagePopup(SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings),
+            _settings, now, _status, _lastFetchStatus, _noDataText);
         _popup.Show();
         _popup.Activate();
     }
@@ -466,6 +546,7 @@ public sealed class TrayApp : ApplicationContext
         _settings.DisplayMode = edited.DisplayMode;
         _settings.Thresholds = edited.Thresholds;
         _settings.StalenessMinutes = edited.StalenessMinutes;
+        _settings.DesktopStalenessHours = edited.DesktopStalenessHours;
         _settings.PaceColors = edited.PaceColors;
         _settings.RunAtStartup = edited.RunAtStartup;
         _settings.UseBetaReleases = edited.UseBetaReleases;
