@@ -1,4 +1,5 @@
 using ClaudeUsageTray.Core;
+using System.Linq;
 using Xunit;
 
 namespace ClaudeUsageTray.Tests;
@@ -200,5 +201,79 @@ public class SettingsTests : IDisposable
 
         Assert.Equal(3, loaded.DesktopStalenessHours);
         Assert.Null(loaded.DesktopHistoryPathOverride);
+    }
+
+    private static Settings LoadJson(string json)
+    {
+        var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".json");
+        File.WriteAllText(path, json);
+        try { return Settings.Load(path); }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void NoStatusSourcesKey_KeepsTodaysBehaviour()
+    {
+        var s = LoadJson("""{ "displayMode": "both" }""");
+        var enabled = s.EnabledSources();
+        Assert.Equal(["claude"], enabled.Select(e => e.Source.Id));
+        Assert.Empty(enabled[0].Filter);
+    }
+
+    [Fact]
+    public void EnablingOpenAi_UsesItsDefaultFilterWhenNoneIsGiven()
+    {
+        var s = LoadJson("""{ "statusSources": { "openai": { "enabled": true } } }""");
+        var openAi = s.EnabledSources().Single(e => e.Source.Id == "openai");
+        Assert.Equal(StatusSourceRegistry.OpenAi.DefaultComponents, openAi.Filter);
+    }
+
+    [Fact]
+    public void GivenComponents_AreNormalized()
+    {
+        var s = LoadJson(
+            """{ "statusSources": { "openai": { "enabled": true, "components": [" codex ", "", "CODEX"] } } }""");
+        Assert.Equal(["codex"], s.EnabledSources().Single(e => e.Source.Id == "openai").Filter);
+    }
+
+    [Fact]
+    public void UnknownSourceId_IsDropped()
+    {
+        var s = LoadJson("""{ "statusSources": { "gemini": { "enabled": true } } }""");
+        Assert.Equal(["claude"], s.EnabledSources().Select(e => e.Source.Id));
+    }
+
+    /// <summary>Per-entry fallback: a malformed source entry must not reset unrelated settings the
+    /// way a whole-file JsonException would.</summary>
+    [Fact]
+    public void MalformedEntry_ResetsThatEntryAlone()
+    {
+        var s = LoadJson("""
+            {
+              "stalenessMinutes": 42,
+              "thresholds": { "orange": 30, "red": 70 },
+              "statusSources": { "openai": { "enabled": "yes please", "components": 7 } }
+            }
+            """);
+        Assert.Equal(42, s.StalenessMinutes);
+        Assert.Equal(30, s.Thresholds.Orange);
+        Assert.Equal(70, s.Thresholds.Red);
+        Assert.Equal(["claude"], s.EnabledSources().Select(e => e.Source.Id));   // openai back to disabled
+    }
+
+    [Fact]
+    public void StatusSources_RoundTripThroughSave()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".json");
+        try
+        {
+            var s = new Settings();
+            s.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Components = ["codex"] };
+            s.Save(path);
+            var loaded = Settings.Load(path);
+            Assert.Equal(["claude", "openai"], loaded.EnabledSources().Select(e => e.Source.Id));
+            Assert.Equal(["codex"], loaded.EnabledSources().Single(e => e.Source.Id == "openai").Filter);
+        }
+        finally { File.Delete(path); }
     }
 }

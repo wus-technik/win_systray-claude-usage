@@ -36,6 +36,51 @@ public static class ThresholdRules
     }
 }
 
+/// <summary>One source's configuration. Components null means "use the source's default filter";
+/// an empty list means watch every component.</summary>
+public sealed class StatusSourceSettings
+{
+    public bool Enabled { get; set; }
+    public List<string>? Components { get; set; }
+}
+
+/// <summary>Reads the status-source map entry by entry, so one malformed entry cannot throw and take
+/// every unrelated setting down with it — Settings.Load catches JsonException and falls back to full
+/// defaults, which would otherwise reset thresholds and display mode too. A bad entry arrives as
+/// null and NormalizeFields replaces it with the registry default.</summary>
+public sealed class TolerantStatusSourcesConverter : JsonConverter<Dictionary<string, StatusSourceSettings?>>
+{
+    public override Dictionary<string, StatusSourceSettings?> Read(ref Utf8JsonReader reader,
+        Type typeToConvert, JsonSerializerOptions options)
+    {
+        var result = new Dictionary<string, StatusSourceSettings?>(StringComparer.OrdinalIgnoreCase);
+        if (reader.TokenType != JsonTokenType.StartObject) { reader.Skip(); return result; }
+
+        using var doc = JsonDocument.ParseValue(ref reader);
+        foreach (var property in doc.RootElement.EnumerateObject())
+        {
+            StatusSourceSettings? value = null;
+            try { value = property.Value.Deserialize<StatusSourceSettings>(options); }
+            catch (JsonException) { /* malformed entry → registry default at normalization */ }
+            result[property.Name] = value;
+        }
+        return result;
+    }
+
+    public override void Write(Utf8JsonWriter writer, Dictionary<string, StatusSourceSettings?> value,
+        JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        foreach (var (key, entry) in value)
+        {
+            if (entry is null) continue;
+            writer.WritePropertyName(key);   // source ids are already the lower-case token
+            JsonSerializer.Serialize(writer, entry, options);
+        }
+        writer.WriteEndObject();
+    }
+}
+
 public sealed class Settings
 {
     public DisplayMode DisplayMode { get; set; } = DisplayMode.Both;
@@ -67,6 +112,12 @@ public sealed class Settings
     /// <see cref="ConfigPathOverride"/>; two real locations already exist in the wild and a third
     /// should not need a release.</summary>
     public string? DesktopHistoryPathOverride { get; set; }
+
+    /// <summary>Which status pages to watch, and which of their components matter. Values are
+    /// non-null after Load; the nullable value type exists so the tolerant converter can mark a
+    /// malformed entry for NormalizeFields to replace.</summary>
+    [JsonConverter(typeof(TolerantStatusSourcesConverter))]
+    public Dictionary<string, StatusSourceSettings?> StatusSources { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -118,5 +169,41 @@ public sealed class Settings
         }
         if (StalenessMinutes < 0) StalenessMinutes = ThresholdRules.DefaultStalenessMinutes;
         if (DesktopStalenessHours <= 0) DesktopStalenessHours = ThresholdRules.DefaultDesktopStalenessHours;
+
+        StatusSources ??= new(StringComparer.OrdinalIgnoreCase);
+        var sources = new Dictionary<string, StatusSourceSettings?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in StatusSourceRegistry.All)
+        {
+            // Unknown ids are dropped by rebuilding from the registry; a missing or malformed entry
+            // falls back to that source's default, and every other entry survives untouched.
+            StatusSources.TryGetValue(source.Id, out var entry);
+            sources[source.Id] = entry is null
+                ? new StatusSourceSettings
+                {
+                    Enabled = source.RaisesBadge,           // Claude on, OpenAI off
+                    Components = [.. source.DefaultComponents],
+                }
+                : new StatusSourceSettings
+                {
+                    Enabled = entry.Enabled,
+                    Components = entry.Components is null
+                        ? [.. source.DefaultComponents]
+                        : [.. ComponentFilter.Normalize(entry.Components)],
+                };
+        }
+        StatusSources = sources;
+    }
+
+    /// <summary>The enabled sources with their watch filters, in registry order — what StatusMonitor
+    /// consumes.</summary>
+    public IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)> EnabledSources()
+    {
+        var result = new List<(StatusSource, IReadOnlyList<string>)>();
+        foreach (var source in StatusSourceRegistry.All)
+        {
+            if (StatusSources.TryGetValue(source.Id, out var entry) && entry is { Enabled: true })
+                result.Add((source, entry.Components ?? []));
+        }
+        return result;
     }
 }
