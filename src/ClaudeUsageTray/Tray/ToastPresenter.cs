@@ -42,13 +42,22 @@ public sealed class ToastPresenter : IDisposable
         _sync = sync;
         _onActivated = onActivated;
         _log = log;
+        // Toasts persist across process exit. One left over from a previous process would activate
+        // the shortcut on click, launch a second instance, and have SingleInstance exit it — a click
+        // that appears to do nothing. Clearing first means no toast in Action Center is ever older
+        // than the running process. This is best-effort tidiness, not load-bearing: a transient
+        // failure here must not disable the presenter for the whole session, so it gets its own
+        // try/catch, separate from the notifier creation below.
         try
         {
-            // Toasts persist across process exit. One left over from a previous process would
-            // activate the shortcut on click, launch a second instance, and have SingleInstance exit
-            // it — a click that appears to do nothing. Clearing first means no toast in Action Center
-            // is ever older than the running process.
             ToastNotificationManager.History.Clear(aumid);
+        }
+        catch (Exception e)
+        {
+            _log($"toast: could not clear stale history ({e.GetType().Name}); continuing");
+        }
+        try
+        {
             _notifier = ToastNotificationManager.CreateToastNotifier(aumid);
             if (_notifier.Setting != NotificationSetting.Enabled)
                 _log($"toast: disabled on the Windows side ({_notifier.Setting}); toasts will not show");
