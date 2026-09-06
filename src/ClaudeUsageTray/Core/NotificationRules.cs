@@ -22,7 +22,10 @@ public sealed record NotificationOutcome(Notification? Notification, IReadOnlyLi
 /// Usage rules, in order: stale → nothing recorded; fingerprint change → clear; source switch →
 /// clear; unarmed → record baseline; per key, notify on crossing from below the level to at/above it,
 /// re-armed only on return to Green; absent keys evicted; crossings coalesced into one toast; the
-/// on/off switch suppresses only the output, never the recording.
+/// on/off switch suppresses only the output, never the recording. Retraction is driven by whether a
+/// key's toast was actually shown (Announced), not by the hysteresis latch (Notified) alone — a key
+/// already red at the baseline, or one that crossed while notifications were off, was never named in
+/// any toast and so leaving red must not retract someone else's.
 /// </summary>
 public sealed partial class NotificationRules
 {
@@ -34,11 +37,17 @@ public sealed partial class NotificationRules
     public static readonly TimeSpan DefaultUsageToastLifetime = TimeSpan.FromHours(6);
 
     /// <summary>Above: at or above the configured level at the last evaluation. Notified: has fired
-    /// and not yet returned to Green — the hysteresis latch.</summary>
+    /// and not yet returned to Green — the hysteresis latch, unaffected by whether anything was ever
+    /// shown. Announced: true only while a toast naming this key is actually on screen — set when the
+    /// key is part of an emitted notification, cleared as soon as the key drops below the level. Only
+    /// Announced may trigger a retraction; Notified alone must not, or a key that was already red
+    /// before the app ever toasted (or crossed while notifications were off) would retract a toast
+    /// that never named it.</summary>
     private sealed class KeyState
     {
         public bool Above;
         public bool Notified;
+        public bool Announced;
     }
 
     /// <summary>The settings that can change a verdict without the value moving. The on/off switches
@@ -121,7 +130,7 @@ public sealed partial class NotificationRules
         bool exited = false;
         foreach (var gone in _keys.Keys.Where(k => !present.Contains(k)).ToList())
         {
-            if (_keys[gone] is { Above: true, Notified: true }) exited = true;
+            if (_keys[gone] is { Above: true, Announced: true }) exited = true;
             _keys.Remove(gone);
         }
 
@@ -142,7 +151,8 @@ public sealed partial class NotificationRules
                 if (!state.Notified) crossed.Add(value);
                 else latched.Add(value);   // red → orange → red on the clock: one toast, not two
             }
-            if (!above && state.Above && state.Notified) exited = true;
+            if (!above && state.Above && state.Announced) exited = true;
+            if (!above) state.Announced = false;   // dropped below the level (Green included): nothing left to retract
             if (value.Severity == Severity.Green) state.Notified = false;   // hysteresis exit
             else if (above && !state.Above && _armed) state.Notified = true;
             state.Above = above;
@@ -169,12 +179,18 @@ public sealed partial class NotificationRules
 
         if (crossed.Count == 0) return new(null, log, remove);
 
-        var notification = Compose(crossed, now);
         if (!settings.UsageNotifications.Enabled)
         {
             log.Add($"notify[usage]: switched off; suppressed crossing of {Describe(crossed)}");
             return new(null, log, remove);
         }
+
+        // Only the path that actually returns a notification marks these keys as toasted — a
+        // suppressed or unarmed crossing must never leave an Announced latch behind.
+        foreach (var value in crossed)
+            _keys[value.Key].Announced = true;
+
+        var notification = Compose(crossed, now);
         log.Add($"notify[usage]: emitted for {Describe(crossed)}");
         return new(notification, log, false);
     }

@@ -144,8 +144,51 @@ public class NotificationRulesUsageTests
         var rules = ArmedAt(90);
         var left = rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(5))), Absolute(), T0.AddMinutes(5));
         Assert.Null(left.Notification);
-        Assert.True(left.RemoveUsageToast);
+        // Red at the baseline was never toasted (first sight is always a baseline), so leaving red
+        // here must not ask to retract a toast that was never shown.
+        Assert.False(left.RemoveUsageToast);
         Assert.NotNull(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(10))), Absolute(), T0.AddMinutes(10)).Notification);
+    }
+
+    [Fact]
+    public void AKeyRedAtBaseline_LeavingRed_DoesNotRetractAnotherKeysToast()
+    {
+        // 5h was red before the app started and never toasted; 7d crosses and toasts. When the
+        // 5-hour window resets, the 7d toast must stay: it never mentioned 5h.
+        var rules = new NotificationRules();
+        rules.NoteLiveOutcome(LiveOutcome.Snapshot);
+        rules.OnUsage(Fresh(Snap(90, T0, seven: 10)), Absolute(), T0);
+        Assert.NotNull(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 91)), Absolute(), T0.AddMinutes(1)).Notification);
+        var reset = rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(2), seven: 91)), Absolute(), T0.AddMinutes(2));
+        Assert.Null(reset.Notification);
+        Assert.False(reset.RemoveUsageToast);
+    }
+
+    [Fact]
+    public void ASuppressedCrossing_LeavingRed_DoesNotAskToRetract()
+    {
+        var rules = ArmedAt(10);
+        rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1))), Absolute(enabled: false), T0.AddMinutes(1));   // crossed while off
+        var left = rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(2))), Absolute(enabled: false), T0.AddMinutes(2));
+        Assert.False(left.RemoveUsageToast);
+    }
+
+    [Fact]
+    public void TitleIsSingularOrPlural_AndMixedSeveritiesJoinPerColour()
+    {
+        var orange = Absolute(NotifyLevel.Orange);
+        var rules = new NotificationRules();
+        rules.NoteLiveOutcome(LiveOutcome.Snapshot);
+        rules.OnUsage(Fresh(Snap(10, T0, seven: 10)), orange, T0);
+        var one = rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 10)), orange, T0.AddMinutes(1)).Notification!;
+        Assert.Equal("Usage limit red", one.Title);
+
+        var rules2 = new NotificationRules();
+        rules2.NoteLiveOutcome(LiveOutcome.Snapshot);
+        rules2.OnUsage(Fresh(Snap(10, T0, seven: 10)), orange, T0);
+        var mixed = rules2.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 60)), orange, T0.AddMinutes(1)).Notification!;
+        Assert.Equal("Usage limits red", mixed.Title);
+        Assert.Equal("5-hour window (90 %) is now red · 7-day window (60 %) is now orange", mixed.Body);
     }
 
     [Fact]
