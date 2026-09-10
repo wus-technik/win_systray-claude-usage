@@ -98,8 +98,9 @@ public sealed class UsagePopup : Form
             layout.Controls.Add(new Label { Text = $"{title}: no data", AutoSize = true });
             return;
         }
-        // The tilde carries the hedge inside the 240 px row; the sentence lives in the tooltip, where
-        // there is room for it. Stated is deliberately unmarked — the user asserted it.
+        // The tilde carries the hedge inside the 240 px row; the sentence lives in
+        // TrayApp.BuildTooltip, where there is room for it. Stated is deliberately unmarked — the
+        // user asserted it.
         var resets = usage.ResetsAt is { } r
             ? $" · {(desktop && usage.Origin == ResetOrigin.Inferred ? "~" : "")}resets in {RelativeTime.In(r, now)}"
             : desktop ? " · no reset time" : "";

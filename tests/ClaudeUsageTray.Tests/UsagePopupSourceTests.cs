@@ -130,4 +130,18 @@ public class UsagePopupSourceTests : IDisposable
         var popup = Popup(new DisplayChoice(cli, false));
         Assert.DoesNotContain(Texts(popup), t => t.Contains("no reset time") || t.Contains("~resets"));
     }
+
+    [Fact]
+    public void ClaudeCodeSource_InferredOriginWithAReset_IsNeverMarkedWithATilde()
+    {
+        // Regression: the tilde half of the gate is `desktop && Origin == Inferred`, not just
+        // `Origin == Inferred`. A Claude Code snapshot should never carry Origin == Inferred in
+        // practice, but the gate is an invariant to be proven, not inferred from which data shapes
+        // happen to be reachable today.
+        var five = new WindowUsage(55, Now.AddHours(4)) { Origin = ResetOrigin.Inferred };
+        var cli = new UsageSnapshot(Now.AddMinutes(-2), five, null);
+        var popup = Popup(new DisplayChoice(cli, false));
+        Assert.Contains(Texts(popup), t => t.Contains("· resets in "));
+        Assert.DoesNotContain(Texts(popup), t => t.Contains("~resets"));
+    }
 }
