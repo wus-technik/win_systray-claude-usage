@@ -41,8 +41,9 @@ public sealed class UsagePopup : Form
             // Staleness is decided by SourceSelection with each source's own allowance; recomputing
             // it here against StalenessMinutes would flag a desktop-only user most of the time.
             bool stale = choice.Stale;
-            AddWindowRow(layout, "5-hour window", snapshot.FiveHour, UsageValues.FiveHourPeriod, settings, now);
-            AddWindowRow(layout, "7-day window", snapshot.SevenDay, UsageValues.SevenDayPeriod, settings, now);
+            bool desktop = snapshot.Source == UsageSource.DesktopHistory;
+            AddWindowRow(layout, "5-hour window", snapshot.FiveHour, UsageValues.FiveHourPeriod, settings, now, desktop);
+            AddWindowRow(layout, "7-day window", snapshot.SevenDay, UsageValues.SevenDayPeriod, settings, now, desktop);
 
             var rows = PopupRows.ForScopedLimits(snapshot.ScopedLimits);
             foreach (var limit in rows.Visible) AddScopedRow(layout, limit, settings, now);
@@ -60,7 +61,7 @@ public sealed class UsagePopup : Form
             if (snapshot.Credits is { } credits) AddCreditRow(layout, credits, settings);
 
             var ago = RelativeTime.Ago(snapshot.FetchedAt, now);
-            var updated = snapshot.Source == UsageSource.DesktopHistory
+            var updated = desktop
                 ? $"Claude Desktop history · updated {ago}"
                 : $"Last updated {ago}";
             if (stale) updated += " · stale";
@@ -86,15 +87,22 @@ public sealed class UsagePopup : Form
         PositionNearCursor();
     }
 
+    /// <param name="desktop">Whether the snapshot came from the Claude Desktop history. Gates both
+    /// new fragments: a Claude Code user must see today's row byte for byte, and Reported being the
+    /// default origin is not on its own enough to guarantee that.</param>
     private static void AddWindowRow(TableLayoutPanel layout, string title, WindowUsage? usage,
-        TimeSpan period, Settings settings, DateTimeOffset now)
+        TimeSpan period, Settings settings, DateTimeOffset now, bool desktop)
     {
         if (usage is null)
         {
             layout.Controls.Add(new Label { Text = $"{title}: no data", AutoSize = true });
             return;
         }
-        var resets = usage.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
+        // The tilde carries the hedge inside the 240 px row; the sentence lives in the tooltip, where
+        // there is room for it. Stated is deliberately unmarked — the user asserted it.
+        var resets = usage.ResetsAt is { } r
+            ? $" · {(desktop && usage.Origin == ResetOrigin.Inferred ? "~" : "")}resets in {RelativeTime.In(r, now)}"
+            : desktop ? " · no reset time" : "";
         var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
         AddCaption(layout, $"{title} — {usage.Percent}%{resets}{PaceSuffix(usage.Percent, elapsed, settings)}");
         AddBar(layout, usage.Percent, UsageValues.WindowSeverity(usage, period, settings, now), elapsed);

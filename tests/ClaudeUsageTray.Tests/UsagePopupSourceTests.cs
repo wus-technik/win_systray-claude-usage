@@ -96,4 +96,38 @@ public class UsagePopupSourceTests : IDisposable
         Assert.True(longPopup.PreferredSize.Width <= Math.Max(shortPopup.PreferredSize.Width, UsageBar.DefaultWidth + 40),
             $"long={longPopup.PreferredSize.Width} short={shortPopup.PreferredSize.Width}");
     }
+
+    [Fact]
+    public void DesktopSource_InferredReset_IsMarkedWithATilde()
+    {
+        var five = new WindowUsage(55, Now.AddHours(4)) { Origin = ResetOrigin.Inferred };
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(5), five, null), false));
+        Assert.Contains(Texts(popup), t => t.Contains("~resets in "));
+    }
+
+    [Fact]
+    public void DesktopSource_StatedReset_IsIndistinguishableFromReported()
+    {
+        // The user asserted it; marking their own answer as doubtful is noise.
+        var seven = new WindowUsage(40, Now.AddDays(2)) { Origin = ResetOrigin.Stated };
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(5), null, seven), false));
+        Assert.Contains(Texts(popup), t => t.Contains("· resets in ") && !t.Contains("~"));
+    }
+
+    [Fact]
+    public void DesktopSource_NoReset_SaysSoInTheRow()
+    {
+        // The row exists because the percentage exists; the fragment explains why the rest is missing.
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(5), new(7, null), new(17, null)), false));
+        Assert.Contains(Texts(popup), t => t.StartsWith("5-hour window — 7%") && t.Contains("· no reset time"));
+    }
+
+    [Fact]
+    public void ClaudeCodeSource_NoReset_SaysNothingNew()
+    {
+        // Regression: a Claude Code user sees today's behaviour byte for byte.
+        var cli = new UsageSnapshot(Now.AddMinutes(-2), new(7, null), new(17, null));
+        var popup = Popup(new DisplayChoice(cli, false));
+        Assert.DoesNotContain(Texts(popup), t => t.Contains("no reset time") || t.Contains("~resets"));
+    }
 }
