@@ -314,6 +314,31 @@ public class DesktopUsageReaderTests : IDisposable
         Assert.Null(s.FiveHour.ResetsAt);        // and did not form a bracket either
     }
 
+    /// <summary>Two eligible samples carry the identical t, with different u/org. The percentage
+    /// pass must pick the same one DesktopResetInference treats as newest (its stable OrderBy keeps
+    /// ties in original array order, so the tail is the *last* of the tied group), or the two passes
+    /// silently disagree about "the newest sample". Rigged so a first-wins bug is distinguishable
+    /// from the correct last-wins behaviour: first-wins would keep org "a" and pair it with the
+    /// first sample into a bogus bracket (fh 91 -> 4, reset 10:59:30) displaying the wrong percentage
+    /// (4); last-wins picks org "b", which is a singleton run and forms no bracket at all, and
+    /// displays 55.</summary>
+    [Fact]
+    public void TiedTimestamps_PercentagesAndInferenceUseTheSameNewestSample()
+    {
+        var s = DesktopUsageReader.TryRead(Write("""
+            {"version":2,"samples":[
+              {"t":1789019520000,"org":"a","u":{"fh":91,"sd":40}},
+              {"t":1789020420000,"org":"a","u":{"fh":4,"sd":40}},
+              {"t":1789020420000,"org":"b","u":{"fh":55,"sd":41}}
+            ]}
+            """), MeasuredNow)!;
+
+        Assert.Equal(55, s.FiveHour!.Percent);
+        Assert.Null(s.FiveHour.ResetsAt);
+        Assert.Equal(ResetOrigin.Reported, s.FiveHour.Origin);
+        Assert.Equal(41, s.SevenDay!.Percent);
+    }
+
     [Fact]
     public void Anchor_SetsTheSevenDayResetAsStated()
     {
@@ -332,13 +357,18 @@ public class DesktopUsageReaderTests : IDisposable
     }
 
     [Fact]
-    public void ReadFirst_ForwardsTheAnchor()
+    public void ReadFirst_ForwardsTheAnchorAndZone()
     {
-        // The production entry point. An anchor wired only into Read would pass every test above and
-        // be silently absent in the running tray.
+        // The production entry point. An anchor (or zone) wired only into Read would pass every test
+        // above and be silently absent in the running tray. A fixed +02:00 zone (not UTC, which is
+        // Read's own default) is deliberate: if ReadFirst dropped `zone` on the way to Read, the
+        // anchor would still resolve — just against the wrong zone, at 12:00 UTC (2026-09-10T12:00Z)
+        // instead of 12:00 local (2026-09-10T10:00Z) — so only a non-UTC zone makes a dropped
+        // parameter fail this assertion.
         var anchor = WeeklyAnchor.TryParse("Thu 12:00")!;
-        var r = DesktopUsageReader.ReadFirst([Write(MeasuredCase)], MeasuredNow, anchor, TimeZoneInfo.Utc);
-        Assert.Equal(new DateTimeOffset(2026, 9, 10, 12, 0, 0, TimeSpan.Zero), r.Snapshot!.SevenDay!.ResetsAt);
+        var zone = TimeZoneInfo.CreateCustomTimeZone("Fixed+02", TimeSpan.FromHours(2), "Fixed+02", "Fixed+02");
+        var r = DesktopUsageReader.ReadFirst([Write(MeasuredCase)], MeasuredNow, anchor, zone);
+        Assert.Equal(new DateTimeOffset(2026, 9, 10, 10, 0, 0, TimeSpan.Zero), r.Snapshot!.SevenDay!.ResetsAt);
         Assert.Equal(ResetOrigin.Stated, r.Snapshot.SevenDay.Origin);
     }
 }

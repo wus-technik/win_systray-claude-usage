@@ -78,7 +78,10 @@ public static class DesktopUsageReader
                 series.Add(new DesktopSample(DateTimeOffset.FromUnixTimeMilliseconds(ms), org,
                     UsageJson.ReadRoundedPercent(u, "fh"), UsageJson.ReadRoundedPercent(u, "sd")));
 
-                if (newest is null || ms > newestT) { newest = u; newestT = ms; newestOrg = org; }
+                // >=, not >: on an exact t tie this must pick the same sample DesktopResetInference
+                // does. FiveHourReset stable-sorts by t and takes the tail, so a tie keeps the last
+                // one in original array order; iterating forward and overwriting on >= does the same.
+                if (newest is null || ms >= newestT) { newest = u; newestT = ms; newestOrg = org; }
             }
             if (newest is not { } usage) return new(null, DesktopHistoryStatus.NoSamples);
 
