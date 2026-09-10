@@ -53,10 +53,10 @@ public sealed partial class NotificationRules
     /// <summary>The settings that can change a verdict without the value moving. The on/off switches
     /// are deliberately absent: they change no verdict.</summary>
     private sealed record Fingerprint(int Orange, int Red, bool PaceColors, int StalenessMinutes,
-        int DesktopStalenessHours, NotifyLevel Level)
+        int DesktopStalenessHours, NotifyLevel Level, string? WeeklyResetAnchor)
     {
         public static Fingerprint Of(Settings s) => new(s.Thresholds.Orange, s.Thresholds.Red, s.PaceColors,
-            s.StalenessMinutes, s.DesktopStalenessHours, s.UsageNotifications.Level);
+            s.StalenessMinutes, s.DesktopStalenessHours, s.UsageNotifications.Level, s.WeeklyResetAnchor);
     }
 
     private readonly Dictionary<string, KeyState> _keys = new(UsageValues.KeyComparer);
@@ -108,7 +108,7 @@ public sealed partial class NotificationRules
         if (_fingerprint is not null && fingerprint != _fingerprint)
         {
             _keys.Clear();
-            log.Add("notify[usage]: fingerprint change (thresholds/pace/staleness/level); rebaselining");
+            log.Add("notify[usage]: fingerprint change (thresholds/pace/staleness/level/anchor); rebaselining");
         }
         _fingerprint = fingerprint;
 
@@ -138,7 +138,7 @@ public sealed partial class NotificationRules
         var latched = new List<UsageValue>();
         foreach (var value in values)
         {
-            bool above = AtOrAbove(value.Severity, level);
+            bool above = AtOrAbove(Verdict(value), level);
             if (!_keys.TryGetValue(value.Key, out var state))
             {
                 // First sight is always baseline: startup into red, or a limit the payload only just
@@ -153,7 +153,7 @@ public sealed partial class NotificationRules
             }
             if (!above && state.Above && state.Announced) exited = true;
             if (!above) state.Announced = false;   // dropped below the level (Green included): nothing left to retract
-            if (value.Severity == Severity.Green) state.Notified = false;   // hysteresis exit
+            if (Verdict(value) == Severity.Green) state.Notified = false;   // hysteresis exit
             else if (above && !state.Above && _armed) state.Notified = true;
             state.Above = above;
         }
@@ -195,6 +195,11 @@ public sealed partial class NotificationRules
         return new(notification, log, false);
     }
 
+    /// <summary>The verdict every notification decision reads. One accessor rather than four reads
+    /// of the field, so a fifth decision site cannot be added against the drawing severity: an
+    /// inferred reset colours the badge but must never be the reason for an interruption.</summary>
+    private static Severity Verdict(UsageValue value) => value.NotifySeverity;
+
     private static bool AtOrAbove(Severity severity, NotifyLevel level) => level switch
     {
         NotifyLevel.Orange => severity >= Severity.Orange,
@@ -208,7 +213,7 @@ public sealed partial class NotificationRules
         var sentences = new List<string>();
         foreach (var severity in new[] { Severity.Red, Severity.Orange })
         {
-            var group = crossed.Where(v => v.Severity == severity).ToList();
+            var group = crossed.Where(v => Verdict(v) == severity).ToList();
             if (group.Count == 0) continue;
             var names = group.Select(v => $"{v.Label} ({v.Percent} %)").ToList();
             var joined = names.Count == 1 ? names[0]
@@ -216,7 +221,7 @@ public sealed partial class NotificationRules
             sentences.Add($"{joined} {(names.Count == 1 ? "is" : "are")} now {severity.ToString().ToLowerInvariant()}");
         }
 
-        var worst = crossed.Any(v => v.Severity == Severity.Red) ? "red" : "orange";
+        var worst = crossed.Any(v => Verdict(v) == Severity.Red) ? "red" : "orange";
         var title = crossed.Count == 1 ? $"Usage limit {worst}" : $"Usage limits {worst}";
 
         DateTimeOffset? latestReset = crossed.Select(v => v.ResetsAt).Where(r => r is { } d && d > now).Max();

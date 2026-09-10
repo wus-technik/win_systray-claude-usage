@@ -34,6 +34,13 @@ public class NotificationRulesUsageTests
         return rules;
     }
 
+    private static NotificationRules ArmedRules()
+    {
+        var rules = new NotificationRules();
+        rules.NoteLiveOutcome(LiveOutcome.Snapshot);
+        return rules;
+    }
+
     // ---- baseline & arming ----
 
     [Fact]
@@ -436,5 +443,107 @@ public class NotificationRulesUsageTests
         Assert.Null(suppressed.Notification);
         Assert.Contains(suppressed.Log, l => l.Contains("switched off"));
         Assert.Null(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(2))), Absolute(), T0.AddMinutes(2)).Notification);
+    }
+
+    // ---- NotifySeverity (inferred resets must not raise or escalate a toast) ----
+
+    /// <summary>A desktop snapshot whose 5-hour window carries an inferred reset. untilReset fixes
+    /// the elapsed fraction: 247.5 min left of 300 is 17.5 % gone, 30 min left is 90 % gone.</summary>
+    private static UsageSnapshot Inferred(DateTimeOffset now, int percent, double untilResetMinutes)
+        => new(now, new WindowUsage(percent, now + TimeSpan.FromMinutes(untilResetMinutes))
+        {
+            Origin = ResetOrigin.Inferred,
+        }, null)
+        { Source = UsageSource.DesktopHistory };
+
+    /// <summary>55 % at 17.5 % elapsed: ratio 3.14 → paced Red, absolute Orange.</summary>
+    private static UsageSnapshot InferredPacedRed(DateTimeOffset now, int percent)
+        => Inferred(now, percent, 247.5);
+
+    /// <summary>60 % at 90 % elapsed: ratio 0.67 → paced Green, absolute Orange. The mirror image of
+    /// the case above, and the only shape that tells the two latch rules apart.</summary>
+    private static UsageSnapshot InferredPacedGreen(DateTimeOffset now)
+        => Inferred(now, 60, 30);
+
+    [Fact]
+    public void InferredPacedRed_RaisesNoRedToast()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var rules = ArmedRules();
+        var settings = new Settings();
+
+        // Baseline at a green percentage, then the paced-red / absolute-orange reading.
+        rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 10), false), settings, now);
+        var outcome = rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 55), false), settings, now);
+
+        Assert.Null(outcome.Notification);
+    }
+
+    [Fact]
+    public void InferredValue_AtLevelOrange_IsWordedFromTheNotifyVerdict()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var rules = ArmedRules();
+        var settings = new Settings
+        {
+            UsageNotifications = new UsageNotificationSettings { Enabled = true, Level = NotifyLevel.Orange },
+        };
+
+        rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 10), false), settings, now);
+        var outcome = rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 55), false), settings, now);
+
+        // It crossed into Orange under the absolute rule, so the toast says orange — not red, which
+        // is only what the badge draws.
+        Assert.NotNull(outcome.Notification);
+        Assert.Equal("Usage limit orange", outcome.Notification.Title);
+        Assert.Contains("now orange", outcome.Notification.Body);
+    }
+
+    [Fact]
+    public void HysteresisLatch_KeysOffTheNotifyVerdict_NotTheDrawnOne()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var rules = ArmedRules();
+        var settings = new Settings();   // level Red
+
+        // Baseline green, then an absolute red that toasts and latches.
+        rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 10), false), settings, now);
+        Assert.NotNull(rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 90), false), settings, now).Notification);
+
+        // Drawn severity Green, notify severity Orange. Reading the drawn one here would release the
+        // latch on a green the notifier never acted on; reading NotifySeverity holds it.
+        rules.OnUsage(new DisplayChoice(InferredPacedGreen(now), false), settings, now);
+
+        // Back to red without ever having gone green by the notifier's reckoning: still latched.
+        Assert.Null(rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 90), false), settings, now).Notification);
+    }
+
+    [Fact]
+    public void HysteresisLatch_ATrueGreenStillReleasesIt()
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var rules = ArmedRules();
+        var settings = new Settings();
+
+        rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 10), false), settings, now);
+        Assert.NotNull(rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 90), false), settings, now).Notification);
+        rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 10), false), settings, now);
+        Assert.NotNull(rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 90), false), settings, now).Notification);
+    }
+
+    [Fact]
+    public void WeeklyResetAnchor_IsPartOfTheFingerprint()
+    {
+        // Editing the anchor shifts the 7-day elapsed fraction and can flip Green to Red; without
+        // this entry the user's own edit fires the toast.
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var rules = ArmedRules();
+        var before = new Settings();
+        var after = new Settings { WeeklyResetAnchor = "Wed 15:00" };
+
+        rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 90), false), before, now);
+        var outcome = rules.OnUsage(new DisplayChoice(InferredPacedRed(now, 90), false), after, now);
+
+        Assert.Contains(outcome.Log, l => l.Contains("fingerprint change"));
     }
 }
