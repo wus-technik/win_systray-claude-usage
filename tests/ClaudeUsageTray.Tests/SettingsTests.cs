@@ -351,4 +351,37 @@ public class SettingsTests : IDisposable
         Assert.True(LoadJson("""{ "statusSources": { "openai": { "enabled": true, "notify": "maybe" } } }""")
             .StatusSources["openai"]!.Notify);
     }
+
+    [Fact]
+    public void WeeklyResetAnchor_DefaultsToNull()
+    {
+        Assert.Null(new Settings().WeeklyResetAnchor);
+    }
+
+    [Fact]
+    public void WeeklyResetAnchor_IsCanonicalisedOnLoad()
+    {
+        var path = PathFor("settings.json");
+        File.WriteAllText(path, """{"weeklyResetAnchor":"thu 3:00"}""");
+        Assert.Equal("Thu 03:00", Settings.Load(path).WeeklyResetAnchor);
+    }
+
+    [Fact]
+    public void WeeklyResetAnchor_IsCanonicalisedOnSave()
+    {
+        var path = PathFor("settings.json");
+        new Settings { WeeklyResetAnchor = "  wednesday 15:05 " }.Save(path);
+        Assert.Equal("Wed 15:05", Settings.Load(path).WeeklyResetAnchor);
+    }
+
+    [Fact]
+    public void WeeklyResetAnchor_Unparseable_BecomesNullAndLeavesOtherFieldsAlone()
+    {
+        var path = PathFor("settings.json");
+        File.WriteAllText(path, """{"weeklyResetAnchor":"Donnerstag","thresholds":{"orange":40,"red":70}}""");
+        var settings = Settings.Load(path);
+        Assert.Null(settings.WeeklyResetAnchor);
+        Assert.Equal(40, settings.Thresholds.Orange);
+        Assert.Equal(70, settings.Thresholds.Red);
+    }
 }
