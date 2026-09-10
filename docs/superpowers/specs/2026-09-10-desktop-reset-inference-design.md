@@ -197,23 +197,52 @@ On a `DesktopHistory` snapshot only:
 
 | State | Popup row | Tooltip |
 |---|---|---|
-| `Inferred` | `~resets in 3h 05m` | adds `estimated from Claude Desktop history` |
+| `Inferred` | `~resets in 3h 05m` | `resets in ~3h 05m (estimate)` |
 | `Stated` | `resets in 2d 4h` — unmarked | unchanged |
-| `ResetsAt` null | `no reset time` | explains that the desktop history carries none |
+| `ResetsAt` null (incl. an inferred reset that has since expired) | `no reset time` | `no reset time` |
 
-The tilde carries the hedge in the 240 px row; the sentence lives in the tooltip, where there is
-room for it. `Stated` is deliberately indistinguishable from `Reported`: the user asserted it, and
-marking their own answer as doubtful is noise.
+The tilde carries the hedge in the 240 px row; the tooltip carries it too, but **inside** the
+`resets in …` clause it qualifies rather than as a trailing sentence — see "Final-review amendment"
+below for why.
 
-Two call sites change, both gated on `snapshot.Source == UsageSource.DesktopHistory`:
+`Stated` is deliberately indistinguishable from `Reported`: the user asserted it, and marking their
+own answer as doubtful is noise.
+
+Two call sites change, both gated on `snapshot.Source == UsageSource.DesktopHistory`, and both go
+through one Core helper, `ResetPresentation.EffectiveResetsAt`, so they cannot disagree on which
+instant counts as absent (see the amendment):
 
 - **`UsagePopup.AddWindowRow`** (`UsagePopup.cs:97`) builds `resets` as `""` when `ResetsAt` is
   null — today a desktop row simply has no reset fragment. The "no reset time" text is therefore a
   **new branch**, not a changed string, and it is the one place that has to reconcile with the
   "absent data means no row" invariant: the row exists because the percentage exists, and the
   fragment explains why the rest of it is missing. The tilde is prepended inside the same fragment.
-- **`TrayApp`'s tooltip** (`TrayApp.cs:378-401`) appends `estimated from Claude Desktop history`
-  when any displayed window has `Origin == Inferred`.
+- **`Core.UsageTooltip.Build`**, called from `TrayApp.Apply`, adds the `(estimate)` hedge next to
+  `resets in …` when the displayed window has `Origin == Inferred`.
+
+### Final-review amendment (2026-09-10)
+
+The whole-branch review (`.superpowers/sdd/2026-09-10-desktop-reset-inference/final-review.md`)
+found two defects in what shipped against this table, both fixed in the same pass:
+
+1. **The tooltip overflowed the 127-char NotifyIcon budget** in exactly the configuration this
+   feature creates (`paceColors` on, the default): the trailing sentence
+   `estimated from Claude Desktop history` (40 chars with its separator) pushed a 5-hour row with a
+   pace gloss to 132 chars, and it was the first thing `ComposeTooltip` dropped when a platform
+   status suffix needed the room. Fixed by moving the hedge into the `resets in …` clause and
+   shortening it to `(estimate)`; the composition itself moved out of `Tray/TrayApp.cs` into
+   `Core/UsageTooltip.cs` (`UsageTooltip.Build`), a pure function, with `UsageTooltipTests` pinning
+   the composed string and its length against `StatusDetail.TooltipLimit`. No test had touched the
+   tooltip string before this.
+2. **An expired inferred reset kept rendering** because `SnapshotPrecedence.IsNewer` — deliberately
+   — does not adopt a re-read that is not strictly newer, so a snapshot up to
+   `desktopStalenessHours` old could still carry a `ResetsAt` in the past. Gate 4 already refuses to
+   *emit* a reset in the past; this extends the same rule to a value that has since aged out, via
+   `Core/ResetPresentation.EffectiveResetsAt(usage, now)`: an `Origin == Inferred` reset whose
+   instant has passed reads as absent (`ResetsAt is null`) everywhere it is consumed — the popup row,
+   `UsageValues.WindowSeverity`/`WindowSeverities`, and the tooltip — while `Reported` and `Stated`
+   resets are left alone even when they too lie in the past.
+   `SnapshotPrecedence` and the adoption rule in `TrayApp.Refresh` were intentionally not touched.
 
 Settings gains a **Claude Desktop** group holding the weekly-anchor field, plus a note on the
 pace-colours checkbox that it needs a reset time. `SettingsDialog` currently receives no snapshot
