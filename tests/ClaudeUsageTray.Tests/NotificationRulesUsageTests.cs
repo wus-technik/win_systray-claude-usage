@@ -550,29 +550,42 @@ public class NotificationRulesUsageTests
     [Fact]
     public void StatedReset_IsNotAnEstimate_ToastsExactlyLikeAReportedReset()
     {
-        // Decision 5: a user-stated weekly anchor is not an estimate — it renders unmarked and may
-        // raise toasts, same as a payload-reported reset. Every other notifier test here uses
-        // Reported or Inferred; this is the one that drives a Stated origin across a threshold and
-        // proves the toast fires exactly as it does for Reported.
+        // Decision 5: a user-stated anchor is not an estimate — it renders unmarked and may raise
+        // toasts, same as a payload-reported reset. This has to be tested in the region where a real
+        // elapsed fraction and the null-fraction fallback actually disagree, or the assertion cannot
+        // fail: 55 % at 247.5 min left of a 300-min window is 17.5 % elapsed, pace ratio 55/17.5 =
+        // 3.14 → Red under the real fraction; the null-fraction fallback (what Inferred gets) gives
+        // only Orange (55 is between orangeAt 50 and redAbove 85, so For() lands on Orange, not the
+        // unconditional-Red branch above redAbove). Level is the default Red, so Reported and Stated
+        // — both paced on the real fraction — cross into Red and notify, while Inferred, nulled down
+        // to the absolute Orange, does not. Same percent, same reset time; only Origin differs.
         var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
         var settings = new Settings();
 
-        WindowUsage Stated(int percent) => new(percent, now.AddDays(2)) { Origin = ResetOrigin.Stated };
-        UsageSnapshot Snapshot(int percent) => new(now, null, Stated(percent)) { Source = UsageSource.DesktopHistory };
-        WindowUsage Reported(int percent) => new(percent, now.AddDays(2));
-        UsageSnapshot ReportedSnapshot(int percent) => new(now, null, Reported(percent)) { Source = UsageSource.ClaudeCode };
-
-        var statedRules = ArmedRules();
-        statedRules.OnUsage(new DisplayChoice(Snapshot(10), false), settings, now);
-        var statedOutcome = statedRules.OnUsage(new DisplayChoice(Snapshot(90), false), settings, now);
+        UsageSnapshot Window(int percent, ResetOrigin origin, UsageSource source)
+            => new(now, new WindowUsage(percent, now + TimeSpan.FromMinutes(247.5)) { Origin = origin }, null)
+            { Source = source };
 
         var reportedRules = ArmedRules();
-        reportedRules.OnUsage(new DisplayChoice(ReportedSnapshot(10), false), settings, now);
-        var reportedOutcome = reportedRules.OnUsage(new DisplayChoice(ReportedSnapshot(90), false), settings, now);
+        reportedRules.OnUsage(new DisplayChoice(Window(10, ResetOrigin.Reported, UsageSource.ClaudeCode), false), settings, now);
+        var reportedOutcome = reportedRules.OnUsage(new DisplayChoice(Window(55, ResetOrigin.Reported, UsageSource.ClaudeCode), false), settings, now);
 
-        Assert.NotNull(statedOutcome.Notification);
+        var statedRules = ArmedRules();
+        statedRules.OnUsage(new DisplayChoice(Window(10, ResetOrigin.Stated, UsageSource.DesktopHistory), false), settings, now);
+        var statedOutcome = statedRules.OnUsage(new DisplayChoice(Window(55, ResetOrigin.Stated, UsageSource.DesktopHistory), false), settings, now);
+
+        var inferredRules = ArmedRules();
+        inferredRules.OnUsage(new DisplayChoice(Window(10, ResetOrigin.Inferred, UsageSource.DesktopHistory), false), settings, now);
+        var inferredOutcome = inferredRules.OnUsage(new DisplayChoice(Window(55, ResetOrigin.Inferred, UsageSource.DesktopHistory), false), settings, now);
+
         Assert.NotNull(reportedOutcome.Notification);
+        Assert.NotNull(statedOutcome.Notification);
         Assert.Equal(reportedOutcome.Notification!.Title, statedOutcome.Notification!.Title);
         Assert.Equal(reportedOutcome.Notification.Body, statedOutcome.Notification.Body);
+
+        // Otherwise identical (same percent, same reset), Inferred does not notify at all — the
+        // discriminating half of the assertion. If WindowSeverities regressed to null the fraction
+        // for Stated too, statedOutcome.Notification would go null here and the first half would fail.
+        Assert.Null(inferredOutcome.Notification);
     }
 }
