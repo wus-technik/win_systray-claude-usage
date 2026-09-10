@@ -182,6 +182,29 @@ Claude Desktop history steps in when it is not.
    On a machine that has both apps but no usable Claude Code credentials, the display switches to
    this source whenever Claude Code's cache goes stale, so the countdowns, time marker and pace
    colouring can come and go; `fetch.log` records each switch.
+
+   On a machine where the Claude Desktop history is the active source, the file carries no reset
+   timestamps of its own. The tray reconstructs the 5-hour boundary from the sample series and marks
+   it with a tilde — `~resets in 3h 05m` — so pace colouring, the elapsed marker and the pace text
+   all work; the tooltip keeps the hedge next to the same clause — `resets in ~3h 05m (estimate)` —
+   rather than as a trailing sentence, so it survives both the tooltip's character budget and a
+   platform-status disruption competing for it. An estimate never raises a notification: those still
+   fire on the plain percentage thresholds. When the boundary cannot be established, or an inferred
+   one has since passed with no newer sample to replace it, the row says `no reset time` rather than
+   guessing.
+
+   Because an inferred reset is withheld only from the *notification* verdict, a desktop row can
+   legitimately show a green badge — paced, comfortably ahead of the estimated reset — while a toast
+   still fires at the plain percentage threshold, which has no elapsed fraction to pace against. This
+   is reachable only with `usageNotifications.level` set to `orange`; at the default `red` it cannot
+   happen, because the paced verdict is never softer than the absolute one at that threshold.
+
+   The weekly window has no reliable signature in the file, so it is not inferred. Read your weekly
+   reset off Claude's own UI and enter it under **Settings → Claude Desktop** as a weekday and time
+   (`weeklyResetAnchor`, e.g. `Thu 03:00`). A stated anchor is treated as fact: it renders unmarked
+   and does raise notifications — including off a mistyped anchor, so a wrong weekday or time will
+   colour and notify exactly as if you were badly over pace on the real one. The group appears only
+   while the desktop history is the active source.
 4. **Platform status** — the public status page at status.claude.com, polled once a minute with
    no auth and no token involved. The page's own banner decides the warning badge; incident
    details are the page's own words. status.openai.com is an optional second source, off by
@@ -245,6 +268,7 @@ file gives no way to tell which of the two was meant.
 | `desktopHistoryPathOverride` | explicit path to the desktop app's `plan-usage-history.json`; file-only, and re-read at launch | unset |
 | `statusSources` | which status pages to watch, which of their components matter, and whether a change should toast | `claude` on watching everything, `openai` off with the default filter |
 | `usageNotifications` | `{ "enabled": true, "level": "red" }` — toast when a limit crosses into `red`, or into `orange` or red with `"level": "orange"` | as shown |
+| `weeklyResetAnchor` | When the weekly limit resets, as a weekday plus HH:mm in local time, e.g. `Thu 03:00`. Claude Desktop history source only; unset or unparseable means the 7-day row shows no reset time. | unset |
 
 ### `statusSources`
 

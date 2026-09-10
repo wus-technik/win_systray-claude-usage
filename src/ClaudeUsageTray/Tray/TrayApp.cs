@@ -139,9 +139,15 @@ public sealed class TrayApp : ApplicationContext
             _retry.Start(); // likely a partial replace; preserve the last known good snapshot briefly
         }
 
-        var desktop = DesktopUsageReader.ReadFirst(DesktopHistoryPath.ByFreshness(
-            DesktopHistoryPath.Candidates(_settings.DesktopHistoryPathOverride,
-                DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)), now);
+        // TimeZoneInfo.Local belongs here, not in Core: the anchor is a wall-clock statement, and
+        // Core stays ambient-free so its DST cases are testable against an explicit zone.
+        var desktop = DesktopUsageReader.ReadFirst(
+            DesktopHistoryPath.ByFreshness(
+                DesktopHistoryPath.Candidates(_settings.DesktopHistoryPathOverride,
+                    DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)),
+            now,
+            WeeklyAnchor.TryParse(_settings.WeeklyResetAnchor),
+            TimeZoneInfo.Local);
         _desktopStatus = desktop.Status;
         if (desktop.Snapshot is not null)
         {
@@ -366,38 +372,15 @@ public sealed class TrayApp : ApplicationContext
         {
             // No hysteresis: fetches are minutes apart and the ratio only moves fast early in a
             // period, which SeverityRules' dead zone already keeps out of the badge.
-            var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
+            var elapsed = TimeMarker.ElapsedFraction(ResetPresentation.EffectiveResetsAt(usage, now), period, now);
             var severity = UsageValues.WindowSeverity(usage, period, _settings, now);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
                 dimmed: choice.Stale, size, warning: degraded);
-            icon.Text = WithStatus(BuildTooltip(label, usage, elapsed, choice, now), now);
+            var tooltip = UsageTooltip.Build(label, usage, elapsed, _settings.PaceColors,
+                _settings.Thresholds.Red, choice.Stale, choice.Snapshot?.Source, choice.Snapshot?.FetchedAt, now);
+            icon.Text = WithStatus(tooltip, now);
         }
         old?.Dispose();
-    }
-
-    private string BuildTooltip(string label, WindowUsage usage, double? elapsedFraction, DisplayChoice choice,
-        DateTimeOffset now)
-    {
-        var parts = new List<string> { label, $"{usage.Percent}%" };
-        // Only when pace decided the colour — otherwise the badge means percent and needs no gloss.
-        if (_settings.PaceColors
-            && PaceFormat.Describe(SeverityRules.PaceRatio(
-                usage.Percent, elapsedFraction, _settings.Thresholds.Red)) is { Length: > 0 } pace)
-            parts.Add(pace);
-        if (usage.ResetsAt is { } resetsAt)
-        {
-            parts.Add($"resets in {RelativeTime.In(resetsAt, now)}");
-            if (choice.Stale && resetsAt <= now) parts.Add("awaiting refresh"); // cached % may be the prior window
-        }
-        if (choice.Snapshot is { } snapshot)
-        {
-            bool desktop = snapshot.Source == UsageSource.DesktopHistory;
-            if (choice.Stale)
-                parts.Add($"stale · {(desktop ? "Claude Desktop history · " : "")}updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
-            else if (desktop)
-                parts.Add($"Claude Desktop history · updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
-        }
-        return string.Join(" · ", parts);
     }
 
     /// <summary>One line per adopted desktop sample. Percentages and age only.</summary>
@@ -518,7 +501,9 @@ public sealed class TrayApp : ApplicationContext
             return;
         }
         _settingsDialog = new SettingsDialog(_settings, _isVelopackInstalled, TryIsStartupEnabled(),
-            ApplySettings, BuildUpdateOptions());
+            ApplySettings, BuildUpdateOptions(),
+            SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, DateTimeOffset.UtcNow, _settings)
+                .Snapshot?.Source == UsageSource.DesktopHistory);
         _settingsDialog.FormClosed += (_, _) => _settingsDialog = null;
         _settingsDialog.Show();
         _settingsDialog.Activate();

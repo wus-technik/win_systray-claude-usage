@@ -161,6 +161,13 @@ public sealed class Settings
     /// should not need a release.</summary>
     public string? DesktopHistoryPathOverride { get; set; }
 
+    /// <summary>When the user's weekly limit resets, e.g. "Thu 03:00", as a weekday plus HH:mm in
+    /// local time. Applies only to a Claude Desktop history snapshot, which carries no reset field;
+    /// Claude Code reports its own and ignores this entirely. Stated rather than inferred — see
+    /// <see cref="WeeklyAnchor"/>. Null when unset or unparseable, and then the 7-day row honestly
+    /// says it has no reset time.</summary>
+    public string? WeeklyResetAnchor { get; set; }
+
     /// <summary>Which status pages to watch, and which of their components matter. Values are
     /// non-null after Load; the nullable value type exists so the tolerant converter can mark a
     /// malformed entry for NormalizeFields to replace.</summary>
@@ -222,6 +229,11 @@ public sealed class Settings
         }
         if (StalenessMinutes < 0) StalenessMinutes = ThresholdRules.DefaultStalenessMinutes;
         if (DesktopStalenessHours <= 0) DesktopStalenessHours = ThresholdRules.DefaultDesktopStalenessHours;
+
+        // Parse-then-Format here, not in the dialog: NormalizeFields already runs on both Load and
+        // Save, so this is the one place where the loader and the dialog cannot disagree about what
+        // "thu 3:00" means.
+        WeeklyResetAnchor = WeeklyAnchor.TryParse(WeeklyResetAnchor)?.Format();
 
         UsageNotifications ??= new UsageNotificationSettings();
         if (!Enum.IsDefined(UsageNotifications.Level)) UsageNotifications.Level = NotifyLevel.Red;

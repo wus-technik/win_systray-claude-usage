@@ -12,8 +12,11 @@ public sealed record DesktopHistoryResult(UsageSnapshot? Snapshot, DesktopHistor
 /// Read-only parse of the Claude Desktop app's plan-usage-history.json. Field semantics are
 /// inferred from observation on three machines, not documented: <c>u.fh</c> is the five-hour
 /// utilization, <c>u.sd</c> the seven-day one, <c>u.xu</c> the extra-usage (credits) utilization,
-/// present only while credits are enabled. There are no reset timestamps, so every window is
-/// emitted with ResetsAt null and pace colouring falls back to the absolute thresholds.
+/// present only while credits are enabled. The file carries no reset timestamp of any kind: the
+/// five-hour boundary is reconstructed from the series by <see cref="DesktopResetInference"/> and
+/// marked <see cref="ResetOrigin.Inferred"/>, and the seven-day one comes from the user's own
+/// <see cref="WeeklyAnchor"/> when they set it. Both stay null when unavailable, and pace colouring
+/// then falls back to the absolute thresholds as before.
 /// The newest sample by <c>t</c> wins; array order and <c>org</c> are ignored (samples from a
 /// second org appear after an org switch, and the newest is still the current one). A sample whose
 /// <c>t</c> is further in the future than <see cref="SourceSelection.FutureTolerance"/> allows is
@@ -32,7 +35,13 @@ public static class DesktopUsageReader
 
     public static UsageSnapshot? TryRead(string path, DateTimeOffset now) => Read(path, now).Snapshot;
 
-    public static DesktopHistoryResult Read(string path, DateTimeOffset now)
+    /// <param name="anchor">The user's stated weekly reset, or null. Applied to the seven-day window
+    /// only, as <see cref="ResetOrigin.Stated"/>.</param>
+    /// <param name="zone">The zone the anchor's wall time is read in. Defaults to UTC rather than
+    /// Local so Core stays ambient-free and every test is deterministic; TrayApp passes
+    /// TimeZoneInfo.Local.</param>
+    public static DesktopHistoryResult Read(string path, DateTimeOffset now,
+        WeeklyAnchor? anchor = null, TimeZoneInfo? zone = null)
     {
         try
         {
@@ -53,6 +62,10 @@ public static class DesktopUsageReader
             long futureCutoffMs = (now + SourceSelection.FutureTolerance).ToUnixTimeMilliseconds();
             JsonElement? newest = null;
             long newestT = long.MinValue;
+            string? newestOrg = null;
+            // Collected in the same pass, under the same eligibility rules, so the inference sees
+            // exactly the series the displayed percentages came from.
+            var series = new List<DesktopSample>();
             foreach (var sample in samples.EnumerateArray())
             {
                 if (sample.ValueKind != JsonValueKind.Object) continue;
@@ -60,12 +73,35 @@ public static class DesktopUsageReader
                     || !t.TryGetInt64(out var ms) || ms < MinUnixMs || ms > MaxUnixMs) continue;
                 if (ms > futureCutoffMs) continue;
                 if (!sample.TryGetProperty("u", out var u) || u.ValueKind != JsonValueKind.Object) continue;
-                if (newest is null || ms > newestT) { newest = u; newestT = ms; }
+
+                var org = UsageJson.NonEmptyString(sample, "org");
+                series.Add(new DesktopSample(DateTimeOffset.FromUnixTimeMilliseconds(ms), org,
+                    UsageJson.ReadRoundedPercent(u, "fh"), UsageJson.ReadRoundedPercent(u, "sd")));
+
+                // >=, not >: on an exact t tie this must pick the same sample DesktopResetInference
+                // does. FiveHourReset stable-sorts by t and takes the tail, so a tie keeps the last
+                // one in original array order; iterating forward and overwriting on >= does the same.
+                if (newest is null || ms >= newestT) { newest = u; newestT = ms; newestOrg = org; }
             }
             if (newest is not { } usage) return new(null, DesktopHistoryStatus.NoSamples);
 
-            var five = UsageJson.ReadRoundedPercent(usage, "fh") is { } fh ? new WindowUsage(fh, null) : null;
-            var seven = UsageJson.ReadRoundedPercent(usage, "sd") is { } sd ? new WindowUsage(sd, null) : null;
+            var fiveReset = DesktopResetInference.FiveHourReset(series, newestOrg, now);
+            var five = UsageJson.ReadRoundedPercent(usage, "fh") is { } fh
+                ? new WindowUsage(fh, fiveReset)
+                {
+                    Origin = fiveReset is null ? ResetOrigin.Reported : ResetOrigin.Inferred,
+                }
+                : null;
+
+            var sevenReset = anchor is null
+                ? (DateTimeOffset?)null
+                : WeeklyAnchor.NextReset(anchor, now, zone ?? TimeZoneInfo.Utc);
+            var seven = UsageJson.ReadRoundedPercent(usage, "sd") is { } sd
+                ? new WindowUsage(sd, sevenReset)
+                {
+                    Origin = sevenReset is null ? ResetOrigin.Reported : ResetOrigin.Stated,
+                }
+                : null;
             // Percent-only credits: no money, and no state the file could tell us about. This is the
             // same shape the legacy extra_usage block produces, which the credit row already renders.
             var credits = UsageJson.ReadRoundedPercent(usage, "xu") is { } xu
@@ -89,12 +125,13 @@ public static class DesktopUsageReader
     /// <see cref="DesktopHistoryPath.ByFreshness"/>) and returns the first usable snapshot, so a
     /// half-written newer file cannot mask an older good one. When none is usable, the status is the
     /// newest existing candidate's; NotFound when no candidate exists at all.</summary>
-    public static DesktopHistoryResult ReadFirst(IReadOnlyList<string> byFreshness, DateTimeOffset now)
+    public static DesktopHistoryResult ReadFirst(IReadOnlyList<string> byFreshness, DateTimeOffset now,
+        WeeklyAnchor? anchor = null, TimeZoneInfo? zone = null)
     {
         DesktopHistoryResult? firstFailure = null;
         foreach (var path in byFreshness)
         {
-            var result = Read(path, now);
+            var result = Read(path, now, anchor, zone);
             if (result.Snapshot is not null) return result;
             if (result.Status != DesktopHistoryStatus.NotFound) firstFailure ??= result;
         }

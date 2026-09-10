@@ -96,4 +96,64 @@ public class UsagePopupSourceTests : IDisposable
         Assert.True(longPopup.PreferredSize.Width <= Math.Max(shortPopup.PreferredSize.Width, UsageBar.DefaultWidth + 40),
             $"long={longPopup.PreferredSize.Width} short={shortPopup.PreferredSize.Width}");
     }
+
+    [Fact]
+    public void DesktopSource_InferredReset_IsMarkedWithATilde()
+    {
+        var five = new WindowUsage(55, Now.AddHours(4)) { Origin = ResetOrigin.Inferred };
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(5), five, null), false));
+        Assert.Contains(Texts(popup), t => t.Contains("~resets in "));
+    }
+
+    [Fact]
+    public void DesktopSource_StatedReset_IsIndistinguishableFromReported()
+    {
+        // The user asserted it; marking their own answer as doubtful is noise.
+        var seven = new WindowUsage(40, Now.AddDays(2)) { Origin = ResetOrigin.Stated };
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(5), null, seven), false));
+        Assert.Contains(Texts(popup), t => t.Contains("· resets in ") && !t.Contains("~"));
+    }
+
+    [Fact]
+    public void DesktopSource_NoReset_SaysSoInTheRow()
+    {
+        // The row exists because the percentage exists; the fragment explains why the rest is missing.
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(5), new(7, null), new(17, null)), false));
+        Assert.Contains(Texts(popup), t => t.StartsWith("5-hour window — 7%") && t.Contains("· no reset time"));
+    }
+
+    [Fact]
+    public void ClaudeCodeSource_NoReset_SaysNothingNew()
+    {
+        // Regression: a Claude Code user sees today's behaviour byte for byte.
+        var cli = new UsageSnapshot(Now.AddMinutes(-2), new(7, null), new(17, null));
+        var popup = Popup(new DisplayChoice(cli, false));
+        Assert.DoesNotContain(Texts(popup), t => t.Contains("no reset time") || t.Contains("~resets"));
+    }
+
+    [Fact]
+    public void DesktopSource_ExpiredInferredReset_ReadsAsNoResetTime()
+    {
+        // Finding 2 of the final review: SnapshotPrecedence only adopts a strictly newer re-read, so
+        // the held snapshot can keep an inferred reset whose instant has already passed for up to
+        // desktopStalenessHours. The row must not say "resets in now" for that stretch.
+        var five = new WindowUsage(55, Now.AddMinutes(-45)) { Origin = ResetOrigin.Inferred };
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(45), five, null), false));
+        Assert.Contains(Texts(popup), t => t.StartsWith("5-hour window — 55%") && t.Contains("· no reset time"));
+        Assert.DoesNotContain(Texts(popup), t => t.Contains("resets in") || t.Contains("~"));
+    }
+
+    [Fact]
+    public void ClaudeCodeSource_InferredOriginWithAReset_IsNeverMarkedWithATilde()
+    {
+        // Regression: the tilde half of the gate is `desktop && Origin == Inferred`, not just
+        // `Origin == Inferred`. A Claude Code snapshot should never carry Origin == Inferred in
+        // practice, but the gate is an invariant to be proven, not inferred from which data shapes
+        // happen to be reachable today.
+        var five = new WindowUsage(55, Now.AddHours(4)) { Origin = ResetOrigin.Inferred };
+        var cli = new UsageSnapshot(Now.AddMinutes(-2), five, null);
+        var popup = Popup(new DisplayChoice(cli, false));
+        Assert.Contains(Texts(popup), t => t.Contains("· resets in "));
+        Assert.DoesNotContain(Texts(popup), t => t.Contains("~resets"));
+    }
 }

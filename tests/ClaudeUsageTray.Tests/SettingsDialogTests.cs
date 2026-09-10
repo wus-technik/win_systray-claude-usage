@@ -17,10 +17,10 @@ public class SettingsDialogTests : IDisposable
     /// <summary>Shown offscreen: Button.PerformClick() is a no-op while a form has never been shown,
     /// because an unrealized control cannot take focus.</summary>
     private SettingsDialog Dialog(Settings settings, Func<Settings, bool>? save = null,
-        bool runAtStartup = true)
+        bool runAtStartup = true, bool desktopSource = false)
     {
         var dialog = new SettingsDialog(settings, canRunAtStartup: true, runAtStartup,
-            save ?? (_ => true), TestUpdateOptions.Inert());
+            save ?? (_ => true), TestUpdateOptions.Inert(), desktopSource);
         _open.Add(dialog);
         dialog.StartPosition = FormStartPosition.Manual;
         dialog.Location = new System.Drawing.Point(-4000, -4000);
@@ -242,11 +242,18 @@ public class SettingsDialogTests : IDisposable
         Assert.Equal(3, live.DesktopStalenessHours);
     }
 
-    private static CheckBox WatchOpenAi(SettingsDialog d) => Find<CheckBox>(d, "watchOpenAi");
-    private static TextBox OpenAiComponents(SettingsDialog d) => Find<TextBox>(d, "openAiComponents");
+    private static CheckBox WatchOpenAi(SettingsDialog d) => Find<CheckBox>(d, "watchOpenAi")!;
+    private static TextBox OpenAiComponents(SettingsDialog d) => Find<TextBox>(d, "openAiComponents")!;
 
-    private static T Find<T>(Control root, string name) where T : Control
-        => root.Controls.Find(name, searchAllChildren: true).OfType<T>().Single();
+    private static T? Find<T>(Control root, string name) where T : Control
+    {
+        foreach (Control c in root.Controls)
+        {
+            if (c is T match && match.Name == name) return match;
+            if (Find<T>(c, name) is { } nested) return nested;
+        }
+        return null;
+    }
 
     [Fact]
     public void OpenAiCheckbox_ReflectsSettings_AndDrivesTheDraft()
@@ -314,8 +321,8 @@ public class SettingsDialogTests : IDisposable
         Assert.Equal("codex", OpenAiComponents(dialog).Text);
     }
 
-    private static ComboBox Combo(SettingsDialog d, string name) => Find<ComboBox>(d, name);
-    private static CheckBox Check(SettingsDialog d, string name) => Find<CheckBox>(d, name);
+    private static ComboBox Combo(SettingsDialog d, string name) => Find<ComboBox>(d, name)!;
+    private static CheckBox Check(SettingsDialog d, string name) => Find<CheckBox>(d, name)!;
 
     [Fact]
     public void Notifications_ReflectSettings_AndDriveTheDraft()
@@ -387,5 +394,54 @@ public class SettingsDialogTests : IDisposable
         Button(dialog, "reset").PerformClick();
         Assert.False(dialog.Draft().UsageNotifications.Enabled);
         Assert.Equal(NotifyLevel.Orange, dialog.Draft().UsageNotifications.Level);
+    }
+
+    [Fact]
+    public void WithoutADesktopSource_TheClaudeDesktopGroupIsAbsent()
+    {
+        // The invariant: a Claude Code user is never shown a setting that does nothing for them.
+        var dialog = Dialog(new Settings());
+        Assert.Null(Find<TextBox>(dialog, "weeklyAnchor"));
+    }
+
+    [Fact]
+    public void WithADesktopSource_TheAnchorFieldShowsTheCanonicalValue()
+    {
+        var dialog = Dialog(new Settings { WeeklyResetAnchor = "Thu 03:00" }, desktopSource: true);
+        Assert.Equal("Thu 03:00", Find<TextBox>(dialog, "weeklyAnchor")!.Text);
+    }
+
+    [Fact]
+    public void ValidAnchor_ReachesTheDraftCanonicalised()
+    {
+        var dialog = Dialog(new Settings(), desktopSource: true);
+        Find<TextBox>(dialog, "weeklyAnchor")!.Text = "thu 3:00";
+        Assert.Equal("Thu 03:00", dialog.Draft().WeeklyResetAnchor);
+    }
+
+    [Fact]
+    public void BlankAnchor_ClearsTheSetting()
+    {
+        var dialog = Dialog(new Settings { WeeklyResetAnchor = "Thu 03:00" }, desktopSource: true);
+        Find<TextBox>(dialog, "weeklyAnchor")!.Text = "  ";
+        Assert.Null(dialog.Draft().WeeklyResetAnchor);
+    }
+
+    [Fact]
+    public void UnparseableAnchor_ShowsAnErrorAndKeepsTheStoredValue()
+    {
+        // Silently nulling what they typed would look like the field simply does not work.
+        var dialog = Dialog(new Settings { WeeklyResetAnchor = "Thu 03:00" }, desktopSource: true);
+        Find<TextBox>(dialog, "weeklyAnchor")!.Text = "Donnerstag";
+        Assert.True(Find<Label>(dialog, "weeklyAnchorError")!.Visible);
+        Assert.Equal("Thu 03:00", dialog.Draft().WeeklyResetAnchor);
+    }
+
+    [Fact]
+    public void AnchorSurvivesADialogOpenedWithoutADesktopSource()
+    {
+        // A CLI-source dialog must not wipe an anchor the user set while on desktop data.
+        var dialog = Dialog(new Settings { WeeklyResetAnchor = "Thu 03:00" });
+        Assert.Equal("Thu 03:00", dialog.Draft().WeeklyResetAnchor);
     }
 }
