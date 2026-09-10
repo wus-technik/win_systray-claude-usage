@@ -83,4 +83,65 @@ public class UsageValuesTests
     [InlineData("CRITICAL")]   // the popup never matched case-insensitively; keep that
     public void FromPayloadIsNullForAnythingElse(string? word)
         => Assert.Null(SeverityRules.FromPayload(word));
+
+    /// <summary>17.5 % of a 5-hour window elapsed at 55 % used: pace ratio 55/17.5 = 3.14 → Red,
+    /// absolute (55, orange 50, red 85) → Orange. The two verdicts differ, which is what makes these
+    /// cases meaningful. Expressed as time-until-reset so the elapsed fraction is legible.</summary>
+    private static (WindowUsage Usage, DateTimeOffset Now) PacedRedAbsoluteOrange(ResetOrigin origin)
+    {
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var reset = now + TimeSpan.FromMinutes(247.5);   // 52.5 of 300 minutes gone
+        return (new WindowUsage(55, reset) { Origin = origin }, now);
+    }
+
+    [Fact]
+    public void Inferred_DrawsPaced_ButNotifiesAbsolute()
+    {
+        var (usage, now) = PacedRedAbsoluteOrange(ResetOrigin.Inferred);
+        var value = UsageValues.Enumerate(
+            new UsageSnapshot(now, usage, null) { Source = UsageSource.DesktopHistory },
+            new Settings(), now)[0];
+
+        Assert.Equal(Severity.Red, value.Severity);
+        Assert.Equal(Severity.Orange, value.NotifySeverity);
+    }
+
+    [Theory]
+    [InlineData(ResetOrigin.Reported)]
+    [InlineData(ResetOrigin.Stated)]
+    public void ReportedAndStated_AgreeOnBothSeverities(ResetOrigin origin)
+    {
+        var (usage, now) = PacedRedAbsoluteOrange(origin);
+        var value = UsageValues.Enumerate(new UsageSnapshot(now, usage, null), new Settings(), now)[0];
+
+        Assert.Equal(Severity.Red, value.Severity);
+        Assert.Equal(value.Severity, value.NotifySeverity);
+    }
+
+    [Fact]
+    public void Inferred_AboveRedAbove_StillNotifiesRed()
+    {
+        // A null elapsed fraction falls back to the absolute thresholds, and 90 % is past redAbove.
+        // The inference is simply not what got it there.
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var usage = new WindowUsage(90, now.AddHours(4)) { Origin = ResetOrigin.Inferred };
+        var value = UsageValues.Enumerate(
+            new UsageSnapshot(now, usage, null) { Source = UsageSource.DesktopHistory },
+            new Settings(), now)[0];
+
+        Assert.Equal(Severity.Red, value.NotifySeverity);
+    }
+
+    [Fact]
+    public void ScopedLimitsAndCredits_HaveEqualSeverities()
+    {
+        // Neither can be Inferred: only the desktop reader assigns that, and it emits neither.
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var snapshot = new UsageSnapshot(now, null, null,
+            [new ScopedLimit("Fable", null, 92, now.AddDays(2), true)],
+            new CreditUsage(null, null, 40, null, new CreditState(true, null, false)));
+
+        foreach (var value in UsageValues.Enumerate(snapshot, new Settings(), now))
+            Assert.Equal(value.Severity, value.NotifySeverity);
+    }
 }
