@@ -529,7 +529,9 @@ public sealed class TrayApp : ApplicationContext
             return;
         }
         _settingsDialog = new SettingsDialog(_settings, _isVelopackInstalled, TryIsStartupEnabled(),
-            ApplySettings, BuildUpdateOptions());
+            ApplySettings, BuildUpdateOptions(),
+            SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, DateTimeOffset.UtcNow, _settings)
+                .Snapshot?.Source == UsageSource.DesktopHistory);
         _settingsDialog.FormClosed += (_, _) => _settingsDialog = null;
         _settingsDialog.Show();
         _settingsDialog.Activate();

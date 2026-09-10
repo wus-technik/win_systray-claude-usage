@@ -34,6 +34,16 @@ public sealed class SettingsDialog : Form
     private readonly CheckBox _paceColors = new() { Name = "paceColors", Text = "Colour by pace (usage against time elapsed)", AutoSize = true };
     private readonly NumericUpDown _staleness = new() { Name = "staleness", Minimum = 0, Maximum = 1440, Width = 60 };
     private readonly NumericUpDown _desktopStaleness = new() { Name = "desktopStaleness", Minimum = 1, Maximum = 168, Width = 60 };
+    private readonly TextBox _weeklyAnchor = new() { Name = "weeklyAnchor", Width = 120 };
+    private readonly Label _weeklyAnchorError = new()
+    {
+        Name = "weeklyAnchorError",
+        Text = "Use a weekday and a time, e.g. Thu 03:00.",
+        AutoSize = true,
+        ForeColor = Color.Firebrick,
+        Visible = false,
+    };
+    private readonly bool _desktopSource;
     private readonly Panel _preview = new() { Name = "preview", Width = UsageBar.DefaultWidth, Height = UsageBar.DefaultHeight };
     private readonly Label _previewCaption = new() { Name = "previewCaption", AutoSize = true, ForeColor = SystemColors.GrayText };
     private readonly Label _error = new() { Name = "error", AutoSize = true, ForeColor = Color.Firebrick, Visible = false };
@@ -91,12 +101,17 @@ public sealed class SettingsDialog : Form
     /// <param name="save">Applies the edited settings, returning false if persisting them failed — the
     /// dialog then stays open and says so rather than closing on a read-only profile.</param>
     /// <param name="updates">Version and update state; see <see cref="UpdateOptions"/>.</param>
+    /// <param name="desktopSource">Whether the Claude Desktop history is the active source right
+    /// now. Frozen at open time on purpose: SourceSelection.Choose can flip on any 30 s tick, and a
+    /// group that vanishes under an open dialog — discarding a half-typed anchor — is worse than one
+    /// that is briefly out of date.</param>
     public SettingsDialog(Settings settings, bool canRunAtStartup, bool runAtStartup,
-        Func<Settings, bool> save, UpdateOptions updates)
+        Func<Settings, bool> save, UpdateOptions updates, bool desktopSource)
     {
         _draft = Clone(settings);
         _canRunAtStartup = canRunAtStartup;
         _save = save;
+        _desktopSource = desktopSource;
         _updates = updates;
         _updateState = updates.InitialState;
         _latestVersion = updates.LatestVersion;
@@ -151,6 +166,15 @@ public sealed class SettingsDialog : Form
         layout.Controls.Add(Heading("Colour thresholds"));
         layout.Controls.Add(Spinners(("Orange at", _orange, "%"), ("Red above", _red, "%")));
         layout.Controls.Add(Indent(_paceColors));
+        if (_desktopSource)
+        {
+            layout.Controls.Add(Indent(new Label
+            {
+                Text = "Needs a reset time; without one the plain thresholds decide.",
+                AutoSize = true,
+                ForeColor = SystemColors.GrayText,
+            }));
+        }
         layout.Controls.Add(_watchOpenAi);
         layout.Controls.Add(Indent(_openAiComponentsCaption));
         layout.Controls.Add(Indent(_openAiComponents));
@@ -172,6 +196,20 @@ public sealed class SettingsDialog : Form
         layout.Controls.Add(Spinners(
             ("Treat data as stale after", _staleness, "minutes"),
             ("Claude Desktop history stale after", _desktopStaleness, "hours")));
+
+        // Only while the desktop history is the live source: a Claude Code user puzzling over a
+        // setting that does nothing for them is the far more common outcome than the reverse.
+        if (_desktopSource)
+        {
+            layout.Controls.Add(Heading("Claude Desktop"));
+            layout.Controls.Add(Indent(new Label
+            {
+                Text = "Weekly reset (read it off Claude's own UI), e.g. Thu 03:00",
+                AutoSize = true,
+            }));
+            layout.Controls.Add(Indent(_weeklyAnchor));
+            layout.Controls.Add(Indent(_weeklyAnchorError));
+        }
 
         layout.Controls.Add(Heading("About"));
         layout.Controls.Add(BuildAbout());
@@ -359,7 +397,7 @@ public sealed class SettingsDialog : Form
         int order = 0;
         foreach (var control in new Control[]
                  { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   _desktopStaleness, _betaReleases, _watchOpenAi, _openAiComponents,
+                   _desktopStaleness, _weeklyAnchor, _betaReleases, _watchOpenAi, _openAiComponents,
                    _notifyUsage, _notifyLevel, _notifyClaude, _notifyOpenAi, reset, cancel, save })
             control.TabIndex = order++;
         return row;
@@ -389,6 +427,7 @@ public sealed class SettingsDialog : Form
         _notifyClaude.Checked = source.StatusSources.GetValueOrDefault("claude")?.Notify ?? true;
         _notifyOpenAi.Checked = openAi?.Notify ?? true;
         _notifyOpenAi.Enabled = _watchOpenAi.Checked;
+        _weeklyAnchor.Text = source.WeeklyResetAnchor ?? "";
         _suspendSync = false;
         SetThresholds(source.Thresholds.Orange, source.Thresholds.Red, source.StalenessMinutes,
             source.DesktopStalenessHours);
@@ -429,6 +468,12 @@ public sealed class SettingsDialog : Form
             _notifyOpenAi.Enabled = _watchOpenAi.Checked;   // disabled, not unchecked: the choice survives
         };
         _notifyUsage.CheckedChanged += (_, _) => _notifyLevel.Enabled = _notifyUsage.Checked;
+        _weeklyAnchor.TextChanged += (_, _) =>
+        {
+            if (_suspendSync) return;
+            _weeklyAnchorError.Visible = !string.IsNullOrWhiteSpace(_weeklyAnchor.Text)
+                && WeeklyAnchor.TryParse(_weeklyAnchor.Text) is null;
+        };
         _preview.Paint += (_, e) => UsageBar.Paint(e.Graphics, _preview.Width, _preview.Height,
             PreviewPercent, PreviewSeverity(), PreviewFraction());
     }
@@ -478,6 +523,16 @@ public sealed class SettingsDialog : Form
             Notify = _notifyClaude.Checked,
             Components = claude?.Components is null ? null : [.. claude.Components],
         };
+        // Hidden group: keep whatever the clone carries, so opening the dialog on Claude Code data
+        // cannot wipe an anchor set while the desktop history was the source. Blank clears it;
+        // unparseable keeps the stored value, since silently nulling what they typed would look like
+        // the field does not work.
+        if (_desktopSource)
+        {
+            draft.WeeklyResetAnchor = string.IsNullOrWhiteSpace(_weeklyAnchor.Text)
+                ? null
+                : WeeklyAnchor.TryParse(_weeklyAnchor.Text)?.Format() ?? draft.WeeklyResetAnchor;
+        }
         return draft;
     }
 
@@ -525,6 +580,7 @@ public sealed class SettingsDialog : Form
         Thresholds = new Thresholds { Orange = source.Thresholds.Orange, Red = source.Thresholds.Red },
         StalenessMinutes = source.StalenessMinutes,
         DesktopStalenessHours = source.DesktopStalenessHours,
+        WeeklyResetAnchor = source.WeeklyResetAnchor,
         RunAtStartup = source.RunAtStartup,
         PaceColors = source.PaceColors,
         UseBetaReleases = source.UseBetaReleases,
