@@ -139,9 +139,15 @@ public sealed class TrayApp : ApplicationContext
             _retry.Start(); // likely a partial replace; preserve the last known good snapshot briefly
         }
 
-        var desktop = DesktopUsageReader.ReadFirst(DesktopHistoryPath.ByFreshness(
-            DesktopHistoryPath.Candidates(_settings.DesktopHistoryPathOverride,
-                DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)), now);
+        // TimeZoneInfo.Local belongs here, not in Core: the anchor is a wall-clock statement, and
+        // Core stays ambient-free so its DST cases are testable against an explicit zone.
+        var desktop = DesktopUsageReader.ReadFirst(
+            DesktopHistoryPath.ByFreshness(
+                DesktopHistoryPath.Candidates(_settings.DesktopHistoryPathOverride,
+                    DesktopHistoryPath.DefaultAppData, DesktopHistoryPath.DefaultLocalAppData)),
+            now,
+            WeeklyAnchor.TryParse(_settings.WeeklyResetAnchor),
+            TimeZoneInfo.Local);
         _desktopStatus = desktop.Status;
         if (desktop.Snapshot is not null)
         {
@@ -396,6 +402,11 @@ public sealed class TrayApp : ApplicationContext
                 parts.Add($"stale · {(desktop ? "Claude Desktop history · " : "")}updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
             else if (desktop)
                 parts.Add($"Claude Desktop history · updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
+            // The tooltip is where a sentence fits; the popup row carries only the short fragment.
+            if (desktop && usage.Origin == ResetOrigin.Inferred)
+                parts.Add("estimated from Claude Desktop history");
+            else if (desktop && usage.ResetsAt is null)
+                parts.Add("Claude Desktop history carries no reset time");
         }
         return string.Join(" · ", parts);
     }
