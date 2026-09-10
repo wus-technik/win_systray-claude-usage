@@ -38,6 +38,10 @@ public class WeeklyAnchorTests
     [InlineData("Thu 03:00:00")]
     [InlineData("Xyz 03:00")]
     [InlineData("Thu 3pm")]
+    // Enum.TryParse<DayOfWeek> accepts comma-separated names and ORs their underlying values
+    // together regardless of [Flags]: "Monday,Tuesday" is 1|2 = 3, a defined DayOfWeek (Wednesday).
+    // Must not silently parse and get rewritten to "Wed 03:00".
+    [InlineData("Monday,Tuesday 03:00")]
     public void JunkAndOutOfRange_ProduceNull(string? text) => Assert.Null(WeeklyAnchor.TryParse(text));
 
     [Fact]

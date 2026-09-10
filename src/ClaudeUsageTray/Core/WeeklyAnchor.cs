@@ -14,6 +14,8 @@ namespace ClaudeUsageTray.Core;
 public sealed record WeeklyAnchor(DayOfWeek Day, TimeOnly TimeOfDay)
 {
     private static readonly string[] DayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    private static readonly string[] FullDayNames =
+        ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
     /// <summary>Weekday (three-letter abbreviation or full English name, any case) plus HH:mm.
     /// Null for anything else, including a valid-looking string with seconds or a 12-hour clock:
@@ -25,17 +27,17 @@ public sealed record WeeklyAnchor(DayOfWeek Day, TimeOnly TimeOfDay)
         var parts = text.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2) return null;
 
-        // Enum.TryParse also accepts the numeric form, so "3 03:00" would parse and be rewritten to
-        // "Wed 03:00" in the user's file — a shape they never typed.
-        if (parts[0].Any(char.IsDigit)) return null;
-
-        if (!Enum.TryParse<DayOfWeek>(parts[0], ignoreCase: true, out var day) || !Enum.IsDefined(day))
-        {
-            int index = Array.FindIndex(DayNames,
+        // Matched explicitly against the two known spellings rather than via Enum.TryParse:
+        // Enum.TryParse<DayOfWeek> also accepts comma-separated names and ORs their underlying
+        // values together regardless of [Flags], so "Monday,Tuesday" (1|2 = 3) parses as a defined
+        // enum value and would be rewritten to "Wed 03:00" — a shape the user never typed.
+        int index = Array.FindIndex(DayNames,
+            n => string.Equals(n, parts[0], StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+            index = Array.FindIndex(FullDayNames,
                 n => string.Equals(n, parts[0], StringComparison.OrdinalIgnoreCase));
-            if (index < 0) return null;
-            day = (DayOfWeek)index;
-        }
+        if (index < 0) return null;
+        var day = (DayOfWeek)index;
 
         // Exact formats only: "3:00" and "03:00" are the two the dialog and hand-editing produce.
         if (!TimeOnly.TryParseExact(parts[1], ["HH:mm", "H:mm"], CultureInfo.InvariantCulture,
@@ -62,8 +64,8 @@ public sealed record WeeklyAnchor(DayOfWeek Day, TimeOnly TimeOfDay)
             if (candidate > now) return candidate;
             day = day.AddDays(7);   // this week's occurrence has passed, or fell exactly on now
         }
-        // Unreachable: one week on is always in the future. Kept total rather than throwing, because
-        // nothing on this path may throw.
+        // Unreachable: two weeks past the initial day is always in the future. Kept total rather
+        // than throwing, because nothing on this path may throw.
         return Resolve(day.Add(anchor.TimeOfDay.ToTimeSpan()), zone);
     }
 
