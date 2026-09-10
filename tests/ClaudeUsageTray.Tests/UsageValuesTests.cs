@@ -144,4 +144,33 @@ public class UsageValuesTests
         foreach (var value in UsageValues.Enumerate(snapshot, new Settings(), now))
             Assert.Equal(value.Severity, value.NotifySeverity);
     }
+
+    [Fact]
+    public void StaleSnapshotPacedAgainstLiveNow_Understates()
+    {
+        // Same percentage, same inferred reset; the only difference is how much of the window has
+        // elapsed by the time we look. A larger elapsed fraction yields a smaller ratio, so the
+        // verdict can only soften — never escalate — as a snapshot ages.
+        var reset = new DateTimeOffset(2026, 9, 10, 11, 0, 0, TimeSpan.Zero);
+        var usage = new WindowUsage(55, reset) { Origin = ResetOrigin.Inferred };
+        var settings = new Settings();
+
+        var fresh = UsageValues.WindowSeverities(usage, UsageValues.FiveHourPeriod, settings,
+            new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero)).Draw;
+        var stale = UsageValues.WindowSeverities(usage, UsageValues.FiveHourPeriod, settings,
+            new DateTimeOffset(2026, 9, 10, 10, 30, 0, TimeSpan.Zero)).Draw;
+
+        Assert.Equal(Severity.Red, fresh);
+        Assert.True(stale < fresh, $"expected the aged reading to soften, got {stale}");
+    }
+
+    [Fact]
+    public void AboveRedAbove_StaysRedHoweverStale()
+    {
+        // ForPace returns Red unconditionally above redAbove: running out is running out.
+        var reset = new DateTimeOffset(2026, 9, 10, 11, 0, 0, TimeSpan.Zero);
+        var usage = new WindowUsage(95, reset) { Origin = ResetOrigin.Inferred };
+        Assert.Equal(Severity.Red, UsageValues.WindowSeverities(usage, UsageValues.FiveHourPeriod,
+            new Settings(), new DateTimeOffset(2026, 9, 10, 10, 55, 0, TimeSpan.Zero)).Draw);
+    }
 }

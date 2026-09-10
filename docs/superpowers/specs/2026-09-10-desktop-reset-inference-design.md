@@ -333,3 +333,46 @@ the right shape is a transition-only fixed-token line such as
 2. **Whether `xu`-carrying samples are structurally different** (full write vs. partial). 45 of 420
    carry it, both anomalous zeroings do, and `xu` takes only two values across the 30 days. Worth a
    look only if question 1 is pursued.
+
+## Implementation notes
+
+Four details were settled during implementation and are recorded here rather than left to be
+rediscovered:
+
+- `UsageValue`'s second severity is a **sixth positional member**, `NotifySeverity`, appended after
+  `ResetsAt`. `UsageValues.Enumerate` is its only producer in the tree, so no call site outside that
+  method changes. The pair is computed by `UsageValues.WindowSeverities`, which returns
+  `(Severity Draw, Severity Notify)`; `WindowSeverity` keeps its existing signature and meaning, so
+  the popup, the badge and the icon renderer are untouched.
+- `DesktopUsageReader.Read` and `ReadFirst` take **two** optional arguments, `WeeklyAnchor? anchor`
+  and `TimeZoneInfo? zone`, and `zone` defaults to `TimeZoneInfo.Utc` rather than `Local`: `Core`
+  stays ambient-free and every reader test is deterministic. `TrayApp` passes `TimeZoneInfo.Local`.
+- **Gate 1 judges the last candidate pair, and only that one.** The walk takes the last qualifying
+  pair unconditionally and then applies the 20-minute rule to it; a wide last bracket rejects the
+  whole inference rather than falling back to an earlier, narrower one. Falling back would emit a
+  reset for a window a more recent — if poorly observed — boundary says has already turned over.
+- **"An inferred reset never influences a toast" means never decides that a toast fires, or at what
+  level.** `NotificationRules.Compose` still reads `UsageValue.ResetsAt` to set the Action Center
+  slot's `ExpiresAt`, so an inferred reset can shorten or lengthen a notification's lifetime. That
+  is accepted: the toast it affects was already correctly raised on the absolute thresholds, and the
+  alternative — a seventh field carrying a notify-side reset — buys nothing a user would notice.
+
+Three further points worth recording for the next reader:
+
+- **Withholding an inferred reset drops a value back to the absolute thresholds** that every
+  reset-less value already uses. A consequence worth stating: on a desktop-inferred row the badge
+  can read green from the pace ratio while a toast fires at the absolute level, because the notify
+  path has no elapsed fraction to pace against.
+- **`WeeklyAnchor.TryParse` matches day names explicitly** rather than via `Enum.TryParse`, which
+  accepts comma-separated names and ORs them (`"Monday,Tuesday"` would have become Wednesday).
+- **The reader's newest-sample selection is last-wins on tied timestamps** so it agrees with the
+  inference's stable sort; both passes must pick the same sample object.
+
+## DST resolution
+
+`WeeklyAnchor.Resolve` locates a spring-forward gap by walking back one minute at a time from the
+requested wall time, rather than reading `TimeZoneInfo.GetAdjustmentRules`. Two reasons, both
+load-bearing: `Enumerable.First` over the rules throws `InvalidOperationException` when none matches,
+and that exception is not in `DesktopUsageReader`'s catch filter — on a path whose contract is that
+it never throws; and adding `DaylightDelta` to the *requested* time (rather than to the gap's start)
+lands that far past the transition, which is not "the first instant after the gap".

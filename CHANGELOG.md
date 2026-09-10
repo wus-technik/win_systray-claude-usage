@@ -8,6 +8,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [Unreleased]
+
+### Added
+- Claude Desktop history: the 5-hour reset is now inferred from the sample series, so pace colours,
+  the elapsed marker and `resets in …` work on a desktop-only machine. Estimates are marked with a
+  tilde and never raise a notification.
+- `weeklyResetAnchor` setting and a **Claude Desktop** settings group: state your weekly reset
+  (e.g. `Thu 03:00`) and the 7-day window paces against it.
+
+### Fixed
+- A window with no known reset now says `no reset time` on a desktop snapshot, instead of leaving a
+  silent blank where the reset would be.
+
 ## [0.7.3-beta.3] - 2026-09-06
 
 ### Added

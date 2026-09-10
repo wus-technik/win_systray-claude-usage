@@ -546,4 +546,33 @@ public class NotificationRulesUsageTests
 
         Assert.Contains(outcome.Log, l => l.Contains("fingerprint change"));
     }
+
+    [Fact]
+    public void StatedReset_IsNotAnEstimate_ToastsExactlyLikeAReportedReset()
+    {
+        // Decision 5: a user-stated weekly anchor is not an estimate — it renders unmarked and may
+        // raise toasts, same as a payload-reported reset. Every other notifier test here uses
+        // Reported or Inferred; this is the one that drives a Stated origin across a threshold and
+        // proves the toast fires exactly as it does for Reported.
+        var now = new DateTimeOffset(2026, 9, 10, 6, 52, 0, TimeSpan.Zero);
+        var settings = new Settings();
+
+        WindowUsage Stated(int percent) => new(percent, now.AddDays(2)) { Origin = ResetOrigin.Stated };
+        UsageSnapshot Snapshot(int percent) => new(now, null, Stated(percent)) { Source = UsageSource.DesktopHistory };
+        WindowUsage Reported(int percent) => new(percent, now.AddDays(2));
+        UsageSnapshot ReportedSnapshot(int percent) => new(now, null, Reported(percent)) { Source = UsageSource.ClaudeCode };
+
+        var statedRules = ArmedRules();
+        statedRules.OnUsage(new DisplayChoice(Snapshot(10), false), settings, now);
+        var statedOutcome = statedRules.OnUsage(new DisplayChoice(Snapshot(90), false), settings, now);
+
+        var reportedRules = ArmedRules();
+        reportedRules.OnUsage(new DisplayChoice(ReportedSnapshot(10), false), settings, now);
+        var reportedOutcome = reportedRules.OnUsage(new DisplayChoice(ReportedSnapshot(90), false), settings, now);
+
+        Assert.NotNull(statedOutcome.Notification);
+        Assert.NotNull(reportedOutcome.Notification);
+        Assert.Equal(reportedOutcome.Notification!.Title, statedOutcome.Notification!.Title);
+        Assert.Equal(reportedOutcome.Notification.Body, statedOutcome.Notification.Body);
+    }
 }
