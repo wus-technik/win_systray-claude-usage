@@ -132,6 +132,18 @@ public class UsagePopupSourceTests : IDisposable
     }
 
     [Fact]
+    public void DesktopSource_ExpiredInferredReset_ReadsAsNoResetTime()
+    {
+        // Finding 2 of the final review: SnapshotPrecedence only adopts a strictly newer re-read, so
+        // the held snapshot can keep an inferred reset whose instant has already passed for up to
+        // desktopStalenessHours. The row must not say "resets in now" for that stretch.
+        var five = new WindowUsage(55, Now.AddMinutes(-45)) { Origin = ResetOrigin.Inferred };
+        var popup = Popup(new DisplayChoice(Desktop(TimeSpan.FromMinutes(45), five, null), false));
+        Assert.Contains(Texts(popup), t => t.StartsWith("5-hour window — 55%") && t.Contains("· no reset time"));
+        Assert.DoesNotContain(Texts(popup), t => t.Contains("resets in") || t.Contains("~"));
+    }
+
+    [Fact]
     public void ClaudeCodeSource_InferredOriginWithAReset_IsNeverMarkedWithATilde()
     {
         // Regression: the tilde half of the gate is `desktop && Origin == Inferred`, not just

@@ -12,9 +12,12 @@ namespace ClaudeUsageTray.Core;
 public sealed record UsageValue(string Key, string Label, int Percent, Severity Severity,
     DateTimeOffset? ResetsAt, Severity NotifySeverity);
 
-/// <summary>The severity every surface draws for a value — badge, popup bar, toast — computed in
-/// exactly one place. This type exists to prevent drift, not to save typing: three copies of "which
-/// severity is this" would make the toast's agreement with the bar beside it a coincidence.</summary>
+/// <summary>The severity most surfaces draw for a value — badge and popup bar — computed in one
+/// place from one set of inputs. This type exists to prevent drift, not to save typing: separate
+/// copies of "which severity is this" would make the bar's agreement with the badge beside it a
+/// coincidence. The toast reads a second, related computation — <see cref="UsageValue.NotifySeverity"/>,
+/// also produced here, from the same call — so a badge and a toast can legitimately disagree exactly
+/// once: an inferred reset may pace the badge green while the absolute fallback still toasts.</summary>
 public static class UsageValues
 {
     public static readonly TimeSpan FiveHourPeriod = TimeSpan.FromHours(5);
@@ -26,15 +29,18 @@ public static class UsageValues
 
     public static Severity WindowSeverity(WindowUsage usage, TimeSpan period, Settings settings, DateTimeOffset now)
         => SeverityRules.ForSettings(settings, usage.Percent,
-            TimeMarker.ElapsedFraction(usage.ResetsAt, period, now));
+            TimeMarker.ElapsedFraction(ResetPresentation.EffectiveResetsAt(usage, now), period, now));
 
     /// <summary>The drawing verdict and the notification verdict for one window, from one set of
     /// inputs. An inferred reset is withheld from the second — a null fraction still falls back to
-    /// the absolute thresholds, so an inferred-reset value at 90 % toasts exactly as it does today.</summary>
+    /// the absolute thresholds, so an inferred-reset value at 90 % toasts exactly as it does today.
+    /// Both read <see cref="ResetPresentation.EffectiveResetsAt"/> rather than the raw field, so an
+    /// inferred reset that has since aged out (Claude Desktop stopped writing samples) cannot pace
+    /// either verdict off an instant that has already passed.</summary>
     public static (Severity Draw, Severity Notify) WindowSeverities(WindowUsage usage, TimeSpan period,
         Settings settings, DateTimeOffset now)
     {
-        var fraction = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
+        var fraction = TimeMarker.ElapsedFraction(ResetPresentation.EffectiveResetsAt(usage, now), period, now);
         return (SeverityRules.ForSettings(settings, usage.Percent, fraction),
             SeverityRules.ForSettings(settings, usage.Percent,
                 usage.Origin == ResetOrigin.Inferred ? null : fraction));

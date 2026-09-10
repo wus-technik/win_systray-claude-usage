@@ -101,10 +101,11 @@ public sealed class UsagePopup : Form
         // The tilde carries the hedge inside the 240 px row; the sentence lives in
         // TrayApp.BuildTooltip, where there is room for it. Stated is deliberately unmarked — the
         // user asserted it.
-        var resets = usage.ResetsAt is { } r
+        var resetsAt = ResetPresentation.EffectiveResetsAt(usage, now);
+        var resets = resetsAt is { } r
             ? $" · {(desktop && usage.Origin == ResetOrigin.Inferred ? "~" : "")}resets in {RelativeTime.In(r, now)}"
             : desktop ? " · no reset time" : "";
-        var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
+        var elapsed = TimeMarker.ElapsedFraction(resetsAt, period, now);
         AddCaption(layout, $"{title} — {usage.Percent}%{resets}{PaceSuffix(usage.Percent, elapsed, settings)}");
         AddBar(layout, usage.Percent, UsageValues.WindowSeverity(usage, period, settings, now), elapsed);
     }

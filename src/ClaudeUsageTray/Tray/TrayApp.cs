@@ -372,43 +372,15 @@ public sealed class TrayApp : ApplicationContext
         {
             // No hysteresis: fetches are minutes apart and the ratio only moves fast early in a
             // period, which SeverityRules' dead zone already keeps out of the badge.
-            var elapsed = TimeMarker.ElapsedFraction(usage.ResetsAt, period, now);
+            var elapsed = TimeMarker.ElapsedFraction(ResetPresentation.EffectiveResetsAt(usage, now), period, now);
             var severity = UsageValues.WindowSeverity(usage, period, _settings, now);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
                 dimmed: choice.Stale, size, warning: degraded);
-            icon.Text = WithStatus(BuildTooltip(label, usage, elapsed, choice, now), now);
+            var tooltip = UsageTooltip.Build(label, usage, elapsed, _settings.PaceColors,
+                _settings.Thresholds.Red, choice.Stale, choice.Snapshot?.Source, choice.Snapshot?.FetchedAt, now);
+            icon.Text = WithStatus(tooltip, now);
         }
         old?.Dispose();
-    }
-
-    private string BuildTooltip(string label, WindowUsage usage, double? elapsedFraction, DisplayChoice choice,
-        DateTimeOffset now)
-    {
-        var parts = new List<string> { label, $"{usage.Percent}%" };
-        // Only when pace decided the colour — otherwise the badge means percent and needs no gloss.
-        if (_settings.PaceColors
-            && PaceFormat.Describe(SeverityRules.PaceRatio(
-                usage.Percent, elapsedFraction, _settings.Thresholds.Red)) is { Length: > 0 } pace)
-            parts.Add(pace);
-        if (usage.ResetsAt is { } resetsAt)
-        {
-            parts.Add($"resets in {RelativeTime.In(resetsAt, now)}");
-            if (choice.Stale && resetsAt <= now) parts.Add("awaiting refresh"); // cached % may be the prior window
-        }
-        if (choice.Snapshot is { } snapshot)
-        {
-            bool desktop = snapshot.Source == UsageSource.DesktopHistory;
-            if (choice.Stale)
-                parts.Add($"stale · {(desktop ? "Claude Desktop history · " : "")}updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
-            else if (desktop)
-                parts.Add($"Claude Desktop history · updated {RelativeTime.Ago(snapshot.FetchedAt, now)}");
-            // The tooltip is where a sentence fits; the popup row carries only the short fragment.
-            if (desktop && usage.Origin == ResetOrigin.Inferred)
-                parts.Add("estimated from Claude Desktop history");
-            else if (desktop && usage.ResetsAt is null)
-                parts.Add("Claude Desktop history carries no reset time");
-        }
-        return string.Join(" · ", parts);
     }
 
     /// <summary>One line per adopted desktop sample. Percentages and age only.</summary>

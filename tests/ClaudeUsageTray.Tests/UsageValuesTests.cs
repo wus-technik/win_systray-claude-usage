@@ -165,6 +165,20 @@ public class UsageValuesTests
     }
 
     [Fact]
+    public void Inferred_ExpiredReset_FallsBackToAbsoluteSeverity_ForBothVerdicts()
+    {
+        // Finding 2: an inferred reset that has since aged out (the held snapshot outlived its own
+        // estimate because SnapshotPrecedence did not adopt a newer, gate-2-rejecting re-read) must
+        // not pace either verdict off an instant that has already passed.
+        var now = new DateTimeOffset(2026, 9, 10, 12, 0, 0, TimeSpan.Zero);
+        var usage = new WindowUsage(55, now.AddMinutes(-45)) { Origin = ResetOrigin.Inferred };
+        var (draw, notify) = UsageValues.WindowSeverities(usage, UsageValues.FiveHourPeriod, new Settings(), now);
+
+        Assert.Equal(SeverityRules.For(55, new Settings().Thresholds.Orange, new Settings().Thresholds.Red), draw);
+        Assert.Equal(draw, notify);
+    }
+
+    [Fact]
     public void AboveRedAbove_StaysRedHoweverStale()
     {
         // ForPace returns Red unconditionally above redAbove: running out is running out.
