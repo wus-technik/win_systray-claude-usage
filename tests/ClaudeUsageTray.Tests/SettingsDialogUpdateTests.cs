@@ -24,7 +24,8 @@ public class SettingsDialogUpdateTests : IDisposable
         Settings? settings = null)
     {
         var dialog = new SettingsDialog(settings ?? new Settings(), canRunAtStartup: true, runAtStartup: true,
-            save: save ?? (s => { _saved.Add(s); return true; }), updates, desktopSource: false);
+            save: save ?? (s => { _saved.Add(s); return true; }), updates, desktopSource: false,
+            new Dictionary<string, IReadOnlyList<string>>());
         _open.Add(dialog);
         dialog.StartPosition = FormStartPosition.Manual;
         dialog.Location = new System.Drawing.Point(-4000, -4000);

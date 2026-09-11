@@ -17,10 +17,12 @@ public class SettingsDialogTests : IDisposable
     /// <summary>Shown offscreen: Button.PerformClick() is a no-op while a form has never been shown,
     /// because an unrealized control cannot take focus.</summary>
     private SettingsDialog Dialog(Settings settings, Func<Settings, bool>? save = null,
-        bool runAtStartup = true, bool desktopSource = false)
+        bool runAtStartup = true, bool desktopSource = false,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? componentNames = null)
     {
         var dialog = new SettingsDialog(settings, canRunAtStartup: true, runAtStartup,
-            save ?? (_ => true), TestUpdateOptions.Inert(), desktopSource);
+            save ?? (_ => true), TestUpdateOptions.Inert(), desktopSource,
+            componentNames ?? new Dictionary<string, IReadOnlyList<string>>());
         _open.Add(dialog);
         dialog.StartPosition = FormStartPosition.Manual;
         dialog.Location = new System.Drawing.Point(-4000, -4000);
@@ -525,5 +527,46 @@ public class SettingsDialogTests : IDisposable
         // A CLI-source dialog must not wipe an anchor the user set while on desktop data.
         var dialog = Dialog(new Settings { WeeklyResetAnchor = "Thu 03:00" });
         Assert.Equal("Thu 03:00", dialog.Draft().WeeklyResetAnchor);
+    }
+
+    private static Label Hint(SettingsDialog d, string name) => Find<Label>(d, name)!;
+
+    [Fact]
+    public void Hint_ListsTheSuppliedNames()
+    {
+        var dialog = Dialog(new Settings(), componentNames: new Dictionary<string, IReadOnlyList<string>>
+        {
+            ["claude"] = ["claude.ai", "Claude Code", "Claude Cowork"],
+        });
+        Assert.Equal("Page lists: claude.ai, Claude Code, Claude Cowork",
+            Hint(dialog, "claudeComponentsHint").Text);
+    }
+
+    /// <summary>Nothing fetched yet — including the case the cache exists for: the user opened the
+    /// dialog to re-enable a source the monitor holds no entry for. Both branches of HintFor: a
+    /// missing key (openai) and a present-but-empty list (claude, as a "components": [] payload
+    /// would produce).</summary>
+    [Fact]
+    public void Hint_FallsBackWhenNoNamesAreKnown()
+    {
+        var dialog = Dialog(new Settings(), componentNames: new Dictionary<string, IReadOnlyList<string>>
+        {
+            ["claude"] = [],
+        });
+        Assert.Equal("Page lists: not fetched yet", Hint(dialog, "claudeComponentsHint").Text);
+        Assert.Equal("Page lists: not fetched yet", Hint(dialog, "openAiComponentsHint").Text);
+    }
+
+    /// <summary>The caption is a reference, not a prefill: it never reaches the box or the draft.
+    /// Blank = all stays literally true.</summary>
+    [Fact]
+    public void Hint_NeverPrefillsTheBox()
+    {
+        var dialog = Dialog(new Settings(), componentNames: new Dictionary<string, IReadOnlyList<string>>
+        {
+            ["claude"] = ["claude.ai", "Claude Code"],
+        });
+        Assert.Equal("", ClaudeComponents(dialog).Text);
+        Assert.Empty(dialog.Draft().StatusSources["claude"]!.Components!);
     }
 }

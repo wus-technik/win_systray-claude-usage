@@ -81,6 +81,20 @@ public sealed class SettingsDialog : Form
     private readonly TextBox _openAiComponents = new() { Name = "openAiComponents", Width = 240 };
     private readonly Label _openAiComponentsCaption = new()
         { Text = "Components (comma-separated, blank = all)", AutoSize = true };
+    private readonly Label _claudeComponentsHint = new()
+    {
+        Name = "claudeComponentsHint",
+        AutoSize = true,
+        MaximumSize = new Size(320, 0),
+        ForeColor = SystemColors.GrayText,
+    };
+    private readonly Label _openAiComponentsHint = new()
+    {
+        Name = "openAiComponentsHint",
+        AutoSize = true,
+        MaximumSize = new Size(320, 0),
+        ForeColor = SystemColors.GrayText,
+    };
     private readonly CheckBox _notifyUsage = new()
         { Name = "notifyUsage", Text = "Notify when a limit turns", AutoSize = true };
     private readonly ComboBox _notifyLevel = new()
@@ -110,8 +124,15 @@ public sealed class SettingsDialog : Form
     /// now. Frozen at open time on purpose: SourceSelection.Choose can flip on any 30 s tick, and a
     /// group that vanishes under an open dialog — discarding a half-typed anchor — is worse than one
     /// that is briefly out of date.</param>
+    /// <param name="componentNames">Every component each page currently lists, keyed by source id —
+    /// the greyed caption under each watch-filter box. Frozen at open time for the same reason
+    /// <paramref name="desktopSource"/> is, and supplied from TrayApp's own cache rather than read
+    /// live: StatusMonitor holds no entry for a disabled source, which is exactly the case where the
+    /// user has opened this dialog to turn a page back on and narrow it. A missing or empty entry
+    /// reads "not fetched yet".</param>
     public SettingsDialog(Settings settings, bool canRunAtStartup, bool runAtStartup,
-        Func<Settings, bool> save, UpdateOptions updates, bool desktopSource)
+        Func<Settings, bool> save, UpdateOptions updates, bool desktopSource,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> componentNames)
     {
         _draft = Clone(settings);
         _canRunAtStartup = canRunAtStartup;
@@ -121,6 +142,8 @@ public sealed class SettingsDialog : Form
         _updateState = updates.InitialState;
         _latestVersion = updates.LatestVersion;
         _releaseNotes = updates.InitialReleaseNotes;
+        _claudeComponentsHint.Text = HintFor(componentNames, StatusSourceRegistry.Claude.Id);
+        _openAiComponentsHint.Text = HintFor(componentNames, StatusSourceRegistry.OpenAi.Id);
 
         Text = AppInfo.Window("Settings");
         Icon = AppIcon.Value;
@@ -189,9 +212,11 @@ public sealed class SettingsDialog : Form
         layout.Controls.Add(Indent(_watchClaude));
         layout.Controls.Add(Indent(_claudeComponentsCaption));
         layout.Controls.Add(Indent(_claudeComponents));
+        layout.Controls.Add(Indent(_claudeComponentsHint));
         layout.Controls.Add(Indent(_watchOpenAi));
         layout.Controls.Add(Indent(_openAiComponentsCaption));
         layout.Controls.Add(Indent(_openAiComponents));
+        layout.Controls.Add(Indent(_openAiComponentsHint));
 
         layout.Controls.Add(Heading("Notifications"));
         _notifyLevel.Items.AddRange(LevelLabels);
@@ -249,6 +274,13 @@ public sealed class SettingsDialog : Form
         inner.Margin = new Padding(16, inner.Margin.Top, 0, inner.Margin.Bottom);
         return inner;
     }
+
+    /// <summary>The page's own component names, as a reference caption. Never a prefill: the box
+    /// shows exactly what is stored, so "blank = all" stays literally true.</summary>
+    private static string HintFor(IReadOnlyDictionary<string, IReadOnlyList<string>> names, string sourceId)
+        => names.TryGetValue(sourceId, out var list) && list.Count > 0
+            ? "Page lists: " + string.Join(", ", list)
+            : "Page lists: not fetched yet";
 
     /// <summary>Labelled spinners with their units trailing. Every spinner passed in one call shares
     /// a grid, so their boxes line up in a column however wide the labels are — two rows built as two
