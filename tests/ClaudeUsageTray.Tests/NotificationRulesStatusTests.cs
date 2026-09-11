@@ -181,4 +181,40 @@ public class NotificationRulesStatusTests
 
         Assert.Equal("", StatusDetail.Summary(Down(OpenAi), ["codex"]));
     }
+
+    /// <summary>A badge change caused solely by a filter edit is silent: BadgeDegraded() is
+    /// recomputed from scratch on the same Render() while OnStatus rebaselines on its settings
+    /// fingerprint and returns nothing. The user's own edit is not news. Same class as the
+    /// paced-badge/absolute-toast divergence already recorded in the repo.</summary>
+    [Fact]
+    public void WideningTheFilterRebaselinesInsteadOfToasting()
+    {
+        var cowork = Down(Claude, "minor", components: [new PlatformComponent("Claude Cowork", "degraded_performance")]);
+        var rules = new NotificationRules();
+        var settings = WithNotify("claude", notify: true);
+
+        rules.OnStatus([View(Claude, cowork, "Claude Code")], settings);          // baseline: not relevant
+        var outcomes = rules.OnStatus([View(Claude, cowork)], settings);          // filter widened, same payload
+
+        Assert.Null(Single(outcomes));
+        Assert.Contains(outcomes.SelectMany(o => o.Log), l => l.Contains("rebaselining"));
+    }
+
+    /// <summary>Notify off with a matching filter: the badge is the monitor's business and still
+    /// warns; only the toast is suppressed.</summary>
+    [Fact]
+    public void NotifyOff_WithAMatchingFilter_SuppressesOnlyTheToast()
+    {
+        var cowork = Down(Claude, "minor", components: [new PlatformComponent("Claude Cowork", "degraded_performance")]);
+        var rules = new NotificationRules();
+        var settings = WithNotify("claude", notify: false);
+
+        rules.OnStatus([View(Claude, Ok(Claude), "Cowork")], settings);           // baseline: healthy
+        Assert.Null(Single(rules.OnStatus([View(Claude, cowork, "Cowork")], settings)));
+
+        var monitor = new StatusMonitor([(Claude, ["Cowork"])]);
+        monitor.TakeDue(T0);
+        monitor.Accept("claude", cowork, T0);
+        Assert.True(monitor.BadgeDegraded());
+    }
 }

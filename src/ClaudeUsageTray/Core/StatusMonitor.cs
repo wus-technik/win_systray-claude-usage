@@ -78,11 +78,17 @@ public sealed class StatusMonitor
     public IReadOnlyList<SourceView> Sources()
         => _entries.Select(e => new SourceView(e.Source, e.Status, e.Filter)).ToList();
 
-    /// <summary>Whether the tray icon should carry the warning marker. Deliberately does not consult
-    /// the watch filter for any source: the Claude filter has no dialog control, and a
-    /// README-only JSON key must not be able to disarm the tray's main warning.</summary>
+    /// <summary>Whether the tray icon should carry the warning marker: a badge-raising source whose
+    /// disruption is relevant under its own watch filter. The filter reaches the badge as of
+    /// 2026-09-11 — before that it was deliberately bypassed, because the Claude filter had no dialog
+    /// control and a JSON-only key must not disarm the tray's main warning. It has one now, and a
+    /// filter the user set in the dialog that narrows the popup but not the icon is a filter that
+    /// does not work. IsRelevant is false for a healthy page, so the Degraded check is subsumed
+    /// rather than dropped, and its fail-towards-visible rules still apply: only a disruption the
+    /// page itself attributed to an excluded component can be suppressed here.</summary>
     public bool BadgeDegraded()
-        => _entries.Any(e => e.Source.RaisesBadge && e.Status is { Degraded: true });
+        => _entries.Any(e => e.Source.RaisesBadge
+                             && e.Status is { } s && StatusDetail.IsRelevant(s, e.Filter));
 
     /// <summary>Replaces the enabled set, keeping the state of sources that stay enabled — toggling
     /// one source must not blank another's banner, and with it the badge, for a poll cycle. Entries
