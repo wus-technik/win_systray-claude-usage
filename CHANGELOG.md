@@ -10,16 +10,70 @@ written for the person deciding whether to install it — not for the person who
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-09-11
+
+Everything below since 0.7.2, gathered for anyone updating from it. The four `0.7.3-beta` sections
+that follow are the same changes as they reached the beta ring.
+
 ### Added
-- **Settings → Platform status**: a proper group for both status pages. Claude now has its own
-  *Watch Claude status* checkbox and components filter, alongside OpenAI's, and each filter box lists
-  the components that page currently reports so you can see what there is to exclude.
+
+- **Usage for Claude Desktop users.** The tray reads the Claude Desktop app's own usage history when
+  Claude Code's data is missing or stale, so a machine that only uses the desktop app shows its
+  5-hour and 7-day percentages instead of a permanent `—`. The 5-hour reset is inferred from that
+  history, so pace colours, the elapsed marker and `resets in …` work there too; inferred times are
+  marked with a tilde and never raise a notification. State your weekly reset under **Settings →
+  General → Claude Desktop** (e.g. `Thu 03:00`) and the 7-day window paces against it.
+
+- **Desktop notifications.** A Windows toast when a usage limit turns red — whichever rule coloured
+  it — and one each way when a watched status page goes down or recovers, in the page's own words.
+  Exactly one toast per red period, none at launch into an already-red state, and none for a settings
+  edit. Toasts land in Action Center and follow Focus Assist; clicking one opens the popup. All of it
+  is on by default and switchable under **Settings → Status → Notifications**.
+
+- **OpenAI status as an optional second source.** For anyone running Codex next to Claude Code, the
+  popup can show status.openai.com's banner under Claude's, in the page's own words. Off by default;
+  tick **Watch OpenAI status**. An OpenAI disruption appears in the popup and the tooltip but never
+  marks the tray icon — the badge still means "Claude is degraded, which is why your numbers may
+  have stopped moving." Each page is polled on its own schedule, so one timing out cannot delay or
+  blank the other.
+
+- **Watched components**, for both pages. A comma-separated filter per source decides which of a
+  page's components you care about (OpenAI lists 25, most irrelevant to a Codex user). A disruption
+  affecting only unwatched components shows greyed and marked *outside your watched components*, and
+  no longer marks the tray icon; one the page cannot attribute to any component is always shown in
+  full. An empty filter — the Claude default — watches everything, so nothing changes unless you
+  narrow the list yourself.
+
+- **A tabbed Settings dialog.** The sections are grouped into **General**, **Appearance**, **Status**
+  and **About**, so the window is as tall as its largest group rather than the sum of all of them.
+  Nothing moved out of the dialog and nothing changed what it does.
+
+- **Clickable page lists.** Under each components filter, every name the page currently reports is a
+  link that adds itself to the box — no more retyping a component name to exclude the rest.
+
+- New settings keys: `desktopStalenessHours` (default 3, an hours-scale cutoff because the desktop
+  app records usage only while you work in it), `weeklyResetAnchor`, `usageNotifications`, and
+  `statusSources` with `enabled`, `components` and `notify` per page. File-only:
+  `desktopHistoryPathOverride`. An existing settings file keeps today's behaviour and gains the new
+  keys on its next save.
 
 ### Changed
-- A Claude disruption affecting only components you do not watch no longer marks the tray icon. It
-  still shows in the popup, greyed. A disruption the page cannot attribute to any component marks the
-  icon whatever your filter says, and an empty filter — the default — still watches everything, so
-  nothing changes unless you narrow the list yourself.
+
+- When there is no usage data at all, the popup and tooltip say what is missing — `.claude.json`
+  absent, present without a usage block, no credentials file for the live fetch, or an empty desktop
+  history — instead of always suggesting you run Claude Code.
+
+- Popup incident and component rows, the status headers and the tooltip's status suffix are built by
+  the same rules for both pages. When the tooltip runs long, the usage text is what gets shortened,
+  so the `· Claude: …` suffix that explains a warning badge always survives.
+
+- The installed size grows by about 24 MB (the Windows SDK projection that toasts need). Velopack
+  deltas mean you download it once. The supported Windows floor is now Windows 10 2004 (build 19041).
+
+### Fixed
+
+- A window with no known reset says `no reset time` on a desktop snapshot, instead of leaving a
+  silent blank where the reset would be.
 
 ## [0.7.3-beta.4] - 2026-09-10
 
@@ -209,7 +263,8 @@ First release on the beta channel, and the release that introduces it.
 [releases page](https://github.com/wus-technik/win_systray-claude-usage/releases) for what shipped in
 them.
 
-[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.3-beta.1...HEAD
+[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3
 [0.7.3-beta.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3-beta.1
 [0.7.3-beta.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3-beta.2
 [0.7.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.2
