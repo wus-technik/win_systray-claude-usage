@@ -81,14 +81,16 @@ public sealed class SettingsDialog : Form
     private readonly TextBox _openAiComponents = new() { Name = "openAiComponents", Width = 240 };
     private readonly Label _openAiComponentsCaption = new()
         { Text = "Components (comma-separated, blank = all)", AutoSize = true };
-    private readonly Label _claudeComponentsHint = new()
+    // Mouse shortcuts into the box above, not tab stops: a page list runs to a dozen names, and
+    // walking every one of them with Tab would bury the controls between them.
+    private readonly LinkLabel _claudeComponentsHint = new()
     {
         Name = "claudeComponentsHint",
         AutoSize = true,
         MaximumSize = new Size(320, 0),
         ForeColor = SystemColors.GrayText,
     };
-    private readonly Label _openAiComponentsHint = new()
+    private readonly LinkLabel _openAiComponentsHint = new()
     {
         Name = "openAiComponentsHint",
         AutoSize = true,
@@ -143,8 +145,8 @@ public sealed class SettingsDialog : Form
         _updateState = updates.InitialState;
         _latestVersion = updates.LatestVersion;
         _releaseNotes = updates.InitialReleaseNotes;
-        _claudeComponentsHint.Text = HintFor(componentNames, StatusSourceRegistry.Claude.Id);
-        _openAiComponentsHint.Text = HintFor(componentNames, StatusSourceRegistry.OpenAi.Id);
+        FillHint(_claudeComponentsHint, _claudeComponents, componentNames, StatusSourceRegistry.Claude.Id);
+        FillHint(_openAiComponentsHint, _openAiComponents, componentNames, StatusSourceRegistry.OpenAi.Id);
 
         Text = AppInfo.Window("Settings");
         Icon = AppIcon.Value;
@@ -419,12 +421,21 @@ public sealed class SettingsDialog : Form
         for (int index = 0; index < controls.Length; index++) controls[index].TabIndex = index;
     }
 
-    /// <summary>The page's own component names, as a reference caption. Never a prefill: the box
-    /// shows exactly what is stored, so "blank = all" stays literally true.</summary>
-    private static string HintFor(IReadOnlyDictionary<string, IReadOnlyList<string>> names, string sourceId)
-        => names.TryGetValue(sourceId, out var list) && list.Count > 0
-            ? "Page lists: " + string.Join(", ", list)
-            : "Page lists: not fetched yet";
+    /// <summary>The page's own component names, each one a link that adds it to the filter beside it.
+    /// Still never a prefill: the box shows exactly what is stored until the user clicks a name, so
+    /// "blank = all" stays literally true for anyone who clicks nothing.</summary>
+    private static void FillHint(LinkLabel hint, TextBox box,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> names, string sourceId)
+    {
+        var caption = ComponentHint.For(names.TryGetValue(sourceId, out var list) ? list : null);
+        hint.Text = caption.Text;
+        // Setting Text gives the label one link over the whole caption; the names replace it.
+        hint.Links.Clear();
+        foreach (var link in caption.Links) hint.Links.Add(link.Start, link.Length, link.Name);
+        // After the links, not before: adding one turns TabStop back on.
+        hint.TabStop = false;
+        hint.LinkClicked += (_, e) => box.Text = ComponentFilter.Append(box.Text, (string)e.Link!.LinkData!);
+    }
 
     /// <summary>Labelled spinners with their units trailing. Every spinner passed in one call shares
     /// a grid, so their boxes line up in a column however wide the labels are — two rows built as two
@@ -607,6 +618,7 @@ public sealed class SettingsDialog : Form
         _claudeComponents.Text = ComponentFilter.Format(
             claude?.Components ?? [.. StatusSourceRegistry.Claude.DefaultComponents]);
         _claudeComponents.Enabled = _watchClaude.Checked;
+        _claudeComponentsHint.Enabled = _watchClaude.Checked;
         _notifyClaude.Checked = claude?.Notify ?? true;
         _notifyClaude.Enabled = _watchClaude.Checked;
         var openAi = source.StatusSources.GetValueOrDefault("openai");
@@ -614,6 +626,7 @@ public sealed class SettingsDialog : Form
         _openAiComponents.Text = ComponentFilter.Format(
             openAi?.Components ?? [.. StatusSourceRegistry.OpenAi.DefaultComponents]);
         _openAiComponents.Enabled = _watchOpenAi.Checked;
+        _openAiComponentsHint.Enabled = _watchOpenAi.Checked;
         _notifyUsage.Checked = source.UsageNotifications.Enabled;
         _notifyLevel.SelectedIndex = IndexOf(source.UsageNotifications.Level);
         _notifyLevel.Enabled = _notifyUsage.Checked;
@@ -657,11 +670,13 @@ public sealed class SettingsDialog : Form
         _watchClaude.CheckedChanged += (_, _) =>
         {
             _claudeComponents.Enabled = _watchClaude.Checked;
+            _claudeComponentsHint.Enabled = _watchClaude.Checked;
             _notifyClaude.Enabled = _watchClaude.Checked;   // disabled, not unchecked: the choice survives
         };
         _watchOpenAi.CheckedChanged += (_, _) =>
         {
             _openAiComponents.Enabled = _watchOpenAi.Checked;
+            _openAiComponentsHint.Enabled = _watchOpenAi.Checked;
             _notifyOpenAi.Enabled = _watchOpenAi.Checked;   // disabled, not unchecked: the choice survives
         };
         _notifyUsage.CheckedChanged += (_, _) => _notifyLevel.Enabled = _notifyUsage.Checked;

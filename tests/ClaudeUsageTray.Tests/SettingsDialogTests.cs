@@ -545,6 +545,95 @@ public class SettingsDialogTests : IDisposable
 
     private static Label Hint(SettingsDialog d, string name) => Find<Label>(d, name)!;
 
+    /// <summary>Clicking the link that carries this component name. LinkLabel raises LinkClicked
+    /// only from a real mouse hit, so the test drives the same handler the mouse would.</summary>
+    private static void ClickLink(SettingsDialog dialog, string hintName, string component)
+    {
+        var hint = (LinkLabel)Hint(dialog, hintName);
+        var link = hint.Links.Cast<LinkLabel.Link>().Single(l => (string?)l.LinkData == component);
+        typeof(LinkLabel)
+            .GetMethod("OnLinkClicked", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .Invoke(hint, [new LinkLabelLinkClickedEventArgs(link)]);
+    }
+
+    private static readonly Dictionary<string, IReadOnlyList<string>> TwoPages = new()
+    {
+        ["claude"] = ["claude.ai", "Claude Code"],
+        ["openai"] = ["Codex", "Sora"],
+    };
+
+    [Theory]
+    [InlineData("claudeComponentsHint", "claudeComponents", "Claude Code")]
+    [InlineData("openAiComponentsHint", "openAiComponents", "Sora")]
+    public void ClickingANameInThePageListAddsItToTheFilter(string hint, string box, string component)
+    {
+        var dialog = Dialog(new Settings { StatusSources = Watching() }, componentNames: TwoPages);
+
+        ClickLink(dialog, hint, component);
+
+        Assert.Equal(component, Find<TextBox>(dialog, box)!.Text);
+    }
+
+    /// <summary>Two clicks build the comma-separated list the user would otherwise have typed, and
+    /// the draft carries it — the box is not decorative.</summary>
+    [Fact]
+    public void ClickingTwoNamesFiltersOnBoth()
+    {
+        var dialog = Dialog(new Settings { StatusSources = Watching() }, componentNames: TwoPages);
+
+        ClickLink(dialog, "claudeComponentsHint", "Claude Code");
+        ClickLink(dialog, "claudeComponentsHint", "claude.ai");
+
+        Assert.Equal("Claude Code, claude.ai", Find<TextBox>(dialog, "claudeComponents")!.Text);
+        Assert.Equal(["Claude Code", "claude.ai"], dialog.Draft().StatusSources["claude"]!.Components);
+    }
+
+    [Fact]
+    public void ClickingANameTheFilterAlreadyHasLeavesItAlone()
+    {
+        var dialog = Dialog(new Settings { StatusSources = Watching() }, componentNames: TwoPages);
+
+        ClickLink(dialog, "claudeComponentsHint", "Claude Code");
+        ClickLink(dialog, "claudeComponentsHint", "Claude Code");
+
+        Assert.Equal("Claude Code", Find<TextBox>(dialog, "claudeComponents")!.Text);
+    }
+
+    /// <summary>The links are shortcuts into the box beside them, so they are dead exactly when that
+    /// box is: an unwatched source has no filter to fill.</summary>
+    [Fact]
+    public void TheLinksAreDeadWhileTheSourceIsNotWatched()
+    {
+        var dialog = Dialog(new Settings { StatusSources = Watching(claude: false) }, componentNames: TwoPages);
+        var hint = Hint(dialog, "claudeComponentsHint");
+
+        Assert.False(hint.Enabled);
+
+        Find<CheckBox>(dialog, "watchClaude")!.Checked = true;
+        Assert.True(hint.Enabled);
+    }
+
+    /// <summary>Mouse shortcuts, not tab stops: a page list runs to a dozen names, and walking every
+    /// one of them with Tab would bury the controls between them. The box stays the keyboard path.
+    /// </summary>
+    [Fact]
+    public void TheLinksStayOutOfTheKeyboardWalk()
+    {
+        var dialog = Dialog(new Settings { StatusSources = Watching() }, componentNames: TwoPages);
+
+        Assert.False(Hint(dialog, "claudeComponentsHint").TabStop);
+        Assert.False(Hint(dialog, "openAiComponentsHint").TabStop);
+    }
+
+    private static Dictionary<string, StatusSourceSettings?> Watching(bool claude = true, bool openAi = true)
+        => new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Components explicitly empty: a null list means "registry default", and OpenAI's
+            // default filter is not empty, which would hide what a click appended.
+            ["claude"] = new StatusSourceSettings { Enabled = claude, Components = [] },
+            ["openai"] = new StatusSourceSettings { Enabled = openAi, Components = [] },
+        };
+
     [Fact]
     public void Hint_ListsTheSuppliedNames()
     {
