@@ -222,6 +222,62 @@ public class PlatformStatusApiTests
     public void MalformedBody_ReturnsNull()
         => Assert.Null(Fetch(_ => Json(HttpStatusCode.OK, "{ not json")).Status);
 
+    private const string ClaudeSixComponents = """
+        {
+          "page": { "id": "tymt9n04zgry", "name": "Claude" },
+          "status": { "indicator": "minor", "description": "Partial System Outage" },
+          "components": [
+            { "id": "1", "name": "claude.ai", "status": "operational", "group": false },
+            { "id": "2", "name": "Claude Console (platform.claude.com)", "status": "operational" },
+            { "id": "3", "name": "Claude API (api.anthropic.com)", "status": "operational" },
+            { "id": "4", "name": "Claude Code", "status": "operational" },
+            { "id": "5", "name": "Claude Cowork", "status": "degraded_performance" },
+            { "id": "6", "name": "Claude for Government", "status": "operational" },
+            { "id": "7", "name": "Products", "status": "operational", "group": true }
+          ],
+          "incidents": []
+        }
+        """;
+
+    [Fact]
+    public void ComponentNames_CarryEveryComponent_InArrayOrder()
+    {
+        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
+        Assert.Equal(
+            ["claude.ai", "Claude Console (platform.claude.com)", "Claude API (api.anthropic.com)",
+             "Claude Code", "Claude Cowork", "Claude for Government"],
+            status!.ComponentNames);
+    }
+
+    /// <summary>A group is a heading, not a component: it never appears in Components and never in an
+    /// incident's component list, so offering its name as a filter token would hand the user a token
+    /// that matches nothing.</summary>
+    [Fact]
+    public void ComponentNames_ExcludeGroups()
+    {
+        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
+        Assert.DoesNotContain("Products", status!.ComponentNames);
+    }
+
+    /// <summary>Components keeps its "no caller can render a wall of healthy components" guarantee.</summary>
+    [Fact]
+    public void Components_StillCarryOnlyTheNonOperationalEntry()
+    {
+        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
+        Assert.Equal(["Claude Cowork"], status!.Components.Select(c => c.Name));
+    }
+
+    [Fact]
+    public void PayloadWithNoComponentsKey_YieldsBothEmpty()
+    {
+        const string body = """
+            { "status": { "indicator": "none", "description": "All Systems Operational" }, "incidents": [] }
+            """;
+        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        Assert.Empty(status!.ComponentNames);
+        Assert.Empty(status.Components);
+    }
+
     [Fact]
     public void UnknownIndicator_IsDegraded()
     {
