@@ -225,10 +225,11 @@ percentages only — **never** money amounts, currency, or account-specific mode
 ## Settings
 
 **Right-click → `Settings…`** covers everything except the two path overrides: which icons to show,
-run-at-startup, the two colour thresholds, pace colouring, the two staleness cutoffs, and the
-**Watch OpenAI status** checkbox with its comma-separated component field, and a **Notifications**
-group — whether a limit turning red (or orange) raises a Windows toast, and whether a Claude or
-OpenAI status change does. Saving applies at once — the badges and the popup repaint, no restart. A
+run-at-startup, the two colour thresholds, pace colouring, the two staleness cutoffs, a
+**Platform status** group with a *Watch Claude status* and a *Watch OpenAI status* checkbox, each with
+its own comma-separated component field, and a **Notifications** group — whether a limit turning red
+(or orange) raises a Windows toast, and whether a Claude or OpenAI status change does. Saving applies
+at once — the badges and the popup repaint, no restart. A
 preview bar shows where the thresholds land before you commit them, and the two spinners constrain
 each other so `orange` can never reach `red`.
 
@@ -281,8 +282,8 @@ Which public status pages the tray watches, and which of their components matter
 }
 ```
 
-- `enabled` — poll this page. Claude is on by default, OpenAI off; the OpenAI toggle and its
-  component list are in **Settings → Watch OpenAI status**.
+- `enabled` — poll this page. Claude is on by default, OpenAI off; both toggles and both component
+  lists are in **Settings → Platform status**.
 - `components` — case-insensitive substring match against the page's component names; `"codex"`
   matches `Codex API`, `Codex Web`, and `Codex in ChatGPT Desktop`. An empty list watches every
   component.
@@ -294,10 +295,18 @@ marked `· outside your watched components`, and adds nothing to the tooltip. A 
 cannot attribute to any component is always shown in full — a filter narrows noise, it never hides
 an outage the page could not classify.
 
-**Only Claude's status can mark the tray icon.** An OpenAI outage appears in the popup and the
-tooltip and leaves the badge alone, because it says nothing about your Claude usage headroom. The
-`claude` entry accepts a `components` filter too — an advanced, JSON-only setting that narrows the
-popup rows and the tooltip but never the badge.
+**Only Claude's status can mark the tray icon**, and only for a component you watch. An OpenAI outage
+appears in the popup and the tooltip and leaves the badge alone, because it says nothing about your
+Claude usage headroom. A Claude disruption confined to components outside your `claude` filter is
+shown in the popup, greyed, and leaves the badge alone too — the badge, the popup rows, the tooltip
+and the toasts all decide relevance the same way. A disruption the page cannot attribute to any
+component still marks the icon whatever your filter says.
+
+Each components box in **Settings → Platform status** carries a greyed caption listing what that page
+currently lists, so you can see what there is to exclude. It is a reference, not a prefill: the box
+stores exactly what you type, a blank box watches everything including components added later, and
+changing the filter re-decides the badge on the spot with no refetch — silently, since your own edit
+is not news worth a toast.
 
 ### Notifications
 
@@ -312,9 +321,9 @@ job and not duplicated here. Clicking a toast opens the usage popup.
   popup already predicted. `"level": "orange"` notifies on the crossing into orange instead (once,
   even if it goes straight to red).
 - **A watched status page changes state**, both ways, naming the incident in the page's own words.
-  For OpenAI only the watched components count, so a Sora outage stays quiet while a Codex one does
-  not. A recovery toast never claims a page is healthy while it still reports a disruption you are
-  not watching.
+  Only the components you watch count, for either page, so a disruption confined to the rest of the
+  page stays quiet. A recovery toast never claims a page is healthy while it still reports a
+  disruption you are not watching.
 
 Launching into an already-red or already-degraded state raises nothing, and neither does editing
 settings — thresholds, pace colouring, staleness, the level, the watch filter — whatever it does to

@@ -8,6 +8,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 The section for the version being released is what the in-app update dialog shows, so each entry is
 written for the person deciding whether to install it — not for the person who wrote the commit.
 
+## [Unreleased]
+
+### Added
+- **Settings → Platform status**: a proper group for both status pages. Claude now has its own
+  *Watch Claude status* checkbox and components filter, alongside OpenAI's, and each filter box lists
+  the components that page currently reports so you can see what there is to exclude.
+
+### Changed
+- A Claude disruption affecting only components you do not watch no longer marks the tray icon. It
+  still shows in the popup, greyed. A disruption the page cannot attribute to any component marks the
+  icon whatever your filter says, and an empty filter — the default — still watches everything, so
+  nothing changes unless you narrow the list yourself.
+
 ## [0.7.3-beta.4] - 2026-09-10
 
 ### Added
