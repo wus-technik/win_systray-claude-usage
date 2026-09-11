@@ -196,6 +196,51 @@ public sealed class SettingsDialog : Form
         return _tabs;
     }
 
+    /// <summary>A TabControl never sizes itself to its pages, so the form would otherwise inherit the
+    /// designer default. Measured once the handle exists, because DisplayRectangle — the inset the tab
+    /// strip and borders cost — is only meaningful then.</summary>
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        FitTabsToLargestPage();
+    }
+
+    /// <summary>The app is PerMonitorV2, and WinForms rescales the fixed size it was given without
+    /// rescaling the pages' preferred sizes by exactly the same factor — font rounding and the hint
+    /// labels' fixed wrap width both drift. Deferred, so it runs after that scaling, not during it.</summary>
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        if (IsHandleCreated) BeginInvoke(FitTabsToLargestPage);
+    }
+
+    /// <summary>Fixed at the largest page, not re-measured per tab: the height then comes from the
+    /// tallest group rather than the sum of all of them, and switching tabs never resizes the window.</summary>
+    private void FitTabsToLargestPage()
+    {
+        var content = Size.Empty;
+        foreach (TabPage page in _tabs.TabPages)
+        {
+            var needed = page.Controls[0].PreferredSize;
+            content = new Size(
+                Math.Max(content.Width, needed.Width + page.Padding.Horizontal),
+                Math.Max(content.Height, needed.Height + page.Padding.Vertical));
+        }
+
+        _tabs.Size = content + (_tabs.Size - _tabs.DisplayRectangle.Size);
+
+        // Multiline is off: a control narrower than its own headers grows scroll arrows instead of
+        // wrapping. The pages are the wider of the two today, but only measuring keeps that true.
+        // GetTabRect needs the strip to exist, which it does not yet when the form's handle is being
+        // created — realize it here rather than leaving the check to a hook that may never run.
+        _tabs.CreateControl();
+        if (!_tabs.IsHandleCreated) return;
+
+        int headers = 0;
+        for (int index = 0; index < _tabs.TabPages.Count; index++) headers += _tabs.GetTabRect(index).Width;
+        if (headers > _tabs.Width) _tabs.Width = headers;
+    }
+
     private static TabPage Page(string name, string text, Control content)
     {
         content.Dock = DockStyle.Fill;

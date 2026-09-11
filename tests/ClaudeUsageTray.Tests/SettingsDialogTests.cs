@@ -644,4 +644,58 @@ public class SettingsDialogTests : IDisposable
         Assert.Empty(Dialog(new Settings()).Controls.Find("weeklyAnchor", searchAllChildren: true));
         Assert.Equal("general", PageOf(Dialog(new Settings(), desktopSource: true), "weeklyAnchor"));
     }
+
+    [Fact]
+    public void EveryPageFitsWithoutScrolling()
+    {
+        var dialog = Dialog(new Settings());
+        var tabs = Tabs(dialog);
+
+        foreach (TabPage page in tabs.TabPages)
+        {
+            var needed = page.Controls[0].PreferredSize;
+            Assert.True(needed.Height + page.Padding.Vertical <= tabs.DisplayRectangle.Height,
+                $"{page.Name} needs {needed.Height} px, has {tabs.DisplayRectangle.Height}");
+            Assert.True(needed.Width + page.Padding.Horizontal <= tabs.DisplayRectangle.Width,
+                $"{page.Name} needs {needed.Width} px, has {tabs.DisplayRectangle.Width}");
+        }
+    }
+
+    [Fact]
+    public void TheTabStripFitsWithoutScrollArrows()
+    {
+        // Multiline is off, so a TabControl narrower than its own headers grows scroll arrows rather
+        // than wrapping. The pages happen to be wider today; nothing but this holds that true.
+        var tabs = Tabs(Dialog(new Settings()));
+        var headers = Enumerable.Range(0, tabs.TabPages.Count).Sum(index => tabs.GetTabRect(index).Width);
+
+        Assert.True(headers <= tabs.Width, $"headers {headers} px, control {tabs.Width} px");
+    }
+
+    [Fact]
+    public void TheTabsAreShorterThanTheSectionsStacked()
+    {
+        // The whole point of the tabs: the height comes from the tallest page, not from the sum.
+        // Measured on the tab control, not the form — the form's chrome, padding and button row are
+        // constant overhead that has nothing to do with the stacking.
+        var tabs = Tabs(Dialog(new Settings()));
+        var stacked = tabs.TabPages.Cast<TabPage>().Sum(page => page.Controls[0].PreferredSize.Height);
+
+        Assert.True(tabs.Height < stacked, $"tabs {tabs.Height} px, sections stacked {stacked} px");
+    }
+
+    [Fact]
+    public void SwitchingTabsDoesNotResizeTheWindow()
+    {
+        // A dialog that jumps under the pointer is worse than a page with slack at the bottom.
+        var dialog = Dialog(new Settings());
+        var tabs = Tabs(dialog);
+        var size = dialog.Size;
+
+        foreach (TabPage page in tabs.TabPages)
+        {
+            tabs.SelectedTab = page;
+            Assert.Equal(size, dialog.Size);
+        }
+    }
 }
