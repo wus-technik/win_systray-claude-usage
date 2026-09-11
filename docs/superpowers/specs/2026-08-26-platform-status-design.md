@@ -69,11 +69,15 @@ per-component judgement calls. Consequences:
 
 - An unknown/changed indicator value (StatusPage adding a new one) is treated as degraded: fail
   towards visible, not invisible.
-- A `"minor"` incident on any component on the page (including one this user may not use, e.g.
-  "Claude for Government") shows the badge. Rejected alternative: per-component filtering — it
-  would require deciding which of the six components matter to which user, encoding that in
-  settings, and re-evaluating on every component rename. The banner is coarser but unambiguous,
-  and the dialog names the affected components anyway.
+- A `"minor"` incident on any component on the page shows the badge. Rejected alternative at the
+  time: per-component filtering — it would require deciding which of the six components matter to
+  which user, encoding that in settings, and re-evaluating on every component rename.
+  **Superseded on 2026-09-11** by
+  [2026-09-11-claude-component-watch-design.md](2026-09-11-claude-component-watch-design.md): the six
+  components stopped describing one product (Cowork, Government), the names now come from the payload
+  rather than being encoded anywhere, and the badge routes through the same `StatusDetail.IsRelevant`
+  the popup and toasts use. The banner still decides how loud a disruption is; the filter decides
+  only which disruptions count.
 - **Recovery** is a successful fetch with `indicator: "none"`; that is what clears the badge.
 - **Staleness** reuses `settings.StalenessMinutes`. When the last successful status fetch is older
   than that, the state is still *displayed* (a real outage must not vanish because *our* network

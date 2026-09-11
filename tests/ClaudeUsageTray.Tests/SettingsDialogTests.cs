@@ -17,10 +17,12 @@ public class SettingsDialogTests : IDisposable
     /// <summary>Shown offscreen: Button.PerformClick() is a no-op while a form has never been shown,
     /// because an unrealized control cannot take focus.</summary>
     private SettingsDialog Dialog(Settings settings, Func<Settings, bool>? save = null,
-        bool runAtStartup = true, bool desktopSource = false)
+        bool runAtStartup = true, bool desktopSource = false,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? componentNames = null)
     {
         var dialog = new SettingsDialog(settings, canRunAtStartup: true, runAtStartup,
-            save ?? (_ => true), TestUpdateOptions.Inert(), desktopSource);
+            save ?? (_ => true), TestUpdateOptions.Inert(), desktopSource,
+            componentNames ?? new Dictionary<string, IReadOnlyList<string>>());
         _open.Add(dialog);
         dialog.StartPosition = FormStartPosition.Manual;
         dialog.Location = new System.Drawing.Point(-4000, -4000);
@@ -295,15 +297,97 @@ public class SettingsDialogTests : IDisposable
         Assert.Equal(["codex"], draft.StatusSources["openai"]!.Components);
     }
 
-    /// <summary>The Claude filter is an advanced JSON-only key with no control here; the dialog must
-    /// carry it through a save instead of resetting it to the default.</summary>
+    private static CheckBox WatchClaude(SettingsDialog d) => Find<CheckBox>(d, "watchClaude")!;
+    private static TextBox ClaudeComponents(SettingsDialog d) => Find<TextBox>(d, "claudeComponents")!;
+
+    /// <summary>Claude is on by default and watches everything: blank = all, literally — the box
+    /// shows exactly what is stored, and DefaultComponents is empty.</summary>
     [Fact]
-    public void ClaudeFilter_SurvivesTheRoundTrip()
+    public void ClaudeWatch_DefaultsToOnAndBlank()
+    {
+        var dialog = Dialog(new Settings());
+        Assert.True(WatchClaude(dialog).Checked);
+        Assert.Equal("", ClaudeComponents(dialog).Text);
+        Assert.True(ClaudeComponents(dialog).Enabled);
+    }
+
+    [Fact]
+    public void ClaudeCheckbox_ReflectsSettings_AndDrivesTheDraft()
     {
         var settings = new Settings();
-        settings.StatusSources["claude"] = new StatusSourceSettings { Enabled = true, Components = ["api"] };
+        settings.StatusSources["claude"] = new StatusSourceSettings { Enabled = true, Components = ["Claude Code"] };
+        var dialog = Dialog(settings);
+
+        Assert.True(WatchClaude(dialog).Checked);
+        Assert.Equal("Claude Code", ClaudeComponents(dialog).Text);
+
+        ClaudeComponents(dialog).Text = "Claude Code, api.anthropic.com";
+        var draft = dialog.Draft();
+        Assert.True(draft.StatusSources["claude"]!.Enabled);
+        Assert.Equal(["Claude Code", "api.anthropic.com"], draft.StatusSources["claude"]!.Components);
+    }
+
+    /// <summary>Unchecking disables rather than clears, so turning the page off and on again keeps
+    /// both the typed filter and the notify choice.</summary>
+    [Fact]
+    public void UncheckedClaude_DisablesItsFieldsWithoutClearingThem()
+    {
+        var dialog = Dialog(new Settings());
+        ClaudeComponents(dialog).Text = "Claude Code";
+        Check(dialog, "notifyClaude").Checked = true;
+
+        WatchClaude(dialog).Checked = false;
+        Assert.False(ClaudeComponents(dialog).Enabled);
+        Assert.False(Check(dialog, "notifyClaude").Enabled);
+        Assert.Equal("Claude Code", ClaudeComponents(dialog).Text);
+        Assert.True(Check(dialog, "notifyClaude").Checked);
+
+        var draft = dialog.Draft();
+        Assert.False(draft.StatusSources["claude"]!.Enabled);
+        Assert.Equal(["Claude Code"], draft.StatusSources["claude"]!.Components);
+        Assert.True(draft.StatusSources["claude"]!.Notify);
+    }
+
+    [Fact]
+    public void ClaudeComponents_SaveExactlyTheTypedTokens()
+    {
+        var dialog = Dialog(new Settings());
+        ClaudeComponents(dialog).Text = " Claude Code ,, Cowork ";
+        Assert.Equal(["Claude Code", "Cowork"], dialog.Draft().StatusSources["claude"]!.Components);
+    }
+
+    /// <summary>A hand-written six-name filter must survive an untouched open/save round trip: the
+    /// dialog is now the owner of all three fields, so a bug here silently rewrites settings.json.</summary>
+    [Fact]
+    public void HandWrittenClaudeFilter_SurvivesAnUntouchedRoundTrip()
+    {
+        string[] six =
+        [
+            "claude.ai", "Claude Console (platform.claude.com)", "Claude API (api.anthropic.com)",
+            "Claude Code", "Claude Cowork", "Claude for Government",
+        ];
+        var settings = new Settings();
+        settings.StatusSources["claude"] = new StatusSourceSettings
+            { Enabled = true, Notify = false, Components = [.. six] };
+
         var draft = Dialog(settings).Draft();
-        Assert.Equal(["api"], draft.StatusSources["claude"]!.Components);
+        Assert.Equal(six, draft.StatusSources["claude"]!.Components);
+        Assert.True(draft.StatusSources["claude"]!.Enabled);
+        Assert.False(draft.StatusSources["claude"]!.Notify);
+    }
+
+    /// <summary>"Reset to defaults" is scoped to the colour thresholds and staleness. Which status
+    /// pages are watched is a preference of the same kind as the display mode, not a colour.</summary>
+    [Fact]
+    public void ResetLeavesTheClaudeSourceAlone()
+    {
+        var settings = new Settings();
+        settings.StatusSources["claude"] = new StatusSourceSettings { Enabled = false, Components = ["Claude Code"] };
+        var dialog = Dialog(settings);
+        Button(dialog, "reset").PerformClick();
+
+        Assert.False(WatchClaude(dialog).Checked);
+        Assert.Equal("Claude Code", ClaudeComponents(dialog).Text);
     }
 
     /// <summary>"Reset to defaults" is scoped to the colour thresholds and staleness (see
@@ -443,5 +527,46 @@ public class SettingsDialogTests : IDisposable
         // A CLI-source dialog must not wipe an anchor the user set while on desktop data.
         var dialog = Dialog(new Settings { WeeklyResetAnchor = "Thu 03:00" });
         Assert.Equal("Thu 03:00", dialog.Draft().WeeklyResetAnchor);
+    }
+
+    private static Label Hint(SettingsDialog d, string name) => Find<Label>(d, name)!;
+
+    [Fact]
+    public void Hint_ListsTheSuppliedNames()
+    {
+        var dialog = Dialog(new Settings(), componentNames: new Dictionary<string, IReadOnlyList<string>>
+        {
+            ["claude"] = ["claude.ai", "Claude Code", "Claude Cowork"],
+        });
+        Assert.Equal("Page lists: claude.ai, Claude Code, Claude Cowork",
+            Hint(dialog, "claudeComponentsHint").Text);
+    }
+
+    /// <summary>Nothing fetched yet — including the case the cache exists for: the user opened the
+    /// dialog to re-enable a source the monitor holds no entry for. Both branches of HintFor: a
+    /// missing key (openai) and a present-but-empty list (claude, as a "components": [] payload
+    /// would produce).</summary>
+    [Fact]
+    public void Hint_FallsBackWhenNoNamesAreKnown()
+    {
+        var dialog = Dialog(new Settings(), componentNames: new Dictionary<string, IReadOnlyList<string>>
+        {
+            ["claude"] = [],
+        });
+        Assert.Equal("Page lists: not fetched yet", Hint(dialog, "claudeComponentsHint").Text);
+        Assert.Equal("Page lists: not fetched yet", Hint(dialog, "openAiComponentsHint").Text);
+    }
+
+    /// <summary>The caption is a reference, not a prefill: it never reaches the box or the draft.
+    /// Blank = all stays literally true.</summary>
+    [Fact]
+    public void Hint_NeverPrefillsTheBox()
+    {
+        var dialog = Dialog(new Settings(), componentNames: new Dictionary<string, IReadOnlyList<string>>
+        {
+            ["claude"] = ["claude.ai", "Claude Code"],
+        });
+        Assert.Equal("", ClaudeComponents(dialog).Text);
+        Assert.Empty(dialog.Draft().StatusSources["claude"]!.Components!);
     }
 }

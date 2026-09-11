@@ -21,4 +21,10 @@ public sealed record PlatformStatus(
     IReadOnlyList<PlatformIncident> Incidents, IReadOnlyList<PlatformComponent> Components)
 {
     public bool Degraded => Indicator != "none";
+
+    /// <summary>Every component the page lists, healthy ones included, in the array's own order.
+    /// Only the settings dialog reads this, as the reference caption under the watch-filter box —
+    /// which is why order is the payload's rather than the page's visual grouping, and why groups
+    /// are excluded: a group name is a heading no filter token could ever match.</summary>
+    public IReadOnlyList<string> ComponentNames { get; init; } = [];
 }

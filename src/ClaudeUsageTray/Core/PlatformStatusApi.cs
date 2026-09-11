@@ -60,7 +60,10 @@ public static class PlatformStatusApi
             }
 
             return new PlatformStatus(source.Id, now, indicator.GetString()!.Trim(), description,
-                incidents, ReadComponents(doc.RootElement));
+                incidents, ReadComponents(doc.RootElement))
+            {
+                ComponentNames = ReadComponentNames(doc.RootElement),
+            };
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException
             or OperationCanceledException or IOException or JsonException)
@@ -117,5 +120,22 @@ public static class PlatformStatusApi
             result.Add(new PlatformComponent(name, status));
         }
         return result;
+    }
+
+    /// <summary>Every component's name, healthy ones included — the dialog's reference caption.
+    /// Entries with "group": true are headings rather than components and are dropped; an entry
+    /// without a name has nothing to offer and is skipped, as in ReadComponents.</summary>
+    private static IReadOnlyList<string> ReadComponentNames(JsonElement root)
+    {
+        if (!root.TryGetProperty("components", out var list) || list.ValueKind != JsonValueKind.Array)
+            return [];
+        var names = new List<string>();
+        foreach (var entry in list.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object) continue;
+            if (entry.TryGetProperty("group", out var group) && group.ValueKind == JsonValueKind.True) continue;
+            if (NonEmptyString(entry, "name") is { } name) names.Add(name);
+        }
+        return names;
     }
 }

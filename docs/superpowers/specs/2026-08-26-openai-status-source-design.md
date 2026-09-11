@@ -219,6 +219,19 @@ tooltip is a preference; an unmarked icon during a Claude outage is a defect. Th
 filtered Claude source can show a warning badge whose tooltip says nothing about status — acceptable,
 and it only occurs for a user who hand-edited JSON to ask for exactly that.
 
+**Superseded on 2026-09-11** by
+[2026-09-11-claude-component-watch-design.md](2026-09-11-claude-component-watch-design.md):
+`BadgeDegraded()` now routes through `StatusDetail.IsRelevant`, the same function the popup rows,
+tooltip and toasts already used — `IsRelevant` returns false for a healthy page, so the old
+`Degraded` check is subsumed rather than dropped. The rationale above is what made this unsafe before
+that date: the Claude filter genuinely had no dialog control. It has one now — a *Watch Claude
+status* checkbox and a components box in **Settings → Platform status** — so a JSON-only key can no
+longer silently disarm the badge, and a filter the user set in the dialog that narrowed the popup but
+not the icon would itself be a defect. The fail-towards-visible rules that bounded the filter's reach
+are unchanged: an empty filter watches everything, an incident naming no components counts as
+watched, and a degraded page whose payload identifies nothing counts as watched — only a disruption
+the page itself attributed to an excluded component can be suppressed.
+
 ### Display — `Core/StatusDetail.cs`
 
 A new pure module, so the WinForms class stops deciding anything:
@@ -303,6 +316,14 @@ The Claude entry has **no** dialog control. Its filter is an advanced, README-do
 that narrows popup rows and the tooltip and never the badge; the dialog round-trip must preserve it
 untouched rather than resetting it to the default on save.
 
+**Superseded on 2026-09-11** by
+[2026-09-11-claude-component-watch-design.md](2026-09-11-claude-component-watch-design.md): the
+Claude entry now has dialog controls of its own — a *Watch Claude status* checkbox and a components
+box in the new **Settings → Platform status** group — and `SettingsDialog.Draft()` writes all three
+fields of `StatusSources["claude"]` instead of preserving the filter untouched. The filter also
+reaches the badge now (see the superseded note above), so "and never the badge" no longer holds
+either.
+
 ## Error handling
 
 Unchanged invariants, now per source:
@@ -324,6 +345,12 @@ Pure Core, so all of it is unit-testable:
   immediately due; single-flight per source; a result with a mismatched `SourceId` is dropped; a
   completion for a source disabled while in flight is discarded and does not recreate its entry;
   `BadgeDegraded` ignores the filter and ignores non-`RaisesBadge` sources.
+  **Superseded on 2026-09-11** by
+  [2026-09-11-claude-component-watch-design.md](2026-09-11-claude-component-watch-design.md): this
+  test was deleted — `BadgeDegraded` now consults the filter via `IsRelevant`, so ignoring it is no
+  longer the behaviour. `StatusMonitorTests.cs` covers the replacement (e.g.
+  `CoworkDegraded_DoesNotBadgeAClaudeCodeWatcher` and its siblings); `BadgeDegraded` still ignores
+  non-`RaisesBadge` sources, which is unchanged.
 - `StatusDetailTests` — row precedence applied after filtering (incidents all filtered out but a
   watched component non-operational still yields rows), substring matching incl. the three `codex`
   components, token normalization (whitespace-only tokens, duplicates, a list that normalizes to

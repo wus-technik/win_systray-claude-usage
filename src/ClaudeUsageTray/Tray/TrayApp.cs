@@ -34,6 +34,12 @@ public sealed class TrayApp : ApplicationContext
     private readonly System.Windows.Forms.Timer _statusPoll = new() { Interval = 60_000 };
     private readonly StatusMonitor _statusMonitor;
 
+    // Last component names seen per source, for the settings dialog's reference caption. Kept here
+    // rather than read from StatusMonitor because the monitor drops the entry for a disabled source,
+    // and a user opening the dialog to re-enable one is precisely who needs the names.
+    private readonly Dictionary<string, IReadOnlyList<string>> _componentNames =
+        new(StringComparer.OrdinalIgnoreCase);
+
     // Desktop notifications. Every decision — baseline, arming, hysteresis, fingerprint, per-source
     // status state — lives in the clock-free NotificationRules; the presenter only shows what it is
     // handed. One call site, in Render(): every path that changes data ends there, and the rules
@@ -282,6 +288,14 @@ public sealed class TrayApp : ApplicationContext
     private void OnStatusFetchCompleted(string sourceId, PlatformStatus? result)
     {
         var now = DateTimeOffset.UtcNow;
+        // For the settings dialog's reference caption, and ahead of Accept so a source disabled
+        // mid-flight still leaves its names behind. A failed fetch keeps the previous names, the way
+        // Accept keeps the previous status; a payload under the wrong id is refused here too.
+        if (result is not null
+            && string.Equals(result.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            _componentNames[sourceId] = result.ComponentNames;
+        }
         if (!_statusMonitor.Accept(sourceId, result, now))
         {
             _log.Write(now, $"status[{sourceId}]: discarded: source disabled or id mismatch");
@@ -503,7 +517,8 @@ public sealed class TrayApp : ApplicationContext
         _settingsDialog = new SettingsDialog(_settings, _isVelopackInstalled, TryIsStartupEnabled(),
             ApplySettings, BuildUpdateOptions(),
             SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, DateTimeOffset.UtcNow, _settings)
-                .Snapshot?.Source == UsageSource.DesktopHistory);
+                .Snapshot?.Source == UsageSource.DesktopHistory,
+            _componentNames);
         _settingsDialog.FormClosed += (_, _) => _settingsDialog = null;
         _settingsDialog.Show();
         _settingsDialog.Activate();
