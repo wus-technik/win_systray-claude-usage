@@ -302,6 +302,7 @@ public sealed class SettingsDialog : Form
             page.Controls.Add(Indent(_weeklyAnchorError));
         }
 
+        SetOrder(_modeFive, _modeSeven, _modeBoth, _startup, _staleness, _desktopStaleness, _weeklyAnchor);
         return page;
     }
 
@@ -324,6 +325,7 @@ public sealed class SettingsDialog : Form
         page.Controls.Add(Indent(_preview));
         page.Controls.Add(Indent(_previewCaption));
 
+        SetOrder(_orange, _red, _paceColors);
         return page;
     }
 
@@ -350,10 +352,14 @@ public sealed class SettingsDialog : Form
         _notifyLevel.Margin = new Padding(0);
         usageRow.Controls.Add(_notifyUsage);
         usageRow.Controls.Add(_notifyLevel);
+        SetOrder(_notifyUsage, _notifyLevel);
         page.Controls.Add(usageRow);
         page.Controls.Add(Indent(_notifyClaude));
         page.Controls.Add(Indent(_notifyOpenAi));
 
+        // usageRow, not the two controls inside it: they sit one level down and get their own run above.
+        SetOrder(_watchClaude, _claudeComponents, _watchOpenAi, _openAiComponents,
+            usageRow, _notifyClaude, _notifyOpenAi);
         return page;
     }
 
@@ -369,6 +375,7 @@ public sealed class SettingsDialog : Form
         _betaReleases.Enabled = _updates.IsInstalled;
         page.Controls.Add(Indent(_betaReleases));
 
+        SetOrder(_creator, _checkUpdates, _updateNow, _betaReleases);
         return page;
     }
 
@@ -384,6 +391,14 @@ public sealed class SettingsDialog : Form
     {
         inner.Margin = new Padding(16, inner.Margin.Top, 0, inner.Margin.Bottom);
         return inner;
+    }
+
+    /// <summary>An ascending run in reading order, over the children of **one** container. TabIndex
+    /// is only ever compared among siblings, so a nested row gets its own run rather than continuing
+    /// its parent's — a single run spanning both would reach the nested row last.</summary>
+    private static void SetOrder(params Control[] controls)
+    {
+        for (int index = 0; index < controls.Length; index++) controls[index].TabIndex = index;
     }
 
     /// <summary>The page's own component names, as a reference caption. Never a prefill: the box
@@ -548,14 +563,7 @@ public sealed class SettingsDialog : Form
         row.Controls.Add(cancel, 1, 0);
         row.Controls.Add(save, 2, 0);
 
-        // Tab reaches the controls in reading order, then the buttons.
-        int order = 0;
-        foreach (var control in new Control[]
-                 { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   _desktopStaleness, _weeklyAnchor, _betaReleases, _watchClaude, _claudeComponents,
-                   _watchOpenAi, _openAiComponents, _notifyUsage, _notifyLevel, _notifyClaude,
-                   _notifyOpenAi, reset, cancel, save })
-            control.TabIndex = order++;
+        SetOrder(reset, cancel, save);
         return row;
     }
 

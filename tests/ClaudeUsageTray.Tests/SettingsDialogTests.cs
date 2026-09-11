@@ -18,10 +18,11 @@ public class SettingsDialogTests : IDisposable
     /// because an unrealized control cannot take focus.</summary>
     private SettingsDialog Dialog(Settings settings, Func<Settings, bool>? save = null,
         bool runAtStartup = true, bool desktopSource = false,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? componentNames = null)
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? componentNames = null,
+        UpdateOptions? updateOptions = null)
     {
         var dialog = new SettingsDialog(settings, canRunAtStartup: true, runAtStartup,
-            save ?? (_ => true), TestUpdateOptions.Inert(), desktopSource,
+            save ?? (_ => true), updateOptions ?? TestUpdateOptions.Inert(), desktopSource,
             componentNames ?? new Dictionary<string, IReadOnlyList<string>>());
         _open.Add(dialog);
         dialog.StartPosition = FormStartPosition.Manual;
@@ -697,5 +698,53 @@ public class SettingsDialogTests : IDisposable
             tabs.SelectedTab = page;
             Assert.Equal(size, dialog.Size);
         }
+    }
+
+    /// <summary>Tab has to walk each page in reading order, so the dialog never needs the mouse.
+    /// Asserted by walking the real traversal, not by comparing TabIndex values: indices are only
+    /// ever compared among siblings, so two controls in different containers can have a sane-looking
+    /// pair of numbers and still be reached in the wrong order.</summary>
+    [Theory]
+    [InlineData((object)new[] { "modeFive", "modeSeven", "modeBoth", "startup", "staleness", "desktopStaleness" })]
+    [InlineData((object)new[] { "orange", "red", "paceColors" })]
+    [InlineData((object)new[] { "watchClaude", "claudeComponents", "watchOpenAi", "openAiComponents",
+        "notifyUsage", "notifyLevel", "notifyClaude", "notifyOpenAi" })]
+    [InlineData((object)new[] { "creator", "checkUpdates", "updateNow", "betaReleases" })]
+    public void FocusRunsInReadingOrderOnEachPage(string[] expected)
+    {
+        // Installed, with a staged update: only then are checkUpdates, updateNow and betaReleases
+        // (About page) enabled at once, so the walk can reach all of them. OpenAi watched: otherwise
+        // openAiComponents and notifyOpenAi stay disabled (unchecked is the default) and drop out of
+        // the walk entirely. Neither setting affects the other two pages' controls.
+        var settings = new Settings();
+        settings.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Components = ["codex"] };
+        var dialog = Dialog(settings,
+            updateOptions: TestUpdateOptions.Inert() with { IsInstalled = true, InitialState = UpdateAvailability.UpdateReady });
+        var page = (TabPage)dialog.Controls.Find(PageOf(dialog, expected[0])!, searchAllChildren: true).Single();
+        Tabs(dialog).SelectedTab = page; // a non-selected TabPage is Visible=false, so its children's
+                                          // CanSelect is false and the walk below would see none of them.
+
+        var walked = new List<string>();
+        for (var control = page.GetNextControl(page, forward: true);
+             control is not null;
+             control = page.GetNextControl(control, forward: true))
+            if (control.CanSelect && expected.Contains(control.Name)) walked.Add(control.Name);
+
+        Assert.Equal(expected, walked);
+    }
+
+    [Fact]
+    public void TheButtonsAreReachedInOrder()
+    {
+        var dialog = Dialog(new Settings());
+        var row = dialog.Controls.Find("save", searchAllChildren: true).Single().Parent!;
+
+        var walked = new List<string>();
+        for (var control = row.GetNextControl(row, forward: true);
+             control is not null;
+             control = row.GetNextControl(control, forward: true))
+            if (control.CanSelect) walked.Add(control.Name);
+
+        Assert.Equal(new[] { "reset", "cancel", "save" }, walked);
     }
 }
