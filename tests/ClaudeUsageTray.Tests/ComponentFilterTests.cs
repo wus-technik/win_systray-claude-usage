@@ -47,4 +47,33 @@ public class ComponentFilterTests
         Assert.Equal("codex, responses", ComponentFilter.Format(filter));
         Assert.Equal(filter, ComponentFilter.Parse(ComponentFilter.Format(filter)));
     }
+
+    [Fact]
+    public void Append_AddsTheNameToAnEmptyFilter()
+    {
+        Assert.Equal("Claude Code", ComponentFilter.Append("", "Claude Code"));
+        Assert.Equal("Claude Code", ComponentFilter.Append(null, "Claude Code"));
+    }
+
+    [Fact]
+    public void Append_PutsTheNameAfterWhatIsAlreadyThere()
+    {
+        Assert.Equal("claude.ai, Claude Code", ComponentFilter.Append("claude.ai", "Claude Code"));
+    }
+
+    /// <summary>Clicking a name that is already listed is a no-op rather than a second entry — the
+    /// user cannot tell a duplicate from a typo once the box is long.</summary>
+    [Fact]
+    public void Append_IgnoresANameTheFilterAlreadyHas()
+    {
+        Assert.Equal("Claude Code", ComponentFilter.Append("Claude Code", "claude code"));
+    }
+
+    /// <summary>Appending normalizes what the user typed, the way Parse/Format already do — a stray
+    /// comma is not worth preserving.</summary>
+    [Fact]
+    public void Append_TidiesTheExistingText()
+    {
+        Assert.Equal("codex, login, Sora", ComponentFilter.Append(" codex , ,login ", "Sora"));
+    }
 }

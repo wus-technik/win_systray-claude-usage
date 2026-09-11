@@ -27,6 +27,10 @@ public static class ComponentFilter
     /// <summary>The filter as dialog text.</summary>
     public static string Format(IReadOnlyList<string> filter) => string.Join(", ", filter);
 
+    /// <summary>The dialog text with one more name in it — what clicking a name in the hint caption
+    /// does. A name the filter already carries is dropped by Normalize rather than repeated.</summary>
+    public static string Append(string? text, string name) => Format(Normalize([.. Parse(text), name]));
+
     /// <summary>Whether this component name is watched. An empty filter watches everything.</summary>
     public static bool Matches(string name, IReadOnlyList<string> filter)
     {

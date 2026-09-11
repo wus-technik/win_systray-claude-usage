@@ -81,14 +81,16 @@ public sealed class SettingsDialog : Form
     private readonly TextBox _openAiComponents = new() { Name = "openAiComponents", Width = 240 };
     private readonly Label _openAiComponentsCaption = new()
         { Text = "Components (comma-separated, blank = all)", AutoSize = true };
-    private readonly Label _claudeComponentsHint = new()
+    // Mouse shortcuts into the box above, not tab stops: a page list runs to a dozen names, and
+    // walking every one of them with Tab would bury the controls between them.
+    private readonly LinkLabel _claudeComponentsHint = new()
     {
         Name = "claudeComponentsHint",
         AutoSize = true,
         MaximumSize = new Size(320, 0),
         ForeColor = SystemColors.GrayText,
     };
-    private readonly Label _openAiComponentsHint = new()
+    private readonly LinkLabel _openAiComponentsHint = new()
     {
         Name = "openAiComponentsHint",
         AutoSize = true,
@@ -103,6 +105,7 @@ public sealed class SettingsDialog : Form
         { Name = "notifyClaude", Text = "Notify when Claude platform status changes", AutoSize = true };
     private readonly CheckBox _notifyOpenAi = new()
         { Name = "notifyOpenAi", Text = "Notify when OpenAI platform status changes", AutoSize = true };
+    private readonly TabControl _tabs = new() { Name = "tabs", Margin = new Padding(0, 0, 0, 4) };
 
     /// <summary>Combo rows in NotifyLevel order, so SelectedIndex casts straight to the enum.</summary>
     private static readonly string[] LevelLabels = ["Red only", "Orange and red"];
@@ -142,8 +145,8 @@ public sealed class SettingsDialog : Form
         _updateState = updates.InitialState;
         _latestVersion = updates.LatestVersion;
         _releaseNotes = updates.InitialReleaseNotes;
-        _claudeComponentsHint.Text = HintFor(componentNames, StatusSourceRegistry.Claude.Id);
-        _openAiComponentsHint.Text = HintFor(componentNames, StatusSourceRegistry.OpenAi.Id);
+        FillHint(_claudeComponentsHint, _claudeComponents, componentNames, StatusSourceRegistry.Claude.Id);
+        FillHint(_openAiComponentsHint, _openAiComponents, componentNames, StatusSourceRegistry.OpenAi.Id);
 
         Text = AppInfo.Window("Settings");
         Icon = AppIcon.Value;
@@ -174,16 +177,120 @@ public sealed class SettingsDialog : Form
             Dock = DockStyle.Fill,
         };
 
-        layout.Controls.Add(Heading("Tray icons"));
-        layout.Controls.Add(Indent(_modeFive));
-        layout.Controls.Add(Indent(_modeSeven));
-        layout.Controls.Add(Indent(_modeBoth));
+        // The error label and the buttons stay outside the tabs: Save has to be reachable from every
+        // page, and a failed save has to be readable from whichever page the user was on.
+        layout.Controls.Add(BuildTabs());
+        layout.Controls.Add(_error);
+        layout.Controls.Add(BuildButtons());
+        return layout;
+    }
+
+    /// <summary>Four pages grouped by what a user changes together, not by the order the sections
+    /// were written in. Notifications sits with Platform status because two of its three controls are
+    /// per-source status toggles; the beta ring sits with About because it steers the updater
+    /// directly above it.</summary>
+    private Control BuildTabs()
+    {
+        _tabs.TabPages.Add(Page("general", "General", BuildGeneralPage()));
+        _tabs.TabPages.Add(Page("appearance", "Appearance", BuildAppearancePage()));
+        _tabs.TabPages.Add(Page("status", "Status", BuildStatusPage()));
+        _tabs.TabPages.Add(Page("about", "About", BuildAboutPage()));
+        return _tabs;
+    }
+
+    /// <summary>A TabControl never sizes itself to its pages, so the form would otherwise inherit the
+    /// designer default. Measured once the handle exists, because DisplayRectangle — the inset the tab
+    /// strip and borders cost — is only meaningful then.</summary>
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        FitTabsToLargestPage();
+    }
+
+    /// <summary>The app is PerMonitorV2, and WinForms rescales the fixed size it was given without
+    /// rescaling the pages' preferred sizes by exactly the same factor — font rounding and the hint
+    /// labels' fixed wrap width both drift. Deferred, so it runs after that scaling, not during it.
+    /// This is the top-level form's hook: Windows sends WM_DPICHANGED here. DpiChangedAfterParent is
+    /// the *child* control's hook and never reaches an ownerless form, so hanging the re-measure off
+    /// it would silently never run.</summary>
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
+    {
+        base.OnDpiChanged(e);
+        if (IsHandleCreated) BeginInvoke(() => FitTabsToLargestPage());
+    }
+
+    /// <summary>Fixed at the largest page, not re-measured per tab: the height then comes from the
+    /// tallest group rather than the sum of all of them, and switching tabs never resizes the window.
+    ///
+    /// <paramref name="growOnly"/> for the re-fits that follow content appearing after the window is
+    /// already on screen (a found update, the anchor error): the page must not clip, but a dialog
+    /// that shrinks back under the pointer mid-session is worse than one a few pixels too wide. Only
+    /// the handle-creation and DPI fits size absolutely.</summary>
+    private void FitTabsToLargestPage(bool growOnly = false)
+    {
+        var content = Size.Empty;
+        foreach (TabPage page in _tabs.TabPages)
+        {
+            var needed = page.Controls[0].PreferredSize;
+            content = new Size(
+                Math.Max(content.Width, needed.Width + page.Padding.Horizontal),
+                Math.Max(content.Height, needed.Height + page.Padding.Vertical));
+        }
+
+        var wanted = content + (_tabs.Size - _tabs.DisplayRectangle.Size);
+        _tabs.Size = growOnly
+            ? new Size(Math.Max(wanted.Width, _tabs.Width), Math.Max(wanted.Height, _tabs.Height))
+            : wanted;
+
+        // Multiline is off: a control narrower than its own headers grows scroll arrows instead of
+        // wrapping. The pages are the wider of the two today, but only measuring keeps that true.
+        // GetTabRect needs the strip to exist, which it does not yet when the form's handle is being
+        // created — realize it here rather than leaving the check to a hook that may never run.
+        // If it still has no handle the guard is skipped rather than guessed at: the width then stands
+        // as measured, and a control narrower than its headers would show scroll arrows.
+        _tabs.CreateControl();
+        if (!_tabs.IsHandleCreated) return;
+
+        int headers = 0;
+        for (int index = 0; index < _tabs.TabPages.Count; index++) headers += _tabs.GetTabRect(index).Width;
+        if (headers > _tabs.Width) _tabs.Width = headers;
+    }
+
+    private static TabPage Page(string name, string text, Control content)
+    {
+        content.Dock = DockStyle.Fill;
+        var page = new TabPage(text)
+        {
+            Name = name,
+            Padding = new Padding(8),
+            UseVisualStyleBackColor = true,
+        };
+        page.Controls.Add(content);
+        return page;
+    }
+
+    /// <summary>An empty page body, sized to its content. The pages differ only in what goes in.</summary>
+    private static TableLayoutPanel PagePanel() => new()
+    {
+        ColumnCount = 1,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+    };
+
+    private Control BuildGeneralPage()
+    {
+        var page = PagePanel();
+
+        page.Controls.Add(Heading("Tray icons"));
+        page.Controls.Add(Indent(_modeFive));
+        page.Controls.Add(Indent(_modeSeven));
+        page.Controls.Add(Indent(_modeBoth));
 
         _startup.Enabled = _canRunAtStartup;
-        layout.Controls.Add(Indent(_startup));
+        page.Controls.Add(Indent(_startup));
         if (!_canRunAtStartup)
         {
-            layout.Controls.Add(Indent(new Label
+            page.Controls.Add(Indent(new Label
             {
                 Text = "Available only in the installed app.",
                 AutoSize = true,
@@ -191,46 +298,8 @@ public sealed class SettingsDialog : Form
             }));
         }
 
-        layout.Controls.Add(Heading("Colour thresholds"));
-        layout.Controls.Add(Spinners(("Orange at", _orange, "%"), ("Red above", _red, "%")));
-        layout.Controls.Add(Indent(_paceColors));
-        if (_desktopSource)
-        {
-            layout.Controls.Add(Indent(new Label
-            {
-                Text = "Needs a reset time; without one the plain thresholds decide.",
-                AutoSize = true,
-                ForeColor = SystemColors.GrayText,
-            }));
-        }
-        layout.Controls.Add(Indent(_preview));
-        layout.Controls.Add(Indent(_previewCaption));
-
-        // Both pages, each with its own watch filter. The notify checkboxes stay under
-        // Notifications, where the two of them already sit together.
-        layout.Controls.Add(Heading("Platform status"));
-        layout.Controls.Add(Indent(_watchClaude));
-        layout.Controls.Add(Indent(_claudeComponentsCaption));
-        layout.Controls.Add(Indent(_claudeComponents));
-        layout.Controls.Add(Indent(_claudeComponentsHint));
-        layout.Controls.Add(Indent(_watchOpenAi));
-        layout.Controls.Add(Indent(_openAiComponentsCaption));
-        layout.Controls.Add(Indent(_openAiComponents));
-        layout.Controls.Add(Indent(_openAiComponentsHint));
-
-        layout.Controls.Add(Heading("Notifications"));
-        _notifyLevel.Items.AddRange(LevelLabels);
-        var usageRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(16, 0, 0, 2) };
-        _notifyUsage.Margin = new Padding(0, 4, 4, 0);
-        _notifyLevel.Margin = new Padding(0);
-        usageRow.Controls.Add(_notifyUsage);
-        usageRow.Controls.Add(_notifyLevel);
-        layout.Controls.Add(usageRow);
-        layout.Controls.Add(Indent(_notifyClaude));
-        layout.Controls.Add(Indent(_notifyOpenAi));
-
-        layout.Controls.Add(Heading("Refresh"));
-        layout.Controls.Add(Spinners(
+        page.Controls.Add(Heading("Refresh"));
+        page.Controls.Add(Spinners(
             ("Treat data as stale after", _staleness, "minutes"),
             ("Claude Desktop history stale after", _desktopStaleness, "hours")));
 
@@ -238,27 +307,91 @@ public sealed class SettingsDialog : Form
         // setting that does nothing for them is the far more common outcome than the reverse.
         if (_desktopSource)
         {
-            layout.Controls.Add(Heading("Claude Desktop"));
-            layout.Controls.Add(Indent(new Label
+            page.Controls.Add(Heading("Claude Desktop"));
+            page.Controls.Add(Indent(new Label
             {
                 Text = "Weekly reset (read it off Claude's own UI), e.g. Thu 03:00",
                 AutoSize = true,
             }));
-            layout.Controls.Add(Indent(_weeklyAnchor));
-            layout.Controls.Add(Indent(_weeklyAnchorError));
+            page.Controls.Add(Indent(_weeklyAnchor));
+            page.Controls.Add(Indent(_weeklyAnchorError));
         }
 
-        layout.Controls.Add(Heading("About"));
-        layout.Controls.Add(BuildAbout());
+        SetOrder(_modeFive, _modeSeven, _modeBoth, _startup, _staleness, _desktopStaleness, _weeklyAnchor);
+        return page;
+    }
+
+    private Control BuildAppearancePage()
+    {
+        var page = PagePanel();
+
+        page.Controls.Add(Heading("Colour thresholds"));
+        page.Controls.Add(Spinners(("Orange at", _orange, "%"), ("Red above", _red, "%")));
+        page.Controls.Add(Indent(_paceColors));
+        if (_desktopSource)
+        {
+            page.Controls.Add(Indent(new Label
+            {
+                Text = "Needs a reset time; without one the plain thresholds decide.",
+                AutoSize = true,
+                ForeColor = SystemColors.GrayText,
+            }));
+        }
+        page.Controls.Add(Indent(_preview));
+        page.Controls.Add(Indent(_previewCaption));
+
+        SetOrder(_orange, _red, _paceColors);
+        return page;
+    }
+
+    private Control BuildStatusPage()
+    {
+        var page = PagePanel();
+
+        // Both pages, each with its own watch filter. The notify checkboxes stay under
+        // Notifications, where the two of them already sit together.
+        page.Controls.Add(Heading("Platform status"));
+        page.Controls.Add(Indent(_watchClaude));
+        page.Controls.Add(Indent(_claudeComponentsCaption));
+        page.Controls.Add(Indent(_claudeComponents));
+        page.Controls.Add(Indent(_claudeComponentsHint));
+        page.Controls.Add(Indent(_watchOpenAi));
+        page.Controls.Add(Indent(_openAiComponentsCaption));
+        page.Controls.Add(Indent(_openAiComponents));
+        page.Controls.Add(Indent(_openAiComponentsHint));
+
+        page.Controls.Add(Heading("Notifications"));
+        _notifyLevel.Items.AddRange(LevelLabels);
+        var usageRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(16, 0, 0, 2) };
+        _notifyUsage.Margin = new Padding(0, 4, 4, 0);
+        _notifyLevel.Margin = new Padding(0);
+        usageRow.Controls.Add(_notifyUsage);
+        usageRow.Controls.Add(_notifyLevel);
+        SetOrder(_notifyUsage, _notifyLevel);
+        page.Controls.Add(usageRow);
+        page.Controls.Add(Indent(_notifyClaude));
+        page.Controls.Add(Indent(_notifyOpenAi));
+
+        // usageRow, not the two controls inside it: they sit one level down and get their own run above.
+        SetOrder(_watchClaude, _claudeComponents, _watchOpenAi, _openAiComponents,
+            usageRow, _notifyClaude, _notifyOpenAi);
+        return page;
+    }
+
+    private Control BuildAboutPage()
+    {
+        var page = PagePanel();
+
+        page.Controls.Add(Heading("About"));
+        page.Controls.Add(BuildAbout());
 
         // Which ring the updater follows belongs next to the update controls it changes. Disabled
         // outside the installed app for the same reason those are: there is nothing to update.
         _betaReleases.Enabled = _updates.IsInstalled;
-        layout.Controls.Add(Indent(_betaReleases));
+        page.Controls.Add(Indent(_betaReleases));
 
-        layout.Controls.Add(_error);
-        layout.Controls.Add(BuildButtons());
-        return layout;
+        SetOrder(_creator, _checkUpdates, _updateNow, _betaReleases);
+        return page;
     }
 
     private static Label Heading(string text) => new()
@@ -275,12 +408,34 @@ public sealed class SettingsDialog : Form
         return inner;
     }
 
-    /// <summary>The page's own component names, as a reference caption. Never a prefill: the box
-    /// shows exactly what is stored, so "blank = all" stays literally true.</summary>
-    private static string HintFor(IReadOnlyDictionary<string, IReadOnlyList<string>> names, string sourceId)
-        => names.TryGetValue(sourceId, out var list) && list.Count > 0
-            ? "Page lists: " + string.Join(", ", list)
-            : "Page lists: not fetched yet";
+    /// <summary>An ascending run in reading order, over the children of **one** container. TabIndex
+    /// is only ever compared among siblings, so a nested row gets its own run rather than continuing
+    /// its parent's — a single run spanning both would reach the nested row last.
+    ///
+    /// The indices assigned here tie with the auto-assigned ones of the siblings left out (the About
+    /// grid's "Installed" label, the General page's headings). That is safe only because every one of
+    /// those is a Label, which traversal skips; a tie with something selectable would order by
+    /// z-order instead.</summary>
+    private static void SetOrder(params Control[] controls)
+    {
+        for (int index = 0; index < controls.Length; index++) controls[index].TabIndex = index;
+    }
+
+    /// <summary>The page's own component names, each one a link that adds it to the filter beside it.
+    /// Still never a prefill: the box shows exactly what is stored until the user clicks a name, so
+    /// "blank = all" stays literally true for anyone who clicks nothing.</summary>
+    private static void FillHint(LinkLabel hint, TextBox box,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> names, string sourceId)
+    {
+        var caption = ComponentHint.For(names.TryGetValue(sourceId, out var list) ? list : null);
+        hint.Text = caption.Text;
+        // Setting Text gives the label one link over the whole caption; the names replace it.
+        hint.Links.Clear();
+        foreach (var link in caption.Links) hint.Links.Add(link.Start, link.Length, link.Name);
+        // After the links, not before: adding one turns TabStop back on.
+        hint.TabStop = false;
+        hint.LinkClicked += (_, e) => box.Text = ComponentFilter.Append(box.Text, (string)e.Link!.LinkData!);
+    }
 
     /// <summary>Labelled spinners with their units trailing. Every spinner passed in one call shares
     /// a grid, so their boxes line up in a column however wide the labels are — two rows built as two
@@ -401,6 +556,10 @@ public sealed class SettingsDialog : Form
             UpdateAvailability.Failed => Color.Firebrick,
             _ => SystemColors.GrayText,
         };
+        // The status line grows here — "up to date" against "1.10.0-beta.12 ready to install" — and
+        // the About page was measured against whatever it said at open time. Without this the surplus
+        // is cut off, Update now first, on the one path that installs updates.
+        if (IsHandleCreated) FitTabsToLargestPage(growOnly: true);
     }
 
     private Control BuildButtons()
@@ -437,14 +596,7 @@ public sealed class SettingsDialog : Form
         row.Controls.Add(cancel, 1, 0);
         row.Controls.Add(save, 2, 0);
 
-        // Tab reaches the controls in reading order, then the buttons.
-        int order = 0;
-        foreach (var control in new Control[]
-                 { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   _desktopStaleness, _weeklyAnchor, _betaReleases, _watchClaude, _claudeComponents,
-                   _watchOpenAi, _openAiComponents, _notifyUsage, _notifyLevel, _notifyClaude,
-                   _notifyOpenAi, reset, cancel, save })
-            control.TabIndex = order++;
+        SetOrder(reset, cancel, save);
         return row;
     }
 
@@ -466,6 +618,7 @@ public sealed class SettingsDialog : Form
         _claudeComponents.Text = ComponentFilter.Format(
             claude?.Components ?? [.. StatusSourceRegistry.Claude.DefaultComponents]);
         _claudeComponents.Enabled = _watchClaude.Checked;
+        _claudeComponentsHint.Enabled = _watchClaude.Checked;
         _notifyClaude.Checked = claude?.Notify ?? true;
         _notifyClaude.Enabled = _watchClaude.Checked;
         var openAi = source.StatusSources.GetValueOrDefault("openai");
@@ -473,6 +626,7 @@ public sealed class SettingsDialog : Form
         _openAiComponents.Text = ComponentFilter.Format(
             openAi?.Components ?? [.. StatusSourceRegistry.OpenAi.DefaultComponents]);
         _openAiComponents.Enabled = _watchOpenAi.Checked;
+        _openAiComponentsHint.Enabled = _watchOpenAi.Checked;
         _notifyUsage.Checked = source.UsageNotifications.Enabled;
         _notifyLevel.SelectedIndex = IndexOf(source.UsageNotifications.Level);
         _notifyLevel.Enabled = _notifyUsage.Checked;
@@ -516,11 +670,13 @@ public sealed class SettingsDialog : Form
         _watchClaude.CheckedChanged += (_, _) =>
         {
             _claudeComponents.Enabled = _watchClaude.Checked;
+            _claudeComponentsHint.Enabled = _watchClaude.Checked;
             _notifyClaude.Enabled = _watchClaude.Checked;   // disabled, not unchecked: the choice survives
         };
         _watchOpenAi.CheckedChanged += (_, _) =>
         {
             _openAiComponents.Enabled = _watchOpenAi.Checked;
+            _openAiComponentsHint.Enabled = _watchOpenAi.Checked;
             _notifyOpenAi.Enabled = _watchOpenAi.Checked;   // disabled, not unchecked: the choice survives
         };
         _notifyUsage.CheckedChanged += (_, _) => _notifyLevel.Enabled = _notifyUsage.Checked;
@@ -529,6 +685,9 @@ public sealed class SettingsDialog : Form
             if (_suspendSync) return;
             _weeklyAnchorError.Visible = !string.IsNullOrWhiteSpace(_weeklyAnchor.Text)
                 && WeeklyAnchor.TryParse(_weeklyAnchor.Text) is null;
+            // Hidden while the page was measured, so the row it needs was never counted. Same re-fit
+            // as the update status: make room rather than clip the very message being shown.
+            if (IsHandleCreated) FitTabsToLargestPage(growOnly: true);
         };
         _preview.Paint += (_, e) => UsageBar.Paint(e.Graphics, _preview.Width, _preview.Height,
             PreviewPercent, PreviewSeverity(), PreviewFraction());
