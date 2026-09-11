@@ -33,31 +33,45 @@ The machinery to fix this already exists and already runs for Claude. `Component
    `status.Degraded`, deliberately — the comment says so, and the reason it gives is precisely that
    the Claude filter has no dialog control. The popup rows, the tooltip suffix and the toasts all go
    through `IsRelevant`; the badge is the one place that does not.
-3. **No component names to work from.** `PlatformStatus.Components` carries only the
-   *non-operational* entries, so on a healthy day the app does not know what the page even lists.
+3. **No component names to show.** `PlatformStatus.Components` carries only the *non-operational*
+   entries, so on a healthy day the app cannot tell the user what the page even lists.
 
 ## Design
 
 ### 1. The payload carries every component name
 
-`PlatformStatus` gains a second list:
+`PlatformStatus` gains a member, declared as an `init` property rather than a seventh positional
+parameter so the eight existing construction sites (one production, seven test) stay as they are and
+the default is the safe one:
 
 ```csharp
 public sealed record PlatformStatus(
     string SourceId, DateTimeOffset FetchedAt, string Indicator, string Description,
     IReadOnlyList<PlatformIncident> Incidents,
-    IReadOnlyList<PlatformComponent> Components,      // non-operational only — unchanged
-    IReadOnlyList<string> ComponentNames);            // every component, in page order
+    IReadOnlyList<PlatformComponent> Components)            // non-operational only — unchanged
+{
+    public IReadOnlyList<string> ComponentNames { get; init; } = [];
+}
 ```
 
-`PlatformStatusApi` fills `ComponentNames` in the same pass that builds `Components`. Nothing but
-the settings dialog reads it; `Components` keeps its "no caller can render a wall of healthy
-components" guarantee, and no display path changes shape.
+`PlatformStatusApi` fills it in the same pass that builds `Components`, with two rules stated here
+because the payload shape allows either reading:
 
-This exists so the dialog can offer real names without a hardcoded list in the binary. **Labels come
-from the payload** is a standing invariant of this app, and a renamed or added component must still
-show up with no app update — a `string[]` of today's six names compiled into
-`StatusSourceRegistry` would break that on the first rename.
+- **Order is the array's own order.** StatusPage's `components` is a flat array carrying a
+  `position` field and per-group ordering; reproducing the page's visual order would mean sorting by
+  group and position for no gain. The list is a reference caption, not a rendering of the page.
+- **Entries with `group: true` are dropped.** A group is a heading, not a component: it never
+  appears in `Components` (which carries non-operational *children*) and never appears in an
+  incident's component list. Offering a group name as a filter token would hand the user a token
+  that matches nothing — a filter that silently watches nothing is the exact failure §2's safety
+  argument exists to exclude.
+
+Nothing but the settings dialog reads `ComponentNames`. `Components` keeps its "no caller can
+render a wall of healthy components" guarantee, and no display path changes shape.
+
+The names come from the payload rather than a `string[]` compiled into `StatusSourceRegistry`
+because **labels come from the payload** is a standing invariant of this app: a renamed or added
+component must show up with no app update.
 
 ### 2. The badge honours the watch filter
 
@@ -85,57 +99,98 @@ The fail-towards-visible rules inside `IsRelevant` are what make this safe, and 
 - a degraded page whose payload identifies nothing at all counts as watched.
 
 So the filter can only ever suppress a disruption the page itself attributed to a component the user
-excluded by name. It cannot hide an outage the page could not classify.
+excluded by name. It cannot hide an outage the page could not classify. One narrow gap survives, and
+is accepted: `PlatformStatusApi.ReadComponents` drops entries missing `name` or `status`, so a
+payload whose *only* affected component is malformed while an unrelated one is degraded would leave
+`Identifies()` true with nothing matching, and the badge off. A malformed StatusPage payload is not
+a case worth widening the rule for.
+
+**Two consistency limits are deliberate and stay:**
+
+- **A badge change caused solely by a filter edit is silent.** `NotificationRules.Status.OnStatus`
+  rebaselines and returns nothing when its settings fingerprint changes, while `BadgeDegraded()` is
+  recomputed from scratch on the same `Render()`. So widening the filter against retained degraded
+  data lights the icon with no toast, and narrowing it clears the icon with no toast. That is
+  correct — the user's own edit is not news — but it is new behaviour: before this change a filter
+  edit moved nothing outside the popup. Same class as the paced-badge/absolute-toast divergence
+  already recorded in the repo.
+- **Staleness does not reach the badge.** `Accept` keeps the last-known-good status when a fetch
+  fails, and `BadgeDegraded()` takes no clock. The popup and tooltip mark that state "· stale"; the
+  icon does not, and continues to warn. Unchanged here, and the safer direction — a real outage must
+  not vanish because *our* network is down — but it is the one axis on which the badge still differs
+  from the popup.
 
 `RaisesBadge` is untouched: an OpenAI outage still never marks the icon, for the unrelated reason
 that it says nothing about Claude usage headroom.
 
-### 3. The dialog mirrors the OpenAI block
+### 3. A real "Platform status" group in the dialog
 
-Under the Claude heading, the same three controls the OpenAI block has, with the same names and
-wiring:
+There is no Claude block to mirror today, and the OpenAI one is not a block: `_watchOpenAi` and its
+components box are appended to `Heading("Colour thresholds")`, between the pace-colours checkbox and
+the preview swatch, while `_notifyOpenAi` sits under `Heading("Notifications")`. This change
+introduces the group that was missing and moves the OpenAI pair into it:
 
-| Control | Name | Behaviour |
-|---|---|---|
-| `CheckBox` "Watch Claude status" | `watchClaude` | writes `statusSources.claude.enabled` |
-| `TextBox` + caption "Components (comma-separated, blank = all)" | `claudeComponents` | writes `statusSources.claude.components` |
-| `CheckBox` "Notify when Claude platform status changes" | `notifyClaude` | exists today; moves under the new checkbox |
+```
+Platform status
+  [x] Watch Claude status
+      Components (comma-separated, blank = all)
+      [                                        ]
+      Page lists: claude.ai, Claude Console (platform.claude.com), …     (greyed)
+  [ ] Watch OpenAI status
+      Components (comma-separated, blank = all)
+      [ codex, responses, login, vs code extension ]
+      Page lists: …                                                       (greyed)
+```
 
-Unchecking `watchClaude` **disables** the text box and `notifyClaude` rather than clearing them —
-the same rule as OpenAI, so a user who turns the page off and on again keeps their choices. `Save`
-now writes all three fields of the `claude` entry instead of preserving `enabled` and `components`
-from the clone.
+New controls: `watchClaude`, `claudeComponents`, `claudeComponentsCaption`,
+`claudeComponentsHint`, and `openAiComponentsHint` for symmetry. The notify checkboxes stay where
+they are, under **Notifications**, where `notifyClaude` and `notifyOpenAi` already sit together —
+moving them would split the notification settings across two groups to fix a smaller asymmetry than
+it creates. `_preview` and `_previewCaption` stay under **Colour thresholds**, where they belong.
 
-Turning Claude status off entirely is a real option in the UI as of this change. It was already
-reachable by hand in `settings.json`; the dialog no longer pretends otherwise.
+`Layout()` builds `TabIndex` from a hand-written control array; the new controls are inserted there
+in visual order, Claude before OpenAI.
 
-### 4. Prefill from the live page, store "all" when untouched
+Wiring matches OpenAI exactly. Unchecking `watchClaude` **disables** `claudeComponents` and
+`notifyClaude` rather than clearing them, so a user who turns the page off and on again keeps their
+choices. `Save` now writes all three fields of the `claude` entry instead of preserving `enabled`
+and `components` from the clone.
+
+Turning Claude status off entirely becomes reachable from the UI. It was already reachable by hand
+in `settings.json`; the dialog no longer pretends otherwise. With it off there is no badge at all —
+which is the user's explicit choice, made in a checkbox labelled with what it does.
+
+### 4. The names are a reference caption, not a prefill
 
 `StatusSourceRegistry.Claude.DefaultComponents` stays `[]`. Nothing changes for a user who never
-opens the dialog, and no component list ships in the binary.
+opens the dialog, no component list ships in the binary, and **blank = all** stays literally true:
+the box shows exactly what is stored, and what is stored is exactly what the box shows.
 
-The dialog prefills the text box with the live component names when the stored filter is empty
-(i.e. "watch everything"), so the user sees what there is to exclude and deletes the lines that do
-not apply. The names arrive as a new constructor parameter:
+Discovery comes from a greyed caption under each box listing the page's current components, so the
+user can see what there is to exclude and type or paste the ones that apply. The caption keeps
+working *after* the user narrows the list — it still names a component Anthropic adds later, which
+a one-time prefill into the box could not. When no names are known the caption reads
+`Page lists: not fetched yet` and the box behaves as before.
+
+The names reach the dialog as a new constructor parameter, frozen at open time for the same reason
+`desktopSource` is frozen — a caption that rewrites itself under a half-made edit is worse than one
+briefly out of date:
 
 ```csharp
 public SettingsDialog(Settings settings, bool canRunAtStartup, bool runAtStartup,
     Func<Settings, bool> save, UpdateOptions updates, bool desktopSource,
-    IReadOnlyList<string> claudeComponentNames)
+    IReadOnlyDictionary<string, IReadOnlyList<string>> componentNames)
 ```
 
-frozen at open time from `StatusMonitor.Status("claude")?.ComponentNames ?? []`, for the same reason
-`desktopSource` is frozen: a control that rewrites itself under a half-made edit is worse than one
-briefly out of date. If the app has never fetched the page the box is blank, and the caption still
-explains that blank means all.
+`TrayApp` supplies it from a small per-source cache of the last `ComponentNames` seen, updated
+whenever a status fetch is filed, **not** read live from `StatusMonitor`. `StatusMonitor` holds no
+entry for a disabled source, so `Status("claude")` is null exactly when the user has opened the
+dialog to turn Claude back on and narrow it — the moment the names are most wanted.
 
-**On save, a prefill the user did not touch is stored as `[]`, not as six literal names.** The
-comparison is order-insensitive and case-insensitive against the same list that was prefilled. This
-is the rule that keeps the prefill from quietly freezing the page's 2026-09-11 shape into every
-user's settings file: a stored explicit list can never match a component Anthropic adds later, so an
-untouched prefill would silently stop watching a future "Claude Desktop" the day it appears. A user
-who deliberately narrows the list accepts that trade for the components they named; a user who just
-clicked Save did not.
+One limitation of the comma grammar is worth recording, since §1's whole argument is that Anthropic
+owns these labels: `ComponentFilter.Parse` splits on commas with no escaping, so a future component
+name containing a comma cannot be entered whole. Matching is substring, so any comma-free fragment
+of that name works; nothing else is needed.
 
 ### Data flow after the change
 
@@ -144,17 +199,25 @@ summary.json ──► PlatformStatusApi ──► PlatformStatus { Components, 
                                               │
 StatusMonitor.Entry { Source, Filter, Status } ┤
      │                                         │
-     ├── BadgeDegraded() ──── IsRelevant ──────► tray icon marker      (changed)
-     ├── Sources() ────────── IsRelevant ──────► popup rows, tooltip   (unchanged)
-     ├── Sources() ────────── IsRelevant ──────► NotificationRules     (unchanged)
-     └── Status("claude").ComponentNames ──────► SettingsDialog prefill (new)
+     ├── BadgeDegraded() ──── IsRelevant ──────► tray icon marker       (changed)
+     ├── Sources() ────────── IsRelevant ──────► popup rows, tooltip    (unchanged)
+     ├── Sources() ────────── IsRelevant ──────► NotificationRules      (unchanged)
+     │
+     └─ TrayApp component-name cache ──────────► SettingsDialog caption (new)
 ```
 
 `Settings.EnabledSources()` already feeds `StatusMonitor.ApplyEnabled`, which keeps a surviving
-source's `Status` while replacing its `Filter` — so editing the filter in the dialog re-evaluates the
-badge on the next render without a refetch. `NotificationRules.Status` already re-fingerprints on a
-settings change, so widening the filter against an unchanged payload does not toast; that stays
-true, and now covers the badge implicitly since both read the same `Filter`.
+source's `Status` while replacing its `Filter`, and `TrayApp.Refresh()` ends in `Render()` — so
+editing the filter re-evaluates the badge on the next render with no refetch. That holds for a
+source that stays enabled. A source **disabled and re-enabled** loses its entry and comes back with
+`Status = null`, so the badge is off until the next fetch lands, up to one poll cycle. Accepted: the
+user just told the app to stop watching and start again, and the alternative is resurrecting a
+status of unknown age.
+
+A filter edited while a fetch is in flight is safe without further work: `ApplyEnabled` keeps the
+same `Entry` and swaps only `Filter`, so the completion files normally and is evaluated against the
+new filter. The pre-existing disable/re-enable-during-fetch behaviour documented in
+`StatusMonitor.Accept` is unchanged and out of scope here.
 
 ## Testing
 
@@ -162,19 +225,24 @@ Pure functions and named controls, as everywhere else in this codebase.
 
 - **`StatusMonitorTests`** — the reversal, on a payload modelled on the live one (banner `minor`,
   `Claude Cowork` degraded): filter `["Claude Code"]` → no badge; empty filter → badge; filter
-  `["Cowork"]` → badge; an OpenAI outage with any filter → no badge. Plus the fail-towards-visible
-  pair: degraded page with no components and no incidents under a narrow filter → badge; incident
-  naming no components under a narrow filter → badge.
-- **`PlatformStatusApiTests`** — `ComponentNames` carries all six including the operational ones,
-  in page order; `Components` still carries only the non-operational one; a payload with no
-  `components` key yields both empty and does not throw.
+  `["Cowork"]` → badge; an OpenAI outage under any filter → no badge; `watchClaude` off (source not
+  in `EnabledSources`) → no badge during a full outage; a source re-enabled → no badge until a fetch
+  is accepted. Plus the fail-towards-visible pair: degraded page with no components and no incidents
+  under a narrow filter → badge; incident naming no components under a narrow filter → badge.
+- **`PlatformStatusApiTests`** — `ComponentNames` carries all six including the operational ones, in
+  array order; entries with `group: true` are excluded; `Components` still carries only the
+  non-operational entry; a payload with no `components` key yields both empty and does not throw.
+- **`NotificationRulesStatusTests`** + **`StatusMonitorTests`** as a pair — a filter widened against
+  a retained degraded payload turns the badge on while `OnStatus` rebaselines and returns no toast;
+  `Notify = false` with a matching filter gives a badge and no toast.
 - **`SettingsDialogTests`** — `watchClaude` unchecked disables `claudeComponents` and `notifyClaude`
-  without clearing them; the box prefills from the passed names when the stored filter is empty and
-  from the stored filter otherwise; saving an untouched prefill stores `[]`; saving an edited list
-  stores exactly the edited tokens; saving with `watchClaude` off stores `enabled: false` and keeps
-  the components.
+  without clearing them; the box shows the stored filter verbatim and is blank for `[]`; the hint
+  caption lists the supplied names and falls back to "not fetched yet" for an empty list; saving
+  stores exactly the typed tokens; saving with `watchClaude` off stores `enabled: false` and keeps
+  the components; a hand-written six-name filter survives an untouched open/save round-trip
+  unchanged.
 - **`SettingsTests`** — a `claude` entry with `enabled: false` and a components list survives a
-  load/save round-trip, and a malformed `claude` entry still degrades to defaults without throwing.
+  load/save round-trip; a malformed `claude` entry still degrades to defaults without throwing.
 
 No live calls to either status page; canned payloads only.
 
@@ -182,15 +250,19 @@ No live calls to either status page; canned payloads only.
 
 - **Leave the badge unfiltered, filter only the popup and toasts.** Safest reading of "the main
   warning must never be disarmed", and what the code does today. Rejected because it does not solve
-  the problem: the complaint is the icon marking for Cowork, and a filter that the user sets in the
-  dialog and that visibly does nothing to the icon is worse than no filter at all.
-- **Ship the six names as `Claude.DefaultComponents`.** Discoverable with no new constructor
-  parameter and no payload field. Rejected: it hardcodes a label list the page owns, breaks on the
-  first rename, and writes today's six names into every user's settings on first save — the failure
-  the §4 normalisation exists to prevent.
-- **Store the prefill verbatim when the user saves it unchanged.** Simpler, no comparison. Rejected
-  for the silent-stop-watching failure in §4: a new component would never badge, and nothing in the
-  UI would say why.
+  the problem: the complaint is the icon marking for Cowork, and a filter the user sets in the
+  dialog that visibly does nothing to the icon is worse than no filter at all.
+- **Prefill the box with the live component names**, collapsing an untouched prefill back to `[]` on
+  save so a later-added component is still watched. Rejected on two counts: the box and
+  `settings.json` would disagree after a save, invisibly; and the discovery it buys lasts exactly
+  until the user narrows the list, after which a newly added component appears nowhere in the
+  dialog. The caption in §4 gives the same discovery permanently and needs no save-time transform.
+- **Ship the six names as `Claude.DefaultComponents`.** No payload field, no constructor parameter.
+  Rejected: it hardcodes a label list the page owns, breaks on the first rename, and writes today's
+  six names into every user's settings on first save.
+- **Read the caption's names live from `StatusMonitor`.** One less field in `TrayApp`. Rejected:
+  the monitor drops the entry for a disabled source, so the names would be missing precisely when
+  the user opens the dialog to re-enable and narrow.
 - **Per-component severity instead of a filter** — derive the badge from the worst *watched*
   component's own status rather than from the page banner. Rejected again, for the reason the
   original platform-status design gives: the banner is what the user sees at status.claude.com, and
@@ -201,7 +273,7 @@ No live calls to either status page; canned payloads only.
 
 - `README.md` — the `statusSources` table row and section: `claude.components` is no longer
   "JSON-only" and no longer "never the badge"; the paragraph under **Only Claude's status can mark
-  the tray icon** needs rewriting, and the dialog path is now **Settings → Watch Claude status**.
+  the tray icon** needs rewriting, and the dialog path is now **Settings → Platform status**.
 - `docs/superpowers/specs/2026-08-26-platform-status-design.md` — the *Warning semantics* bullet
   that rejects per-component filtering records the superseded decision and points here.
 - `CHANGELOG.md` — behaviour change: a Claude disruption outside your watched components no longer
