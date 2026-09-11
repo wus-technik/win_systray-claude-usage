@@ -208,6 +208,18 @@ public class SettingsDialogTests : IDisposable
     private static Button Button(SettingsDialog dialog, string name)
         => (Button)dialog.Controls.Find(name, searchAllChildren: true).Single();
 
+    private static TabControl Tabs(SettingsDialog dialog)
+        => (TabControl)dialog.Controls.Find("tabs", searchAllChildren: true).Single();
+
+    /// <summary>The name of the tab page a control sits on, or null when it is outside the tabs.</summary>
+    private static string? PageOf(SettingsDialog dialog, string control)
+    {
+        var found = dialog.Controls.Find(control, searchAllChildren: true).Single();
+        for (var parent = found.Parent; parent is not null; parent = parent.Parent)
+            if (parent is TabPage page) return page.Name;
+        return null;
+    }
+
     [Fact]
     public void DesktopStaleness_RoundTripsThroughTheDraft()
     {
@@ -568,5 +580,68 @@ public class SettingsDialogTests : IDisposable
         });
         Assert.Equal("", ClaudeComponents(dialog).Text);
         Assert.Empty(dialog.Draft().StatusSources["claude"]!.Components!);
+    }
+
+    [Fact]
+    public void TheSettingsAreSplitAcrossFourTabs()
+    {
+        var tabs = Tabs(Dialog(new Settings()));
+
+        Assert.Equal(
+            new[] { "general", "appearance", "status", "about" },
+            tabs.TabPages.Cast<TabPage>().Select(page => page.Name));
+        Assert.Equal(
+            new[] { "General", "Appearance", "Status", "About" },
+            tabs.TabPages.Cast<TabPage>().Select(page => page.Text));
+    }
+
+    /// <summary>One representative control per group, which is what catches a control landing on the
+    /// wrong page while the sections are moved.</summary>
+    [Theory]
+    [InlineData("general", "modeFive")]
+    [InlineData("general", "startup")]
+    [InlineData("general", "staleness")]
+    [InlineData("general", "desktopStaleness")]
+    [InlineData("appearance", "orange")]
+    [InlineData("appearance", "red")]
+    [InlineData("appearance", "paceColors")]
+    [InlineData("appearance", "preview")]
+    [InlineData("status", "watchClaude")]
+    [InlineData("status", "claudeComponents")]
+    [InlineData("status", "watchOpenAi")]
+    [InlineData("status", "openAiComponents")]
+    [InlineData("status", "notifyUsage")]
+    [InlineData("status", "notifyLevel")]
+    [InlineData("status", "notifyClaude")]
+    [InlineData("status", "notifyOpenAi")]
+    [InlineData("about", "creator")]
+    [InlineData("about", "installedVersion")]
+    [InlineData("about", "updateStatus")]
+    [InlineData("about", "checkUpdates")]
+    [InlineData("about", "updateNow")]
+    [InlineData("about", "betaReleases")]
+    public void EverySettingSitsOnItsOwnTab(string page, string control)
+    {
+        Assert.Equal(page, PageOf(Dialog(new Settings()), control));
+    }
+
+    [Fact]
+    public void TheErrorAndTheButtonsStayOutsideTheTabs()
+    {
+        // Save must be reachable from every page, and a failed save has to be readable from the page
+        // the user was on when they pressed it.
+        var dialog = Dialog(new Settings());
+
+        Assert.Null(PageOf(dialog, "error"));
+        Assert.Null(PageOf(dialog, "save"));
+        Assert.Null(PageOf(dialog, "cancel"));
+        Assert.Null(PageOf(dialog, "reset"));
+    }
+
+    [Fact]
+    public void TheWeeklyAnchorAppearsOnGeneralOnlyForTheDesktopSource()
+    {
+        Assert.Empty(Dialog(new Settings()).Controls.Find("weeklyAnchor", searchAllChildren: true));
+        Assert.Equal("general", PageOf(Dialog(new Settings(), desktopSource: true), "weeklyAnchor"));
     }
 }

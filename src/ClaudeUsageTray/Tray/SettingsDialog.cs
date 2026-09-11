@@ -103,6 +103,7 @@ public sealed class SettingsDialog : Form
         { Name = "notifyClaude", Text = "Notify when Claude platform status changes", AutoSize = true };
     private readonly CheckBox _notifyOpenAi = new()
         { Name = "notifyOpenAi", Text = "Notify when OpenAI platform status changes", AutoSize = true };
+    private readonly TabControl _tabs = new() { Name = "tabs", Margin = new Padding(0, 0, 0, 4) };
 
     /// <summary>Combo rows in NotifyLevel order, so SelectedIndex casts straight to the enum.</summary>
     private static readonly string[] LevelLabels = ["Red only", "Orange and red"];
@@ -174,16 +175,62 @@ public sealed class SettingsDialog : Form
             Dock = DockStyle.Fill,
         };
 
-        layout.Controls.Add(Heading("Tray icons"));
-        layout.Controls.Add(Indent(_modeFive));
-        layout.Controls.Add(Indent(_modeSeven));
-        layout.Controls.Add(Indent(_modeBoth));
+        // The error label and the buttons stay outside the tabs: Save has to be reachable from every
+        // page, and a failed save has to be readable from whichever page the user was on.
+        layout.Controls.Add(BuildTabs());
+        layout.Controls.Add(_error);
+        layout.Controls.Add(BuildButtons());
+        return layout;
+    }
+
+    /// <summary>Four pages grouped by what a user changes together, not by the order the sections
+    /// were written in. Notifications sits with Platform status because two of its three controls are
+    /// per-source status toggles; the beta ring sits with About because it steers the updater
+    /// directly above it.</summary>
+    private Control BuildTabs()
+    {
+        _tabs.TabPages.Add(Page("general", "General", BuildGeneralPage()));
+        _tabs.TabPages.Add(Page("appearance", "Appearance", BuildAppearancePage()));
+        _tabs.TabPages.Add(Page("status", "Status", BuildStatusPage()));
+        _tabs.TabPages.Add(Page("about", "About", BuildAboutPage()));
+        return _tabs;
+    }
+
+    private static TabPage Page(string name, string text, Control content)
+    {
+        content.Dock = DockStyle.Fill;
+        var page = new TabPage(text)
+        {
+            Name = name,
+            Padding = new Padding(8),
+            UseVisualStyleBackColor = true,
+        };
+        page.Controls.Add(content);
+        return page;
+    }
+
+    /// <summary>An empty page body, sized to its content. The pages differ only in what goes in.</summary>
+    private static TableLayoutPanel PagePanel() => new()
+    {
+        ColumnCount = 1,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+    };
+
+    private Control BuildGeneralPage()
+    {
+        var page = PagePanel();
+
+        page.Controls.Add(Heading("Tray icons"));
+        page.Controls.Add(Indent(_modeFive));
+        page.Controls.Add(Indent(_modeSeven));
+        page.Controls.Add(Indent(_modeBoth));
 
         _startup.Enabled = _canRunAtStartup;
-        layout.Controls.Add(Indent(_startup));
+        page.Controls.Add(Indent(_startup));
         if (!_canRunAtStartup)
         {
-            layout.Controls.Add(Indent(new Label
+            page.Controls.Add(Indent(new Label
             {
                 Text = "Available only in the installed app.",
                 AutoSize = true,
@@ -191,46 +238,8 @@ public sealed class SettingsDialog : Form
             }));
         }
 
-        layout.Controls.Add(Heading("Colour thresholds"));
-        layout.Controls.Add(Spinners(("Orange at", _orange, "%"), ("Red above", _red, "%")));
-        layout.Controls.Add(Indent(_paceColors));
-        if (_desktopSource)
-        {
-            layout.Controls.Add(Indent(new Label
-            {
-                Text = "Needs a reset time; without one the plain thresholds decide.",
-                AutoSize = true,
-                ForeColor = SystemColors.GrayText,
-            }));
-        }
-        layout.Controls.Add(Indent(_preview));
-        layout.Controls.Add(Indent(_previewCaption));
-
-        // Both pages, each with its own watch filter. The notify checkboxes stay under
-        // Notifications, where the two of them already sit together.
-        layout.Controls.Add(Heading("Platform status"));
-        layout.Controls.Add(Indent(_watchClaude));
-        layout.Controls.Add(Indent(_claudeComponentsCaption));
-        layout.Controls.Add(Indent(_claudeComponents));
-        layout.Controls.Add(Indent(_claudeComponentsHint));
-        layout.Controls.Add(Indent(_watchOpenAi));
-        layout.Controls.Add(Indent(_openAiComponentsCaption));
-        layout.Controls.Add(Indent(_openAiComponents));
-        layout.Controls.Add(Indent(_openAiComponentsHint));
-
-        layout.Controls.Add(Heading("Notifications"));
-        _notifyLevel.Items.AddRange(LevelLabels);
-        var usageRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(16, 0, 0, 2) };
-        _notifyUsage.Margin = new Padding(0, 4, 4, 0);
-        _notifyLevel.Margin = new Padding(0);
-        usageRow.Controls.Add(_notifyUsage);
-        usageRow.Controls.Add(_notifyLevel);
-        layout.Controls.Add(usageRow);
-        layout.Controls.Add(Indent(_notifyClaude));
-        layout.Controls.Add(Indent(_notifyOpenAi));
-
-        layout.Controls.Add(Heading("Refresh"));
-        layout.Controls.Add(Spinners(
+        page.Controls.Add(Heading("Refresh"));
+        page.Controls.Add(Spinners(
             ("Treat data as stale after", _staleness, "minutes"),
             ("Claude Desktop history stale after", _desktopStaleness, "hours")));
 
@@ -238,27 +247,84 @@ public sealed class SettingsDialog : Form
         // setting that does nothing for them is the far more common outcome than the reverse.
         if (_desktopSource)
         {
-            layout.Controls.Add(Heading("Claude Desktop"));
-            layout.Controls.Add(Indent(new Label
+            page.Controls.Add(Heading("Claude Desktop"));
+            page.Controls.Add(Indent(new Label
             {
                 Text = "Weekly reset (read it off Claude's own UI), e.g. Thu 03:00",
                 AutoSize = true,
             }));
-            layout.Controls.Add(Indent(_weeklyAnchor));
-            layout.Controls.Add(Indent(_weeklyAnchorError));
+            page.Controls.Add(Indent(_weeklyAnchor));
+            page.Controls.Add(Indent(_weeklyAnchorError));
         }
 
-        layout.Controls.Add(Heading("About"));
-        layout.Controls.Add(BuildAbout());
+        return page;
+    }
+
+    private Control BuildAppearancePage()
+    {
+        var page = PagePanel();
+
+        page.Controls.Add(Heading("Colour thresholds"));
+        page.Controls.Add(Spinners(("Orange at", _orange, "%"), ("Red above", _red, "%")));
+        page.Controls.Add(Indent(_paceColors));
+        if (_desktopSource)
+        {
+            page.Controls.Add(Indent(new Label
+            {
+                Text = "Needs a reset time; without one the plain thresholds decide.",
+                AutoSize = true,
+                ForeColor = SystemColors.GrayText,
+            }));
+        }
+        page.Controls.Add(Indent(_preview));
+        page.Controls.Add(Indent(_previewCaption));
+
+        return page;
+    }
+
+    private Control BuildStatusPage()
+    {
+        var page = PagePanel();
+
+        // Both pages, each with its own watch filter. The notify checkboxes stay under
+        // Notifications, where the two of them already sit together.
+        page.Controls.Add(Heading("Platform status"));
+        page.Controls.Add(Indent(_watchClaude));
+        page.Controls.Add(Indent(_claudeComponentsCaption));
+        page.Controls.Add(Indent(_claudeComponents));
+        page.Controls.Add(Indent(_claudeComponentsHint));
+        page.Controls.Add(Indent(_watchOpenAi));
+        page.Controls.Add(Indent(_openAiComponentsCaption));
+        page.Controls.Add(Indent(_openAiComponents));
+        page.Controls.Add(Indent(_openAiComponentsHint));
+
+        page.Controls.Add(Heading("Notifications"));
+        _notifyLevel.Items.AddRange(LevelLabels);
+        var usageRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(16, 0, 0, 2) };
+        _notifyUsage.Margin = new Padding(0, 4, 4, 0);
+        _notifyLevel.Margin = new Padding(0);
+        usageRow.Controls.Add(_notifyUsage);
+        usageRow.Controls.Add(_notifyLevel);
+        page.Controls.Add(usageRow);
+        page.Controls.Add(Indent(_notifyClaude));
+        page.Controls.Add(Indent(_notifyOpenAi));
+
+        return page;
+    }
+
+    private Control BuildAboutPage()
+    {
+        var page = PagePanel();
+
+        page.Controls.Add(Heading("About"));
+        page.Controls.Add(BuildAbout());
 
         // Which ring the updater follows belongs next to the update controls it changes. Disabled
         // outside the installed app for the same reason those are: there is nothing to update.
         _betaReleases.Enabled = _updates.IsInstalled;
-        layout.Controls.Add(Indent(_betaReleases));
+        page.Controls.Add(Indent(_betaReleases));
 
-        layout.Controls.Add(_error);
-        layout.Controls.Add(BuildButtons());
-        return layout;
+        return page;
     }
 
     private static Label Heading(string text) => new()

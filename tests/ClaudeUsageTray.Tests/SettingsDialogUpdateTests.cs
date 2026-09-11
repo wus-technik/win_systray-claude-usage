@@ -30,6 +30,10 @@ public class SettingsDialogUpdateTests : IDisposable
         dialog.StartPosition = FormStartPosition.Manual;
         dialog.Location = new System.Drawing.Point(-4000, -4000);
         dialog.Show();
+        // The update controls live on the About tab, and PerformClick() is a no-op on a control that
+        // cannot take focus — which a control on a hidden page cannot.
+        ((TabControl)dialog.Controls.Find("tabs", searchAllChildren: true).Single()).SelectedTab =
+            (TabPage)dialog.Controls.Find("about", searchAllChildren: true).Single();
         return dialog;
     }
 
