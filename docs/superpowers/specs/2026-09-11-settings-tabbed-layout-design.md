@@ -38,7 +38,9 @@ and three tabs (the General page stays tall enough that the change buys little).
 
 `Multiline` stays off, so a control narrower than its own four headers would grow scroll arrows
 rather than wrap; the width is therefore the larger of the widest page and the measured tab strip.
-And because the app is `PerMonitorV2`, the measurement is repeated on `DpiChangedAfterParent`:
+And because the app is `PerMonitorV2`, the measurement is repeated on `DpiChanged` — the top-level
+form's hook, since Windows sends `WM_DPICHANGED` to the window itself; `DpiChangedAfterParent` is the
+*child* control's hook and never reaches an ownerless form:
 WinForms rescales the fixed size it was given, but not by exactly the factor the pages' preferred
 sizes move by — font rounding and the hint labels' fixed 320 px wrap width both drift.
 

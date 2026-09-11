@@ -1,3 +1,4 @@
+using System.Drawing;
 using System.Windows.Forms;
 using ClaudeUsageTray.Core;
 using ClaudeUsageTray.Tray;
@@ -19,9 +20,9 @@ public class SettingsDialogTests : IDisposable
     private SettingsDialog Dialog(Settings settings, Func<Settings, bool>? save = null,
         bool runAtStartup = true, bool desktopSource = false,
         IReadOnlyDictionary<string, IReadOnlyList<string>>? componentNames = null,
-        UpdateOptions? updateOptions = null)
+        UpdateOptions? updateOptions = null, bool canRunAtStartup = true)
     {
-        var dialog = new SettingsDialog(settings, canRunAtStartup: true, runAtStartup,
+        var dialog = new SettingsDialog(settings, canRunAtStartup, runAtStartup,
             save ?? (_ => true), updateOptions ?? TestUpdateOptions.Inert(), desktopSource,
             componentNames ?? new Dictionary<string, IReadOnlyList<string>>());
         _open.Add(dialog);
@@ -646,11 +647,25 @@ public class SettingsDialogTests : IDisposable
         Assert.Equal("general", PageOf(Dialog(new Settings(), desktopSource: true), "weeklyAnchor"));
     }
 
-    [Fact]
-    public void EveryPageFitsWithoutScrolling()
+    /// <summary>The dialog shapes whose pages differ in content: the desktop-only group, the
+    /// "installed app only" note that replaces a usable Run at startup box, and the About page's
+    /// two update states (the not-installed status line is the longer of the two).</summary>
+    private SettingsDialog Variant(bool desktopSource, bool canRunAtStartup, bool installed)
+        => Dialog(new Settings(), desktopSource: desktopSource, canRunAtStartup: canRunAtStartup,
+            updateOptions: installed
+                ? TestUpdateOptions.Inert() with
+                    { InstalledVersion = "0.6.0", IsInstalled = true, InitialState = UpdateAvailability.Unknown }
+                : TestUpdateOptions.Inert());
+
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    public void EveryPageFitsWithoutScrolling(bool desktopSource, bool canRunAtStartup, bool installed)
     {
-        var dialog = Dialog(new Settings());
-        var tabs = Tabs(dialog);
+        var tabs = Tabs(Variant(desktopSource, canRunAtStartup, installed));
 
         foreach (TabPage page in tabs.TabPages)
         {
@@ -662,15 +677,73 @@ public class SettingsDialogTests : IDisposable
         }
     }
 
-    [Fact]
-    public void TheTabStripFitsWithoutScrollArrows()
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    public void TheTabStripFitsWithoutScrollArrows(bool desktopSource, bool canRunAtStartup, bool installed)
     {
         // Multiline is off, so a TabControl narrower than its own headers grows scroll arrows rather
         // than wrapping. The pages happen to be wider today; nothing but this holds that true.
-        var tabs = Tabs(Dialog(new Settings()));
+        var tabs = Tabs(Variant(desktopSource, canRunAtStartup, installed));
         var headers = Enumerable.Range(0, tabs.TabPages.Count).Sum(index => tabs.GetTabRect(index).Width);
 
         Assert.True(headers <= tabs.Width, $"headers {headers} px, control {tabs.Width} px");
+    }
+
+    /// <summary>Installed, nothing found yet, and one check that reports a long version — the About
+    /// page's status label only grows once that lands.</summary>
+    private static UpdateOptions FindsUpdate(string version) => TestUpdateOptions.Inert() with
+    {
+        InstalledVersion = "0.6.0",
+        IsInstalled = true,
+        InitialState = UpdateAvailability.Unknown,
+        CheckNow = () => Task.FromResult<(UpdateAvailability, string?, string?)>(
+            (UpdateAvailability.UpdateReady, version, null)),
+    };
+
+    /// <summary>The page rectangle a control occupies, whatever grid it sits in.</summary>
+    private static Rectangle OnPage(TabPage page, Control control)
+        => page.RectangleToClient(control.Parent!.RectangleToScreen(control.Bounds));
+
+    /// <summary>The measurement happens once, at handle creation; "0.6.0" → "1.10.0-beta.12 ready to
+    /// install" is several times wider, and the page is a fixed-size Dock.Fill with no scrollbar, so
+    /// without a re-fit the surplus is simply cut off — starting with Update now, the rightmost
+    /// control, on the one path that installs updates.</summary>
+    [Fact]
+    public void AnUpdateFoundAfterOpeningDoesNotPushUpdateNowOffThePage()
+    {
+        var dialog = Dialog(new Settings(), updateOptions: FindsUpdate("1.10.0-beta.12"));
+        var about = (TabPage)dialog.Controls.Find("about", searchAllChildren: true).Single();
+        Tabs(dialog).SelectedTab = about;
+
+        Button(dialog, "checkUpdates").PerformClick();
+
+        var updateNow = OnPage(about, Button(dialog, "updateNow"));
+        Assert.True(about.ClientRectangle.Contains(updateNow),
+            $"updateNow at {updateNow}, page client {about.ClientRectangle}");
+    }
+
+    /// <summary>Same class of bug on General: the anchor error is hidden while the page is measured,
+    /// so a page sized without it has to grow when the user types something unparseable.</summary>
+    [Fact]
+    public void TheWeeklyAnchorErrorDoesNotPushTheGeneralPageOverItsHeight()
+    {
+        var dialog = Dialog(new Settings(), desktopSource: true);
+        var tabs = Tabs(dialog);
+        var general = (TabPage)dialog.Controls.Find("general", searchAllChildren: true).Single();
+        tabs.SelectedTab = general;
+
+        Find<TextBox>(dialog, "weeklyAnchor")!.Text = "Donnerstag";
+
+        Assert.True(Find<Label>(dialog, "weeklyAnchorError")!.Visible);
+        var needed = general.Controls[0].PreferredSize;
+        Assert.True(needed.Height + general.Padding.Vertical <= tabs.DisplayRectangle.Height,
+            $"general needs {needed.Height} px, has {tabs.DisplayRectangle.Height}");
+        Assert.True(general.ClientRectangle.Contains(OnPage(general, Find<Label>(dialog, "weeklyAnchorError")!)),
+            "the error label is cut off");
     }
 
     [Fact]
@@ -705,12 +778,13 @@ public class SettingsDialogTests : IDisposable
     /// ever compared among siblings, so two controls in different containers can have a sane-looking
     /// pair of numbers and still be reached in the wrong order.</summary>
     [Theory]
-    [InlineData((object)new[] { "modeFive", "modeSeven", "modeBoth", "startup", "staleness", "desktopStaleness" })]
-    [InlineData((object)new[] { "orange", "red", "paceColors" })]
-    [InlineData((object)new[] { "watchClaude", "claudeComponents", "watchOpenAi", "openAiComponents",
+    [InlineData(false, (object)new[] { "modeFive", "modeSeven", "modeBoth", "startup", "staleness", "desktopStaleness" })]
+    [InlineData(true, (object)new[] { "modeFive", "modeSeven", "modeBoth", "startup", "staleness", "desktopStaleness", "weeklyAnchor" })]
+    [InlineData(false, (object)new[] { "orange", "red", "paceColors" })]
+    [InlineData(false, (object)new[] { "watchClaude", "claudeComponents", "watchOpenAi", "openAiComponents",
         "notifyUsage", "notifyLevel", "notifyClaude", "notifyOpenAi" })]
-    [InlineData((object)new[] { "creator", "checkUpdates", "updateNow", "betaReleases" })]
-    public void FocusRunsInReadingOrderOnEachPage(string[] expected)
+    [InlineData(false, (object)new[] { "creator", "checkUpdates", "updateNow", "betaReleases" })]
+    public void FocusRunsInReadingOrderOnEachPage(bool desktopSource, string[] expected)
     {
         // Installed, with a staged update: only then are checkUpdates, updateNow and betaReleases
         // (About page) enabled at once, so the walk can reach all of them. OpenAi watched: otherwise
@@ -718,7 +792,7 @@ public class SettingsDialogTests : IDisposable
         // the walk entirely. Neither setting affects the other two pages' controls.
         var settings = new Settings();
         settings.StatusSources["openai"] = new StatusSourceSettings { Enabled = true, Components = ["codex"] };
-        var dialog = Dialog(settings,
+        var dialog = Dialog(settings, desktopSource: desktopSource,
             updateOptions: TestUpdateOptions.Inert() with { IsInstalled = true, InitialState = UpdateAvailability.UpdateReady });
         var page = (TabPage)dialog.Controls.Find(PageOf(dialog, expected[0])!, searchAllChildren: true).Single();
         Tabs(dialog).SelectedTab = page; // a non-selected TabPage is Visible=false, so its children's
@@ -728,8 +802,10 @@ public class SettingsDialogTests : IDisposable
         for (var control = page.GetNextControl(page, forward: true);
              control is not null;
              control = page.GetNextControl(control, forward: true))
-            if (control.CanSelect && expected.Contains(control.Name)) walked.Add(control.Name);
+            if (control.CanSelect) walked.Add(control.Name);
 
+        // The whole selectable walk, not the expected names filtered out of it: a focusable control
+        // landing between two of them is exactly the regression this is here to catch.
         Assert.Equal(expected, walked);
     }
 

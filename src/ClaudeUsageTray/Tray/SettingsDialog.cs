@@ -207,16 +207,24 @@ public sealed class SettingsDialog : Form
 
     /// <summary>The app is PerMonitorV2, and WinForms rescales the fixed size it was given without
     /// rescaling the pages' preferred sizes by exactly the same factor — font rounding and the hint
-    /// labels' fixed wrap width both drift. Deferred, so it runs after that scaling, not during it.</summary>
-    protected override void OnDpiChangedAfterParent(EventArgs e)
+    /// labels' fixed wrap width both drift. Deferred, so it runs after that scaling, not during it.
+    /// This is the top-level form's hook: Windows sends WM_DPICHANGED here. DpiChangedAfterParent is
+    /// the *child* control's hook and never reaches an ownerless form, so hanging the re-measure off
+    /// it would silently never run.</summary>
+    protected override void OnDpiChanged(DpiChangedEventArgs e)
     {
-        base.OnDpiChangedAfterParent(e);
-        if (IsHandleCreated) BeginInvoke(FitTabsToLargestPage);
+        base.OnDpiChanged(e);
+        if (IsHandleCreated) BeginInvoke(() => FitTabsToLargestPage());
     }
 
     /// <summary>Fixed at the largest page, not re-measured per tab: the height then comes from the
-    /// tallest group rather than the sum of all of them, and switching tabs never resizes the window.</summary>
-    private void FitTabsToLargestPage()
+    /// tallest group rather than the sum of all of them, and switching tabs never resizes the window.
+    ///
+    /// <paramref name="growOnly"/> for the re-fits that follow content appearing after the window is
+    /// already on screen (a found update, the anchor error): the page must not clip, but a dialog
+    /// that shrinks back under the pointer mid-session is worse than one a few pixels too wide. Only
+    /// the handle-creation and DPI fits size absolutely.</summary>
+    private void FitTabsToLargestPage(bool growOnly = false)
     {
         var content = Size.Empty;
         foreach (TabPage page in _tabs.TabPages)
@@ -227,12 +235,17 @@ public sealed class SettingsDialog : Form
                 Math.Max(content.Height, needed.Height + page.Padding.Vertical));
         }
 
-        _tabs.Size = content + (_tabs.Size - _tabs.DisplayRectangle.Size);
+        var wanted = content + (_tabs.Size - _tabs.DisplayRectangle.Size);
+        _tabs.Size = growOnly
+            ? new Size(Math.Max(wanted.Width, _tabs.Width), Math.Max(wanted.Height, _tabs.Height))
+            : wanted;
 
         // Multiline is off: a control narrower than its own headers grows scroll arrows instead of
         // wrapping. The pages are the wider of the two today, but only measuring keeps that true.
         // GetTabRect needs the strip to exist, which it does not yet when the form's handle is being
         // created — realize it here rather than leaving the check to a hook that may never run.
+        // If it still has no handle the guard is skipped rather than guessed at: the width then stands
+        // as measured, and a control narrower than its headers would show scroll arrows.
         _tabs.CreateControl();
         if (!_tabs.IsHandleCreated) return;
 
@@ -395,7 +408,12 @@ public sealed class SettingsDialog : Form
 
     /// <summary>An ascending run in reading order, over the children of **one** container. TabIndex
     /// is only ever compared among siblings, so a nested row gets its own run rather than continuing
-    /// its parent's — a single run spanning both would reach the nested row last.</summary>
+    /// its parent's — a single run spanning both would reach the nested row last.
+    ///
+    /// The indices assigned here tie with the auto-assigned ones of the siblings left out (the About
+    /// grid's "Installed" label, the General page's headings). That is safe only because every one of
+    /// those is a Label, which traversal skips; a tie with something selectable would order by
+    /// z-order instead.</summary>
     private static void SetOrder(params Control[] controls)
     {
         for (int index = 0; index < controls.Length; index++) controls[index].TabIndex = index;
@@ -527,6 +545,10 @@ public sealed class SettingsDialog : Form
             UpdateAvailability.Failed => Color.Firebrick,
             _ => SystemColors.GrayText,
         };
+        // The status line grows here — "up to date" against "1.10.0-beta.12 ready to install" — and
+        // the About page was measured against whatever it said at open time. Without this the surplus
+        // is cut off, Update now first, on the one path that installs updates.
+        if (IsHandleCreated) FitTabsToLargestPage(growOnly: true);
     }
 
     private Control BuildButtons()
@@ -648,6 +670,9 @@ public sealed class SettingsDialog : Form
             if (_suspendSync) return;
             _weeklyAnchorError.Visible = !string.IsNullOrWhiteSpace(_weeklyAnchor.Text)
                 && WeeklyAnchor.TryParse(_weeklyAnchor.Text) is null;
+            // Hidden while the page was measured, so the row it needs was never counted. Same re-fit
+            // as the update status: make room rather than clip the very message being shown.
+            if (IsHandleCreated) FitTabsToLargestPage(growOnly: true);
         };
         _preview.Paint += (_, e) => UsageBar.Paint(e.Graphics, _preview.Width, _preview.Height,
             PreviewPercent, PreviewSeverity(), PreviewFraction());
