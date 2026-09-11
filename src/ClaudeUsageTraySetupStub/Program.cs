@@ -20,7 +20,14 @@ internal static class Program
         if (options.ShowHelp) return Print(CliArgs.Usage);
         if (options.ShowVersion) return Print($"ClaudeUsageTraySetup {StubVersion.Informational}");
 
-        log.Write($"start: version={StubVersion.Informational} ring={options.Ring?.ToString() ?? "unset"} silent={options.Silent} token={(options.Token is null ? "no" : "yes")}");
+        log.Write($"start: version={StubVersion.Informational} ring={options.Ring?.ToString() ?? "unset"} silent={options.Silent} token={TokenSource.Describe(options)}");
+        if (options.TokenOnCommandLine)
+        {
+            // Never the token itself, here or anywhere: the point of the warning is that an
+            // argument is already readable in any process listing.
+            log.Write("warn: token passed as --token; GH_TOKEN keeps it off the command line");
+            ConsoleOutput.TryWriteLine(TokenSource.CommandLineWarning);
+        }
 
         // Default system proxy so corporate proxies and TLS inspection work; a long total timeout because
         // the payload is a 58 MB installer on whatever link the user has.

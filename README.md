@@ -87,9 +87,21 @@ launcher refuses with `3001`. For detection rules, check for
 under `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall`.
 
 `--ring beta` looks up GitHub's release list, which is rate-limited per source IP (60/h
-unauthenticated, shared behind a NAT). A fleet rollout should pass `--token` (or set `GH_TOKEN`) or
-roll out stable and let users tick **Use beta releases** in the app. Without the API the beta path
-fails closed in silent mode rather than installing stable content behind an operator's back.
+unauthenticated, shared behind a NAT). A fleet rollout should authenticate that lookup — or roll out
+stable and let users tick **Use beta releases** in the app. Without the API the beta path fails
+closed in silent mode rather than installing stable content behind an operator's back.
+
+**Pass the token in `GH_TOKEN`, not in `--token`.** A command-line argument is readable by anyone
+who can list processes on that machine (the same user, and administrators), so `--token` is a
+convenience for interactive one-offs and the launcher warns when it is used; `GH_TOKEN` is the
+supported path for unattended rollouts. The repository is public, so a fine-grained token with
+read-only public-repository access and no other permissions is enough — nothing about the lookup
+needs write scope.
+
+```powershell
+$env:GH_TOKEN = (Get-Content C:\deploy\gh-token.txt -Raw).Trim()
+Start-Process ClaudeUsageTraySetup.exe -ArgumentList '--silent','--ring','beta' -Wait -PassThru
+```
 
 Switching the ring of an installed app stops and restarts it and writes `useBetaReleases`; the move
 itself completes when the user accepts **Restart to update** — the launcher never applies packages.

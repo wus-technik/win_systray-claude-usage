@@ -12,7 +12,7 @@ Nothing shipped is code-signed (documented in `src/ClaudeUsageTraySetupStub/Down
 
 **Mitigations:** code-sign the app and the stub (Velopack then verifies Authenticode signatures on update), or at minimum gate the release path (see finding 2).
 
-### 2. [Medium] `main` has no branch protection and the repo has no rulesets (no tag protection)
+### 2. [Medium] `main` has no branch protection and the repo has no rulesets (no tag protection) — *resolved 2026-09-11*
 
 Verified via API: `GET /repos/wus-technik/win_systray-claude-usage/branches/main/protection` → 404, `GET /repos/.../rulesets` → empty. Anyone with repo write access can:
 
@@ -21,17 +21,28 @@ Verified via API: `GET /repos/wus-technik/win_systray-claude-usage/branches/main
 
 **Recommendation:** branch protection on `main` (required review, 2FA required) plus a `v*` tag protection rule. This directly bounds the blast radius of finding 1.
 
+**Done:** two repository rulesets, both with `cfoellmann` as the only bypass actor (`bypass_mode: always`):
+
+- **`main protection`** (branch, `~DEFAULT_BRANCH`): pull request with 1 approval and stale-review dismissal, required status check `build-and-test`, no deletion, no force-push.
+- **`release tags (v*)`** (tag, `refs/tags/v*`): creation, update and deletion all restricted — so only the bypass actor can publish a release tag, i.e. trigger `release.yml`.
+
+The second repo admin (`DKuehnhold`) is intentionally *not* a bypass actor: they can still review and merge, but neither push to `main` directly nor cut a release tag. Inspect with `gh api repos/wus-technik/win_systray-claude-usage/rulesets`.
+
+**Still open:** the `wus-technik` org does not enforce 2FA (`two_factor_requirement_enabled: false`). That is an org-wide setting, outside this repo's scope, and the other half of the audit's recommendation.
+
 ### 3. [Low] Status-page `shortlink` is opened via shell execute without validation
 
 `src/ClaudeUsageTray/Core/StatusDetailRows.cs:98` takes `incident.Shortlink` straight from the unauthenticated status-page payload and returns it as `StatusRow.Link`; `src/ClaudeUsageTray/Tray/UsagePopup.cs:190` opens it with `Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })`. A compromised or malicious status payload could offer any scheme or host. Requires an explicit user click on the "Details" link.
 
 **Recommendation:** restrict to `https://` on the source's own host (`status.claude.com`, `status.openai.com`), or drop the link.
 
-### 4. [Low] Stub `--token <t>` puts the GitHub PAT on the process command line
+### 4. [Low] Stub `--token <t>` puts the GitHub PAT on the process command line — *resolved 2026-09-11*
 
 The token is visible via command-line inspection (same user, admins). Logging is clean — `src/ClaudeUsageTraySetupStub/Program.cs:23` writes only `token=yes/no`. The `GH_TOKEN` environment variable path already exists and avoids the exposure.
 
 **Recommendation:** steer fleet operators (`--ring beta` rollouts) to `GH_TOKEN` with a fine-grained read-only token in the usage docs.
+
+**Done:** `--token` is documented as an interactive convenience and `GH_TOKEN` as the supported unattended path, in both `CliArgs.Usage` and the README's unattended-deployment section (with a fine-grained read-only token and a PowerShell example). `CliArgs` now records *where* the token came from (`StubOptions.TokenOnCommandLine`), so `Program` warns on the console and logs `warn: token passed as --token …` and the start line reads `token=none|argument|GH_TOKEN` instead of `yes/no`. The token itself still never reaches the log — `TokenSource` only ever returns the source name, which `TokenSourceTests` asserts.
 
 ### 5. [Info] Third-party status text is displayed verbatim and written to `fetch.log`
 
