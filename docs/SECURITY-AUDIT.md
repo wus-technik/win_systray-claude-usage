@@ -30,11 +30,15 @@ The second repo admin (`DKuehnhold`) is intentionally *not* a bypass actor: they
 
 **Still open:** the `wus-technik` org does not enforce 2FA (`two_factor_requirement_enabled: false`). That is an org-wide setting, outside this repo's scope, and the other half of the audit's recommendation.
 
-### 3. [Low] Status-page `shortlink` is opened via shell execute without validation
+### 3. [Low] Status-page `shortlink` is opened via shell execute without validation — *resolved 2026-09-11*
 
 `src/ClaudeUsageTray/Core/StatusDetailRows.cs:98` takes `incident.Shortlink` straight from the unauthenticated status-page payload and returns it as `StatusRow.Link`; `src/ClaudeUsageTray/Tray/UsagePopup.cs:190` opens it with `Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })`. A compromised or malicious status payload could offer any scheme or host. Requires an explicit user click on the "Details" link.
 
 **Recommendation:** restrict to `https://` on the source's own host (`status.claude.com`, `status.openai.com`), or drop the link.
+
+**Done:** `Core/StatusLink.Safe` is the allowlist and `StatusDetail.Rows` now takes the `StatusSource`, so every row's link passes it before the popup ever sees it: `https` only, default port, no userinfo, and a host that equals — or is a subdomain of — the source's own `PageUrl` host or the Statuspage shortener. A rejected link becomes null, which drops the `Details` line and keeps the row, so an incident is still reported.
+
+Correction to the recommendation above: same-host-only would have been wrong. Statuspage serves incident shortlinks from `stspg.io`, not from the status host (`StatusDetailRowsTests` already asserted `https://stspg.io/x`), so that rule would have removed every genuine link. The shortener is therefore allowed for both sources; cross-linking between them is not.
 
 ### 4. [Low] Stub `--token <t>` puts the GitHub PAT on the process command line — *resolved 2026-09-11*
 

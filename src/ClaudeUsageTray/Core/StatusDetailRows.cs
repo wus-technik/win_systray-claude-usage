@@ -1,7 +1,8 @@
 namespace ClaudeUsageTray.Core;
 
 /// <summary>One detail line under a status header. Link is the incident shortlink when the page
-/// offers one; component rows have none, because status.openai.com publishes no per-incident link.</summary>
+/// offers one and it survives <see cref="StatusLink.Safe"/>; component rows have none, because
+/// status.openai.com publishes no per-incident link.</summary>
 public sealed record StatusRow(string Text, string? Link);
 
 public static partial class StatusDetail
@@ -9,9 +10,13 @@ public static partial class StatusDetail
     /// <summary>The detail rows for one source, at most <paramref name="max"/> of them. Selection
     /// happens after filtering, so incidents that are all filtered out fall through to the watched
     /// components rather than leaving a degraded source with an empty section.</summary>
-    public static IReadOnlyList<StatusRow> Rows(PlatformStatus status, IReadOnlyList<string> filter,
-        DateTimeOffset now, int max)
-        => Selected(status, filter, now).Take(max).ToList();
+    /// <param name="source">Which page this payload came from: its host is half of the allowlist
+    /// <see cref="StatusLink.Safe"/> checks the shortlink against.</param>
+    public static IReadOnlyList<StatusRow> Rows(StatusSource source, PlatformStatus status,
+        IReadOnlyList<string> filter, DateTimeOffset now, int max)
+        => Selected(status, filter, now).Take(max)
+            .Select(row => row with { Link = StatusLink.Safe(row.Link, source) })
+            .ToList();
 
     /// <summary>How many rows the cap left out, for the "+N more" line.</summary>
     public static int HiddenCount(PlatformStatus status, IReadOnlyList<string> filter, int max)

@@ -195,6 +195,11 @@ still shows in the "no usage data" state):
   - `+N more` line when truncated (same pattern as the scoped-limit rows).
   - A `LinkLabel` to `https://status.claude.com` (and the incident `shortlink` when present) opened
     via `Process.Start(UseShellExecute: true)`, wrapped so it can never throw.
+    *Amended 2026-09-11 (security audit finding 3):* the shortlink is third-party input and shell
+    execute takes any scheme, so `StatusLink.Safe` now filters it — https, default port, no
+    userinfo, and a host that is the source's own `PageUrl` host or the Statuspage shortener
+    `stspg.io` (which is where the real shortlinks live; a same-host-only rule would drop every one
+    of them). A rejected link drops the `Details` line and keeps the row.
 - **Stale** (any state): append ` · stale`, using `settings.StalenessMinutes`.
 
 ## Observability

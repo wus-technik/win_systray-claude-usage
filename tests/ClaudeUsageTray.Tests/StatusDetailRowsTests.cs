@@ -21,7 +21,7 @@ public class StatusDetailRowsTests
     [Fact]
     public void Components_BecomeRowsWithUnfoldedStatus()
     {
-        var rows = StatusDetail.Rows(
+        var rows = StatusDetail.Rows(OpenAi,
             Status([new("Codex API", "degraded_performance")]), Codex, Now, max: 3);
         Assert.Equal("Codex API — Degraded performance", Assert.Single(rows).Text);
         Assert.Null(rows[0].Link);
@@ -30,7 +30,7 @@ public class StatusDetailRowsTests
     [Fact]
     public void ComponentRows_AreFilteredToWatchedOnes()
     {
-        var rows = StatusDetail.Rows(
+        var rows = StatusDetail.Rows(OpenAi,
             Status([new("Sora", "major_outage"), new("Codex Web", "partial_outage")]), Codex, Now, max: 3);
         Assert.Equal(["Codex Web — Partial outage"], rows.Select(r => r.Text));
     }
@@ -38,7 +38,7 @@ public class StatusDetailRowsTests
     [Fact]
     public void Incidents_WinOverComponents_AndKeepTheirShortlink()
     {
-        var rows = StatusDetail.Rows(
+        var rows = StatusDetail.Rows(OpenAi,
             Status([new("Codex API", "major_outage")], [Incident("Elevated errors", "https://stspg.io/x")]),
             Codex, Now, max: 3);
         var row = Assert.Single(rows);
@@ -47,12 +47,24 @@ public class StatusDetailRowsTests
         Assert.Equal("https://stspg.io/x", row.Link);
     }
 
+    /// <summary>A payload may name any link it likes; the row still has to appear, because the
+    /// incident is real news even when its "Details" link is not trustworthy.</summary>
+    [Fact]
+    public void Incidents_KeepTheirRowButLoseAnUnsafeShortlink()
+    {
+        var rows = StatusDetail.Rows(OpenAi,
+            Status([], [Incident("Elevated errors", "ms-settings:windowsupdate")]), Codex, Now, max: 3);
+        var row = Assert.Single(rows);
+        Assert.StartsWith("Elevated errors", row.Text);
+        Assert.Null(row.Link);
+    }
+
     /// <summary>Precedence runs after filtering: incidents that are all filtered out must not
     /// suppress the component rows that do match, or the source shows degraded with zero rows.</summary>
     [Fact]
     public void IncidentsAllFilteredOut_FallsBackToWatchedComponents()
     {
-        var rows = StatusDetail.Rows(
+        var rows = StatusDetail.Rows(OpenAi,
             Status([new("Codex API", "major_outage")], [Incident("Sora is down", null, "Sora")]),
             Codex, Now, max: 3);
         Assert.Equal(["Codex API — Major outage"], rows.Select(r => r.Text));
@@ -64,14 +76,14 @@ public class StatusDetailRowsTests
         var status = Status([
             new("Codex API", "major_outage"), new("Codex Web", "major_outage"),
             new("Codex in ChatGPT Desktop", "major_outage"), new("Codex CLI", "major_outage")]);
-        Assert.Equal(3, StatusDetail.Rows(status, Codex, Now, max: 3).Count);
+        Assert.Equal(3, StatusDetail.Rows(OpenAi, status, Codex, Now, max: 3).Count);
         Assert.Equal(1, StatusDetail.HiddenCount(status, Codex, max: 3));
     }
 
     [Fact]
     public void NothingIdentified_YieldsNoRows()
     {
-        Assert.Empty(StatusDetail.Rows(Status(), Codex, Now, max: 3));
+        Assert.Empty(StatusDetail.Rows(OpenAi, Status(), Codex, Now, max: 3));
         Assert.Equal(0, StatusDetail.HiddenCount(Status(), Codex, max: 3));
     }
 

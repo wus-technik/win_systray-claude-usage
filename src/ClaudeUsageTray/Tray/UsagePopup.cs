@@ -133,7 +133,7 @@ public sealed class UsagePopup : Form
             if (status is null || !relevant) continue;
 
             const int MaxRows = 3;
-            foreach (var row in StatusDetail.Rows(status, view.Filter, now, MaxRows))
+            foreach (var row in StatusDetail.Rows(view.Source, status, view.Filter, now, MaxRows))
             {
                 layout.Controls.Add(WrappingLabel(row.Text, SystemColors.ControlText, new Padding(0)));
                 if (row.Link is not { } link) continue;
