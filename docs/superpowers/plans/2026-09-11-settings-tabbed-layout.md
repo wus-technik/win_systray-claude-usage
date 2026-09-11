@@ -18,12 +18,19 @@ exists and sizes the control to the largest — fixed, so switching tabs never r
 
 ## Global Constraints
 
-- Only `src/ClaudeUsageTray/Tray/SettingsDialog.cs` and
-  `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs` change. No `Core/` change, no new or renamed
-  settings key, no change to what any control does.
-- Every control keeps its existing `Name`. `Controls.Find(name, searchAllChildren: true)` descends
-  into `TabPage`s, so `SettingsDialogUpdateTests` and the rest of `SettingsDialogTests` must pass
-  **untouched**. If a change would require editing them, the change is wrong.
+- Only `src/ClaudeUsageTray/Tray/SettingsDialog.cs`,
+  `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs` and one line of
+  `tests/ClaudeUsageTray.Tests/SettingsDialogUpdateTests.cs` change. No `Core/` change, no new or
+  renamed settings key, no change to what any control does.
+- Every control keeps its existing `Name`, and `Controls.Find(name, searchAllChildren: true)`
+  descends into `TabPage`s — so every *assertion* in the existing tests still holds.
+- **But `Button.PerformClick()` is a silent no-op on a control that is not on the selected tab**
+  (verified: a button on a hidden page reports `CanSelect == false` and raises no `Click`). Property
+  setters are unaffected, which is why only one existing test file is hit:
+  `SettingsDialogUpdateTests` clicks `checkUpdates` and `updateNow`, which move to the `about` page.
+  Its `Dialog()` helper therefore selects that page before returning — see Task 1, Step 6. That is
+  the *only* permitted edit to an existing test; if anything else in those files needs changing, the
+  move is wrong.
 - Keep the bold `Heading()` labels and the 16 px `Indent()` on every page, so alignment is identical
   across tabs and the diff stays a move rather than a restyle.
 - The dialog stays modeless; `LoadFrom`, `WireLiveSync`, `Commit`, `ResetThresholdsToDefaults` and
@@ -45,7 +52,8 @@ exists and sizes the control to the largest — fixed, so switching tabs never r
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: a field `private readonly TabControl _tabs = new() { Name = "tabs" };`; the private
+- Produces: a field
+  `private readonly TabControl _tabs = new() { Name = "tabs", Margin = new Padding(0, 0, 0, 4) };`; the private
   methods `Control BuildGeneralPage()`, `Control BuildAppearancePage()`, `Control BuildStatusPage()`,
   `Control BuildAboutPage()` (each returns the page's `TableLayoutPanel`), and
   `static TabPage Page(string name, string text, Control content)`. Task 2 reads `_tabs` and each
@@ -330,17 +338,34 @@ do not reword a caption or drop a heading.
     }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 6: Let the update tests reach the buttons they click**
+
+`SettingsDialogUpdateTests` drives `checkUpdates` and `updateNow` with `PerformClick()`, which does
+nothing while those buttons sit on a hidden page. Add one line to its `Dialog()` helper
+(`tests/ClaudeUsageTray.Tests/SettingsDialogUpdateTests.cs:23-34`), between `dialog.Show();` and
+`return dialog;`:
+
+```csharp
+        // The update controls live on the About tab, and PerformClick() is a no-op on a control that
+        // cannot take focus — which a control on a hidden page cannot.
+        ((TabControl)dialog.Controls.Find("tabs", searchAllChildren: true).Single()).SelectedTab =
+            (TabPage)dialog.Controls.Find("about", searchAllChildren: true).Single();
+```
+
+Nothing else in that file changes: every other call there reads a property or sets one, and neither
+is affected by the page being hidden.
+
+- [ ] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsDialog"`
-Expected: `Bestanden!` — both `SettingsDialogTests` and `SettingsDialogUpdateTests`, the latter with
-no edits. If an old test fails, a control lost its `Name` or was dropped in the move; fix the move,
-not the test.
+Expected: `Bestanden!` — both `SettingsDialogTests` and `SettingsDialogUpdateTests`. If an *assertion*
+in an old test fails, a control lost its `Name` or was dropped in the move; fix the move, not the
+test. The only legitimate test edit is the one in Step 6.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs
+git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs tests/ClaudeUsageTray.Tests/SettingsDialogUpdateTests.cs
 git commit -m "$(cat <<'EOF'
 feat(settings): group the sections into four tabs
 
@@ -376,18 +401,6 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 
 ```csharp
     [Fact]
-    public void TheWindowIsShorterThanTheSectionsStacked()
-    {
-        // The whole point of the tabs: the height comes from the tallest page, not from the sum.
-        var dialog = Dialog(new Settings());
-        var stacked = Tabs(dialog).TabPages.Cast<TabPage>()
-            .Sum(page => page.Controls[0].PreferredSize.Height);
-
-        Assert.True(dialog.PreferredSize.Height < stacked,
-            $"form {dialog.PreferredSize.Height} px, sections stacked {stacked} px");
-    }
-
-    [Fact]
     public void EveryPageFitsWithoutScrolling()
     {
         var dialog = Dialog(new Settings());
@@ -401,6 +414,29 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
             Assert.True(needed.Width + page.Padding.Horizontal <= tabs.DisplayRectangle.Width,
                 $"{page.Name} needs {needed.Width} px, has {tabs.DisplayRectangle.Width}");
         }
+    }
+
+    [Fact]
+    public void TheTabStripFitsWithoutScrollArrows()
+    {
+        // Multiline is off, so a TabControl narrower than its own headers grows scroll arrows rather
+        // than wrapping. The pages happen to be wider today; nothing but this holds that true.
+        var tabs = Tabs(Dialog(new Settings()));
+        var headers = Enumerable.Range(0, tabs.TabPages.Count).Sum(index => tabs.GetTabRect(index).Width);
+
+        Assert.True(headers <= tabs.Width, $"headers {headers} px, control {tabs.Width} px");
+    }
+
+    [Fact]
+    public void TheTabsAreShorterThanTheSectionsStacked()
+    {
+        // The whole point of the tabs: the height comes from the tallest page, not from the sum.
+        // Measured on the tab control, not the form — the form's chrome, padding and button row are
+        // constant overhead that has nothing to do with the stacking.
+        var tabs = Tabs(Dialog(new Settings()));
+        var stacked = tabs.TabPages.Cast<TabPage>().Sum(page => page.Controls[0].PreferredSize.Height);
+
+        Assert.True(tabs.Height < stacked, $"tabs {tabs.Height} px, sections stacked {stacked} px");
     }
 
     [Fact]
@@ -421,8 +457,12 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests.EveryPageFitsWithoutScrolling"`
-Expected: `Fehler:` — the `TabControl` is still its default 200×100, so every page overflows it.
+Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests.EveryPageFits|FullyQualifiedName~SettingsDialogTests.TheTabStrip"`
+Expected: `Fehler:` — the `TabControl` is still its default 200×100, so every page overflows it and
+the four headers are wider than the control.
+
+`TheTabsAreShorterThanTheSectionsStacked` and `SwitchingTabsDoesNotResizeTheWindow` **pass already**
+at the default size; they are regression guards for what Step 3 must not break, not red tests.
 
 - [ ] **Step 3: Implement the sizing**
 
@@ -436,6 +476,15 @@ Add to `SettingsDialog.cs`, below `BuildTabs()`:
     {
         base.OnHandleCreated(e);
         FitTabsToLargestPage();
+    }
+
+    /// <summary>The app is PerMonitorV2, and WinForms rescales the fixed size it was given without
+    /// rescaling the pages' preferred sizes by exactly the same factor — font rounding and the hint
+    /// labels' fixed wrap width both drift. Deferred, so it runs after that scaling, not during it.</summary>
+    protected override void OnDpiChangedAfterParent(EventArgs e)
+    {
+        base.OnDpiChangedAfterParent(e);
+        if (IsHandleCreated) BeginInvoke(FitTabsToLargestPage);
     }
 
     /// <summary>Fixed at the largest page, not re-measured per tab: the height then comes from the
@@ -452,8 +501,25 @@ Add to `SettingsDialog.cs`, below `BuildTabs()`:
         }
 
         _tabs.Size = content + (_tabs.Size - _tabs.DisplayRectangle.Size);
+
+        // Multiline is off: a control narrower than its own headers grows scroll arrows instead of
+        // wrapping. The pages are the wider of the two today, but only measuring keeps that true.
+        // GetTabRect needs the strip to exist, which it does not yet when the form's handle is being
+        // created — realize it here rather than leaving the check to a hook that may never run.
+        _tabs.CreateControl();
+        if (!_tabs.IsHandleCreated) return;
+
+        int headers = 0;
+        for (int index = 0; index < _tabs.TabPages.Count; index++) headers += _tabs.GetTabRect(index).Width;
+        if (headers > _tabs.Width) _tabs.Width = headers;
     }
 ```
+
+`OnHandleCreated` is the right hook and not merely a convenient one: no `TabPage` handle exists yet
+there, but an `AutoSize` `TableLayoutPanel` reports its correct `PreferredSize` unrealized (verified —
+identical before and after `Show()`), and the form re-lays out within the same call, so the window is
+already at its final size. `OnLoad` would look safer and is wrong: it never fires for
+`CreateControl()`, which is exactly how the `CLAUDE.md` offscreen probe builds the dialog.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -503,33 +569,58 @@ relative to each other, which is all the traversal needs.
 Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 
 ```csharp
-    /// <summary>Tab has to walk each page in reading order, so the dialog never needs the mouse.</summary>
+    /// <summary>Tab has to walk each page in reading order, so the dialog never needs the mouse.
+    /// Asserted by walking the real traversal, not by comparing TabIndex values: indices are only
+    /// ever compared among siblings, so two controls in different containers can have a sane-looking
+    /// pair of numbers and still be reached in the wrong order.</summary>
     [Theory]
-    [InlineData(new[] { "modeFive", "modeSeven", "modeBoth", "startup" })]
-    [InlineData(new[] { "staleness", "desktopStaleness" })]
-    [InlineData(new[] { "orange", "red" })]
-    [InlineData(new[] { "watchClaude", "claudeComponents", "watchOpenAi", "openAiComponents" })]
-    [InlineData(new[] { "notifyUsage", "notifyLevel" })]
-    [InlineData(new[] { "reset", "cancel", "save" })]
-    public void FocusRunsInReadingOrder(string[] names)
+    [InlineData((object)new[] { "modeFive", "modeSeven", "modeBoth", "startup", "staleness", "desktopStaleness" })]
+    [InlineData((object)new[] { "orange", "red", "paceColors" })]
+    [InlineData((object)new[] { "watchClaude", "claudeComponents", "watchOpenAi", "openAiComponents",
+        "notifyUsage", "notifyLevel", "notifyClaude", "notifyOpenAi" })]
+    [InlineData((object)new[] { "creator", "checkUpdates", "updateNow", "betaReleases" })]
+    public void FocusRunsInReadingOrderOnEachPage(string[] expected)
     {
         var dialog = Dialog(new Settings());
-        var indices = names
-            .Select(name => dialog.Controls.Find(name, searchAllChildren: true).Single().TabIndex)
-            .ToArray();
+        var page = (TabPage)dialog.Controls.Find(PageOf(dialog, expected[0])!, searchAllChildren: true).Single();
 
-        Assert.Equal(indices.OrderBy(index => index), indices);
-        Assert.Equal(indices.Distinct().Count(), indices.Length);
+        var walked = new List<string>();
+        for (var control = page.GetNextControl(page, forward: true);
+             control is not null;
+             control = page.GetNextControl(control, forward: true))
+            if (control.CanSelect && expected.Contains(control.Name)) walked.Add(control.Name);
+
+        Assert.Equal(expected, walked);
+    }
+
+    [Fact]
+    public void TheButtonsAreReachedInOrder()
+    {
+        var dialog = Dialog(new Settings());
+        var row = dialog.Controls.Find("save", searchAllChildren: true).Single().Parent!;
+
+        var walked = new List<string>();
+        for (var control = row.GetNextControl(row, forward: true);
+             control is not null;
+             control = row.GetNextControl(control, forward: true))
+            if (control.CanSelect) walked.Add(control.Name);
+
+        Assert.Equal(new[] { "reset", "cancel", "save" }, walked);
     }
 ```
 
+`(object)` on each `InlineData` array is load-bearing: without it the compiler treats the array as
+the `params object[]` itself and the test project fails to build with CS0182.
+
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests.FocusRunsInReadingOrder"`
-Expected: `Fehler:` on the `reset/cancel/save` case — the existing flat run gives them 19, 20, 21
-while `orange`/`red` keep 4, 5 inside their own grid, so the runs collide across containers once
-they no longer share a parent. (Some cases may pass already; the task is done when all six do and
-the run is per page.)
+Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests.FocusRuns"`
+Expected: `Fehler:` on the Status case — after Task 1 the flat run still gives `notifyUsage` and
+`notifyLevel` 15 and 16 *inside the `usageRow` flow panel*, while `notifyClaude`/`notifyOpenAi` get
+17 and 18 on the page panel where `usageRow` itself sits at whatever WinForms auto-assigned. The
+walk therefore reaches the two status checkboxes **before** the usage row that is drawn above them.
+(The other three cases may already pass; the task is done when all four do, plus
+`TheButtonsAreReachedInOrder`.)
 
 - [ ] **Step 3: Replace the flat run with per-page runs**
 
@@ -557,16 +648,17 @@ and replace it with:
 Add the helper next to `Indent()`:
 
 ```csharp
-    /// <summary>An ascending run in reading order. TabIndex is only ever compared among siblings, so
-    /// every page — and every nested row within one — gets its own run rather than one run across the
-    /// whole form.</summary>
+    /// <summary>An ascending run in reading order, over the children of **one** container. TabIndex
+    /// is only ever compared among siblings, so a nested row gets its own run rather than continuing
+    /// its parent's — a single run spanning both would reach the nested row last.</summary>
     private static void SetOrder(params Control[] controls)
     {
         for (int index = 0; index < controls.Length; index++) controls[index].TabIndex = index;
     }
 ```
 
-Then add one call at the end of each page builder, before its `return page;`:
+Then add one call per container. Each page builder ends with a run over that page panel's own direct
+children, before its `return page;`:
 
 ```csharp
         // BuildGeneralPage
@@ -575,16 +667,29 @@ Then add one call at the end of each page builder, before its `return page;`:
         // BuildAppearancePage
         SetOrder(_orange, _red, _paceColors);
 
-        // BuildStatusPage
+        // BuildStatusPage — usageRow, not the two controls inside it: they sit one level down.
         SetOrder(_watchClaude, _claudeComponents, _watchOpenAi, _openAiComponents,
-            _notifyUsage, _notifyLevel, _notifyClaude, _notifyOpenAi);
+            usageRow, _notifyClaude, _notifyOpenAi);
 
         // BuildAboutPage
         SetOrder(_creator, _checkUpdates, _updateNow, _betaReleases);
 ```
 
-`_weeklyAnchor` is passed on the general page whether or not it was added — setting `TabIndex` on a
-control with no parent is harmless, and it keeps the call free of a conditional.
+and one more inside `BuildStatusPage`, right after `usageRow.Controls.Add(_notifyLevel);`:
+
+```csharp
+        SetOrder(_notifyUsage, _notifyLevel);
+```
+
+Note what the runs are *not*: `_orange` and `_red` live inside the `Spinners` grid and
+`_staleness`/`_desktopStaleness` inside another, so each of those pairs is already a run of its own
+within its grid — passing them alongside page-level controls sets numbers that are only ever compared
+against their own grid siblings, which is why the pairs still come out in order. `_weeklyAnchor` is
+passed on the general page whether or not it was added: setting `TabIndex` on a parentless control is
+harmless and keeps the call free of a conditional.
+
+Leave the outer layout panel alone — `_tabs`, `_error` and the button row take ascending indices from
+`Controls.Add` in the order `BuildLayout` adds them, which is already the order they must be reached.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -619,10 +724,15 @@ public class PageProbe
 
         foreach (TabPage page in tabs.TabPages)
         {
+            // A page that was never selected keeps stale bounds and has never painted — its children
+            // are clipped to the TabControl's design-time size until this runs.
             tabs.SelectedTab = page;
+            page.PerformLayout();
+            dialog.Refresh();
+
             using var shot = new Bitmap(dialog.Width, dialog.Height);
             dialog.DrawToBitmap(shot, new Rectangle(0, 0, dialog.Width, dialog.Height));
-            using var big = new Bitmap(shot.Width * 2, shot.Height * 2);
+            using var big = new Bitmap(shot.Width * 6, shot.Height * 6);
             using (var g = Graphics.FromImage(big))
             {
                 g.InterpolationMode = InterpolationMode.NearestNeighbor;
