@@ -384,4 +384,29 @@ public class SettingsTests : IDisposable
         Assert.Equal(40, settings.Thresholds.Orange);
         Assert.Equal(70, settings.Thresholds.Red);
     }
+
+    /// <summary>Turning Claude off is reachable from the dialog as of 2026-09-11, so the disabled
+    /// entry has to survive a save the way OpenAI's already does.</summary>
+    [Fact]
+    public void DisabledClaudeEntry_RoundTripsThroughSave()
+    {
+        var path = PathFor("claude-off.json");
+        var s = new Settings();
+        s.StatusSources["claude"] = new StatusSourceSettings
+            { Enabled = false, Notify = true, Components = ["Claude Code"] };
+        s.Save(path);
+
+        var loaded = Settings.Load(path);
+        Assert.False(loaded.StatusSources["claude"]!.Enabled);
+        Assert.Equal(["Claude Code"], loaded.StatusSources["claude"]!.Components);
+        Assert.Empty(loaded.EnabledSources());
+    }
+
+    [Fact]
+    public void MalformedClaudeEntry_DegradesToDefaultsWithoutThrowing()
+    {
+        var s = LoadJson("""{ "stalenessMinutes": 42, "statusSources": { "claude": "yes please" } }""");
+        Assert.Equal(42, s.StalenessMinutes);                                      // unrelated settings survive
+        Assert.Equal(["claude"], s.EnabledSources().Select(e => e.Source.Id));      // back to the default, on
+    }
 }

@@ -71,6 +71,11 @@ public sealed class SettingsDialog : Form
         Text = "Use beta releases (pre-release builds, may be unstable)",
         AutoSize = true,
     };
+    private readonly CheckBox _watchClaude = new()
+        { Name = "watchClaude", Text = "Watch Claude status", AutoSize = true };
+    private readonly TextBox _claudeComponents = new() { Name = "claudeComponents", Width = 240 };
+    private readonly Label _claudeComponentsCaption = new()
+        { Text = "Components (comma-separated, blank = all)", AutoSize = true };
     private readonly CheckBox _watchOpenAi = new()
         { Name = "watchOpenAi", Text = "Watch OpenAI status", AutoSize = true };
     private readonly TextBox _openAiComponents = new() { Name = "openAiComponents", Width = 240 };
@@ -175,11 +180,18 @@ public sealed class SettingsDialog : Form
                 ForeColor = SystemColors.GrayText,
             }));
         }
-        layout.Controls.Add(_watchOpenAi);
-        layout.Controls.Add(Indent(_openAiComponentsCaption));
-        layout.Controls.Add(Indent(_openAiComponents));
         layout.Controls.Add(Indent(_preview));
         layout.Controls.Add(Indent(_previewCaption));
+
+        // Both pages, each with its own watch filter. The notify checkboxes stay under
+        // Notifications, where the two of them already sit together.
+        layout.Controls.Add(Heading("Platform status"));
+        layout.Controls.Add(Indent(_watchClaude));
+        layout.Controls.Add(Indent(_claudeComponentsCaption));
+        layout.Controls.Add(Indent(_claudeComponents));
+        layout.Controls.Add(Indent(_watchOpenAi));
+        layout.Controls.Add(Indent(_openAiComponentsCaption));
+        layout.Controls.Add(Indent(_openAiComponents));
 
         layout.Controls.Add(Heading("Notifications"));
         _notifyLevel.Items.AddRange(LevelLabels);
@@ -397,8 +409,9 @@ public sealed class SettingsDialog : Form
         int order = 0;
         foreach (var control in new Control[]
                  { _modeFive, _modeSeven, _modeBoth, _startup, _orange, _red, _paceColors, _staleness,
-                   _desktopStaleness, _weeklyAnchor, _betaReleases, _watchOpenAi, _openAiComponents,
-                   _notifyUsage, _notifyLevel, _notifyClaude, _notifyOpenAi, reset, cancel, save })
+                   _desktopStaleness, _weeklyAnchor, _betaReleases, _watchClaude, _claudeComponents,
+                   _watchOpenAi, _openAiComponents, _notifyUsage, _notifyLevel, _notifyClaude,
+                   _notifyOpenAi, reset, cancel, save })
             control.TabIndex = order++;
         return row;
     }
@@ -416,6 +429,13 @@ public sealed class SettingsDialog : Form
         // Null is resolved at startup (Program.cs) against the installed channel; falling back to
         // false here only covers a dialog constructed straight from a file, as the tests do.
         _betaReleases.Checked = source.UseBetaReleases ?? false;
+        var claude = source.StatusSources.GetValueOrDefault("claude");
+        _watchClaude.Checked = claude?.Enabled ?? true;
+        _claudeComponents.Text = ComponentFilter.Format(
+            claude?.Components ?? [.. StatusSourceRegistry.Claude.DefaultComponents]);
+        _claudeComponents.Enabled = _watchClaude.Checked;
+        _notifyClaude.Checked = claude?.Notify ?? true;
+        _notifyClaude.Enabled = _watchClaude.Checked;
         var openAi = source.StatusSources.GetValueOrDefault("openai");
         _watchOpenAi.Checked = openAi?.Enabled ?? false;
         _openAiComponents.Text = ComponentFilter.Format(
@@ -424,7 +444,6 @@ public sealed class SettingsDialog : Form
         _notifyUsage.Checked = source.UsageNotifications.Enabled;
         _notifyLevel.SelectedIndex = IndexOf(source.UsageNotifications.Level);
         _notifyLevel.Enabled = _notifyUsage.Checked;
-        _notifyClaude.Checked = source.StatusSources.GetValueOrDefault("claude")?.Notify ?? true;
         _notifyOpenAi.Checked = openAi?.Notify ?? true;
         _notifyOpenAi.Enabled = _watchOpenAi.Checked;
         _weeklyAnchor.Text = source.WeeklyResetAnchor ?? "";
@@ -462,6 +481,11 @@ public sealed class SettingsDialog : Form
         _orange.ValueChanged += (_, _) => SyncRangesAndPreview();
         _red.ValueChanged += (_, _) => SyncRangesAndPreview();
         _paceColors.CheckedChanged += (_, _) => SyncRangesAndPreview();
+        _watchClaude.CheckedChanged += (_, _) =>
+        {
+            _claudeComponents.Enabled = _watchClaude.Checked;
+            _notifyClaude.Enabled = _watchClaude.Checked;   // disabled, not unchecked: the choice survives
+        };
         _watchOpenAi.CheckedChanged += (_, _) =>
         {
             _openAiComponents.Enabled = _watchOpenAi.Checked;
@@ -515,13 +539,13 @@ public sealed class SettingsDialog : Form
             Notify = _notifyOpenAi.Checked,
             Components = [.. ComponentFilter.Parse(_openAiComponents.Text)],
         };
-        // Claude has no enabled/components controls; only its notify flag is edited here.
-        var claude = draft.StatusSources.GetValueOrDefault("claude");
+        // All three fields are edited here now; the filter and the notify choice are kept even when
+        // unchecked, so turning the source back on does not lose either.
         draft.StatusSources["claude"] = new StatusSourceSettings
         {
-            Enabled = claude?.Enabled ?? true,
+            Enabled = _watchClaude.Checked,
             Notify = _notifyClaude.Checked,
-            Components = claude?.Components is null ? null : [.. claude.Components],
+            Components = [.. ComponentFilter.Parse(_claudeComponents.Text)],
         };
         // Hidden group: keep whatever the clone carries, so opening the dialog on Claude Code data
         // cannot wipe an anchor set while the desktop history was the source. Blank clears it;
