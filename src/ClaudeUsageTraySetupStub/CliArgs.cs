@@ -2,7 +2,8 @@ namespace ClaudeUsageTraySetupStub;
 
 /// <summary>What the command line asked for. <c>Ring</c> null means "not said" — interactively the
 /// wizard asks, silently it is stable for a fresh install and an error against an existing one.</summary>
-public sealed record StubOptions(Ring? Ring, bool Silent, string? Token, bool ShowVersion, bool ShowHelp);
+public sealed record StubOptions(Ring? Ring, bool Silent, string? Token, bool ShowVersion, bool ShowHelp,
+    bool TokenOnCommandLine = false);
 
 public sealed record ParseResult(StubOptions? Options, string? Error);
 
@@ -14,10 +15,14 @@ public static class CliArgs
           --ring stable|beta   Install on, or switch an existing install to, this ring.
                                Required with --silent when the app is already installed.
           --silent             No wizard; passed through to Setup.exe. Always pass --ring too.
-          --token <t>          GitHub token for the release lookup (also read from GH_TOKEN).
-                               Raises the per-IP API rate limit for fleet rollouts of --ring beta.
+          --token <t>          GitHub token for the release lookup; raises the per-IP API rate
+                               limit for fleet rollouts of --ring beta. Prefer GH_TOKEN: an
+                               argument is readable by anyone who can list processes on this
+                               machine. A fine-grained read-only token is enough.
           --version            Print this installer's version and build commit.
           --help               This text.
+
+        GH_TOKEN               The same token, off the command line. Used when --token is absent.
 
         Exit codes: 0 done or already so; Setup.exe's own code if it failed; 3001 bad arguments or
         SYSTEM context; 3002 release lookup failed; 3003 download or verification failed;
@@ -75,8 +80,12 @@ public static class CliArgs
             }
         }
 
+        // Whether the token came from the command line is the caller's business: an argument is
+        // readable in any process listing, so Program warns about it and steers to GH_TOKEN.
+        var tokenOnCommandLine = token is not null;
         if (token is null && !string.IsNullOrWhiteSpace(environmentToken)) token = environmentToken.Trim();
-        return new ParseResult(new StubOptions(ring, silent, token, showVersion, showHelp), null);
+        return new ParseResult(
+            new StubOptions(ring, silent, token, showVersion, showHelp, tokenOnCommandLine), null);
     }
 
     private static ParseResult Error(string message) => new(null, message + Environment.NewLine + Environment.NewLine + Usage);

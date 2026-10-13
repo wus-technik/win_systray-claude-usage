@@ -95,4 +95,21 @@ public class CliArgsTests
         foreach (var flag in new[] { "--ring", "--silent", "--token", "--version", "--help" })
             Assert.Contains(flag, CliArgs.Usage);
     }
+
+    [Fact]
+    public void UsageSteersToTheEnvironmentVariable() => Assert.Contains("GH_TOKEN", CliArgs.Usage);
+
+    [Fact]
+    public void TokenFromAnArgumentIsFlagged()
+    {
+        Assert.True(Ok("--token", "ghp_abc").TokenOnCommandLine);
+        Assert.True(Ok("--token=ghp_abc").TokenOnCommandLine);
+    }
+
+    [Fact]
+    public void TokenFromTheEnvironmentIsNotFlagged()
+        => Assert.False(CliArgs.Parse([], "env-token").Options!.TokenOnCommandLine);
+
+    [Fact]
+    public void NoTokenAtAllIsNotFlagged() => Assert.False(Ok().TokenOnCommandLine);
 }
