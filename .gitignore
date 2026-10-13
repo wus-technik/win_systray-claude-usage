@@ -35,3 +35,6 @@ artifacts/
 # A repo .gitignore outranks the global one, so keep the build scripts explicitly tracked.
 !build/
 !build/*.ps1
+
+# Visual brainstorming companion scratch files
+.superpowers/
