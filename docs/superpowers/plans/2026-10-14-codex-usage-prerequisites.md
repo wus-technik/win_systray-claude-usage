@@ -326,12 +326,32 @@ Lines 202 and 267 become `_usageNotifications.NoteLiveOutcome(...)`. In `Notify`
 
 - [ ] **Step 7: Update the existing tests mechanically**
 
-In `NotificationRulesUsageTests.cs`, replace all 17 `new NotificationRules()` with
-`UsageNotificationRules.ForClaude()`, and `NotificationRules.OpenPopupArgument` (line 133) with
-`NotificationTags.OpenPopupArgument`. In `NotificationRulesStatusTests.cs`, replace all 14
-`new NotificationRules()` with `new StatusNotificationRules()`, and any `NotificationRules.StatusTag(`
-with `NotificationTags.Status(`. The 92 `OnUsage(` call sites need no change — that is why the
-selector is a constructor parameter and not a method parameter.
+`NotificationRulesUsageTests.cs` references the deleted type in **five** distinct ways, not just the
+constructor. Grep `NotificationRules` in that file and fix every hit:
+
+| Line | Current | Becomes |
+|---|---|---|
+| 29 | `private static NotificationRules ArmedAt(...)` | `UsageNotificationRules` |
+| 37 | `private static NotificationRules ArmedRules()` | `UsageNotificationRules` |
+| 132 | `Assert.Equal(NotificationRules.UsageTag, first.Notification!.Tag)` | **rewrite** — see below |
+| 133 | `Assert.Equal(NotificationRules.OpenPopupArgument, ...)` | `NotificationTags.OpenPopupArgument` |
+| 283 | `Assert.Equal(at + NotificationRules.DefaultUsageToastLifetime, ...)` | `UsageNotificationRules.DefaultUsageToastLifetime` |
+| 17 sites | `new NotificationRules()` | `UsageNotificationRules.ForClaude()` |
+
+Line 132 is not a rename. `UsageTag` has no successor constant, and the *value* it asserted changes
+from `"usage"` to `"usage:claude"`. Rewrite it against the instance:
+
+```csharp
+        Assert.Equal(NotificationTags.Usage("claude"), first.Notification!.Tag);
+```
+
+In `NotificationRulesStatusTests.cs`, replace all 14 `new NotificationRules()` with
+`new StatusNotificationRules()`, and any `NotificationRules.StatusTag(` with
+`NotificationTags.Status(`. Note that file also calls `monitor.BadgeDegraded()` at line 218 — leave
+it alone here; it is Task 3's problem.
+
+The 92 `OnUsage(` call sites need no change — that is why the selector is a constructor parameter
+and not a method parameter.
 
 - [ ] **Step 8: Run the tests to verify they pass**
 
@@ -442,18 +462,39 @@ Add to `tests/ClaudeUsageTray.Tests/UsageValuesTests.cs`:
     }
 
     /// <summary>Review Focus 1: a reset further out than the period (a 31-day month against a 30-day
-    /// length) must pace as absolute-only. ElapsedFraction returns null there; the severity must
-    /// still come out of the absolute thresholds rather than a negative fraction.</summary>
+    /// length) must pace as absolute-only. ElapsedFraction returns null there, and the absolute
+    /// thresholds decide.
+    ///
+    /// The percentage has to sit *inside* the pace band for this to prove anything.
+    /// SeverityRules.ForPace opens with `if (percent > redAbove) return Severity.Red;`, so anything
+    /// above 85 is Red whatever the fraction is — a 95 % fixture would pass with the pace path
+    /// completely broken. 60 % is Orange absolutely (orangeAt 50) and would be Green if a bogus
+    /// fraction were applied, so the assertion actually discriminates.</summary>
     [Fact]
     public void Enumerate_MonthlyLimitResettingBeyondItsPeriod_PacesAbsolute()
     {
-        var limit = new ScopedLimit("Spend control", null, 95, TScoped.AddDays(31), true)
+        var limit = new ScopedLimit("Spend control", null, 60, TScoped.AddDays(31), true)
             { Period = ScopedPeriod.Monthly };
         var snapshot = new UsageSnapshot(TScoped, null, null, [limit]);
         var settings = new Settings { PaceColors = true };
 
         var value = Assert.Single(UsageValues.Enumerate(snapshot, settings, TScoped));
-        Assert.Equal(Severity.Red, value.Severity);   // 95 % is red absolutely; no pace applied
+        Assert.Equal(Severity.Orange, value.Severity);
+    }
+
+    /// <summary>The companion case: a reset inside the period does pace, so the test above is
+    /// measuring the fallback and not merely the absence of pacing everywhere.</summary>
+    [Fact]
+    public void Enumerate_MonthlyLimitResettingInsideItsPeriod_Paces()
+    {
+        // 60 % used with 29 of 30 days elapsed is ahead of pace, not behind it.
+        var limit = new ScopedLimit("Spend control", null, 60, TScoped.AddDays(1), true)
+            { Period = ScopedPeriod.Monthly };
+        var snapshot = new UsageSnapshot(TScoped, null, null, [limit]);
+
+        var value = Assert.Single(
+            UsageValues.Enumerate(snapshot, new Settings { PaceColors = true }, TScoped));
+        Assert.Equal(Severity.Green, value.Severity);
     }
 ```
 
@@ -588,9 +629,17 @@ OpenAI moves from "marks nothing" to "marks Codex", which is invisible until Cod
 - Modify: `src/ClaudeUsageTray/Core/StatusMonitor.cs:89-91`
 - Modify: `src/ClaudeUsageTray/Core/StatusDetailRows.cs:57-99`
 - Modify: `src/ClaudeUsageTray/Tray/TrayApp.cs:431-432`
-- Test: `tests/ClaudeUsageTray.Tests/StatusSourceRegistryTests.cs`
-- Test: `tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs`
-- Test: `tests/ClaudeUsageTray.Tests/StatusDetailTooltipTests.cs`
+- Test: `tests/ClaudeUsageTray.Tests/StatusSourceRegistryTests.cs:17-18` (assert the deleted
+  `RaisesBadge` — must be rewritten, not just extended)
+- Test: `tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs:129, 133, 150, 188, 201, 205, 236`
+- Test: `tests/ClaudeUsageTray.Tests/StatusDetailTooltipTests.cs:16, 70`
+- Test: `tests/ClaudeUsageTray.Tests/UsageTooltipTests.cs:52` — calls `ComposeTooltip`
+- Test: `tests/ClaudeUsageTray.Tests/NotificationRulesStatusTests.cs:218` — calls `BadgeDegraded()`
+
+The last two are easy to miss: neither file is about status sources, and both break only because the
+new parameter has no default. **Before writing any code, grep for every consumer** —
+`BadgeDegraded`, `ComposeTooltip`, `TooltipSuffix`, `RaisesBadge` — across `src` and `tests`, and
+work from that list rather than from this one.
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
@@ -652,15 +701,14 @@ Add to `tests/ClaudeUsageTray.Tests/StatusDetailTooltipTests.cs`:
     }
 ```
 
-If `StatusDetailTooltipTests` has no `View` helper, add one:
+If `StatusDetailTooltipTests` has no `View` helper, add one. `PlatformStatus` is
+`(SourceId, FetchedAt, Indicator, Description, Incidents, Components)` — note that `Degraded` is a
+computed property (`Indicator != "none"`), not a constructor argument:
 
 ```csharp
     private static SourceView View(StatusSource source, string description, DateTimeOffset now)
-        => new(source, new PlatformStatus("major", description, true, [], [], now), []);
+        => new(source, new PlatformStatus(source.Id, now, "major", description, [], []), []);
 ```
-
-Check the real `PlatformStatus` constructor order in `src/ClaudeUsageTray/Core/PlatformStatus.cs`
-before writing this helper, and match the existing helpers in that test file if there are any.
 
 Add to `tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs`:
 
@@ -670,17 +718,21 @@ Add to `tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs`:
     [Fact]
     public void BadgeDegraded_IsScopedToTheProviderAsked()
     {
+        var now = new DateTimeOffset(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
         var monitor = new StatusMonitor([(StatusSourceRegistry.OpenAi, [])]);
-        monitor.Apply(StatusSourceRegistry.OpenAi.Id, Degraded(), Now);
+        monitor.TakeDue(now);   // Accept is only honoured for a source that is in flight
+        monitor.Accept(StatusSourceRegistry.OpenAi.Id,
+            new PlatformStatus(StatusSourceRegistry.OpenAi.Id, now, "major", "Elevated errors", [], []),
+            now);
 
         Assert.True(monitor.BadgeDegraded(UsageProvider.Codex));
         Assert.False(monitor.BadgeDegraded(UsageProvider.Claude));
     }
 ```
 
-Match the existing construction and `Apply` helpers in `StatusMonitorTests` rather than these
-placeholder names — read the file first and reuse whatever it already uses to inject a degraded
-payload.
+The injection method is `Accept(string sourceId, PlatformStatus? result, DateTimeOffset now)`, not
+`Apply` — and `StatusMonitorTests` already has helpers for the `TakeDue`-then-`Accept` dance. Reuse
+them if they fit rather than repeating the two calls.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -806,8 +858,14 @@ Expected: PASS
 - [ ] **Step 7: Run the whole suite for regressions**
 
 Run: `dotnet test`
-Expected: PASS. Existing tooltip tests that assert Claude's suffix survives must pass unchanged when
-the target is Claude.
+Expected: PASS — but **not unchanged**. Every existing caller of the four scoped methods needs
+`UsageProvider.Claude` threaded through, because the new parameter has no default; and
+`StatusSourceRegistryTests.cs:17-18` has to be rewritten, because `RaisesBadge` no longer exists.
+The behavioural assertions stay as they are: a Claude-targeted tooltip must still reserve Claude's
+suffix and drop OpenAI's, exactly as before.
+
+A default value on `target` would have avoided the churn and is deliberately not used: it would let
+a future call site silently ask the Claude question about a Codex icon.
 
 - [ ] **Step 8: Commit**
 
@@ -916,8 +974,8 @@ introducing a second style.
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
-Expected: FAIL — `Assert.Null(loaded.StatusSources["openai"]!.Enabled)` cannot compile against a
-non-nullable `bool`, or fails because normalization wrote `false`.
+Expected: FAIL at runtime, not at compile time — `Assert.Null` takes `object?`, so a non-nullable
+`bool` boxes happily and the assertion simply fails on the boxed `false` that normalization wrote.
 
 - [ ] **Step 3: Make `Enabled` nullable**
 
@@ -955,6 +1013,13 @@ it had:
                 };
 ```
 
+Expect a visible file-format change: `TolerantStatusSourcesConverter.Write` serializes the entry with
+options that set no `DefaultIgnoreCondition`, so an undecided source is written as an explicit
+`"enabled": null` rather than omitted. It round-trips correctly, and leaving it visible is arguably
+better than hiding it — but it will appear in `settings.json` and should not be a surprise. If you
+prefer the key omitted, add `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` to the
+property and add a test for the omission.
+
 - [ ] **Step 5: Resolve null where the answer is needed**
 
 ```csharp
@@ -982,9 +1047,44 @@ it had:
         _watchOpenAi.Checked = openAi?.Enabled ?? StatusSourceRegistry.OpenAi.EnabledByDefault;
 ```
 
-The dialog's save path writes an explicit `true`/`false` and must keep doing so: the user saw the
-checkbox and pressed OK, which is a decision. Find where the dialog assigns `Enabled` back onto the
-settings object and leave it writing a plain bool.
+**The dialog's save path needs a change, not just a read fix.** `SettingsDialog.cs:727-732` writes
+`Enabled = _watchOpenAi.Checked` on *every* OK press, whether or not the user touched that checkbox.
+Left alone, the first OK on any settings page hardens the default into an explicit `false` —
+reintroducing exactly the bug this task removes, just at a different moment.
+
+Remember the loaded value and write it back unchanged when the checkbox still agrees with it:
+
+```csharp
+    // Null means "never decided", and pressing OK on an unrelated page must not decide it. Only a
+    // checkbox the user actually moved is an answer.
+    private bool? _loadedOpenAiEnabled;
+    private bool? _loadedClaudeEnabled;
+```
+
+```csharp
+        // in the load path, beside lines 617 and 625
+        _loadedClaudeEnabled = claude?.Enabled;
+        _loadedOpenAiEnabled = openAi?.Enabled;
+```
+
+```csharp
+        // in the save path, replacing Enabled = _watchOpenAi.Checked
+        Enabled = Decided(_loadedOpenAiEnabled, _watchOpenAi.Checked, StatusSourceRegistry.OpenAi),
+```
+
+```csharp
+    /// <summary>The value to persist for a watch checkbox. An undecided source stays undecided while
+    /// the box still shows what the registry default resolved to; moving the box is a decision and is
+    /// written explicitly.</summary>
+    private static bool? Decided(bool? loaded, bool shown, StatusSource source)
+        => loaded is not null ? shown
+           : shown == source.EnabledByDefault ? null
+           : shown;
+```
+
+Apply the same to the Claude source at lines 735-740. Add a test to `SettingsDialogTests` that opens
+the dialog, presses OK without touching anything, and asserts the OpenAI entry's `Enabled` is still
+null.
 
 - [ ] **Step 7: Run the tests to verify they pass**
 
@@ -1080,8 +1180,9 @@ Add to `tests/ClaudeUsageTray.Tests/IconRendererTests.cs`:
         using var icon = IconRenderer.RenderNeutral(32, warning: false, shape: shape);
         using var bmp = icon.ToBitmap();
 
-        bool corner = bmp.GetPixel(1, 1).A > 0;
-        Assert.Equal(shape == BadgeShape.RoundedSquare, corner);
+        // Same probe as the shape-comparison test, and for the same reason: see the note below.
+        bool covered = bmp.GetPixel(4, 4).A > 0;
+        Assert.Equal(shape == BadgeShape.RoundedSquare, covered);
     }
 
     /// <summary>The warning badge rides over a rounded square as it does over a disc, and is never
@@ -1097,9 +1198,19 @@ Add to `tests/ClaudeUsageTray.Tests/IconRendererTests.cs`:
     }
 ```
 
-The `probe = 4` offset and the corner-pixel indices are starting points, not facts: the corner radius
-is chosen in Step 3 and these samples must be tuned to it. If a probe sits on the rounded edge's
-antialiasing, move it inward by a pixel rather than loosening the assertion.
+**The probe at `(4, 4)` is load-bearing, and the valid band is narrow.** With `size = 32`,
+`rect = (0.5, 0.5, 31, 31)` and the corner radius from Step 3 (`31 × 0.22 ≈ 6.82`), the top-left
+arc's centre is `(7.32, 7.32)`, so along the diagonal the rounded square's edge sits at about
+`(2.5, 2.5)` and the disc's at about `(5.04, 5.04)`. Only pixels **3 and 4** are inside one shape and
+outside the other:
+
+- `(1, 1)` is outside *both* — an earlier draft of this plan probed there, and the
+  rounded-square assertion would have failed.
+- `(6, 6)` and beyond are inside *both*, so the comparison says nothing.
+
+If a probe lands on antialiasing, move it within 3–4 or compare alpha with a tolerance. Do not widen
+the assertion to `>= 0`, and do not change the corner radius to make a probe work — if you change
+the radius for the reason in Step 6, recompute this band first.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1174,11 +1285,14 @@ In `Draw`, replace the three ellipse calls with a path, and clip the wedge to it
             {
                 float sweep = 360f * percent / 100f;
                 if (!clockwise) sweep = -sweep;
-                var clip = g.Clip;
+                // Save/Restore rather than stashing g.Clip: the Clip property returns a *new* Region
+                // on every read, and this runs for up to four icons on every Render — the handles
+                // would accumulate for as long as the tray is open.
+                var state = g.Save();
                 g.SetClip(path);
                 using (var fill = new SolidBrush(color))
                     g.FillPie(fill, rect.X, rect.Y, rect.Width, rect.Height, -90f, sweep);
-                g.Clip = clip;
+                g.Restore(state);
             }
 
             using (var rim = new Pen(color, 1f))
@@ -1258,7 +1372,14 @@ rows make an unbounded height a real case rather than a theoretical one.
 
 **Interfaces:**
 - Consumes: `ScopedLimit.Period` from Task 2 (only to build test fixtures; any limit works).
-- Produces: no new public API. `UsagePopup` gains a scroll host internally.
+- Produces: `UsagePopup(..., int? maxHeight = null)` — the cap as an injectable seam, defaulting to
+  90 % of the working area. The scroll host is named `"scrollHost"` so a test can find it.
+
+The cap **must** be injectable. The obvious test — "build a popup with many rows and assert it fits
+the screen" — is not a test: a dozen scoped rows come to roughly 650 px (a caption at ~19 px plus a
+12 px bar plus margins, ~43 px per row), so on any ordinary display the clamp never engages, the
+overflow assertion passes before the change and proves nothing, and the scrolling assertion fails
+after it. Passing the cap in makes both deterministic and independent of the machine's resolution.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1271,115 +1392,163 @@ using Xunit;
 
 namespace ClaudeUsageTray.Tests;
 
-/// <summary>Review Focus 5: more rows than the screen is tall. CreateControl, never Show —
-/// UsagePopup.OnDeactivate calls Close, and with no message loop Show disposes the form mid-test.</summary>
+/// <summary>Review Focus 5: more rows than there is room for. CreateControl, never Show —
+/// UsagePopup.OnDeactivate calls Close, and with no message loop Show disposes the form mid-test.
+/// The cap is injected rather than taken from the screen, so these assertions mean the same thing on
+/// a 1080p laptop and a 4K monitor.</summary>
 public class UsagePopupHeightTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
 
-    private static UsageSnapshot Crowded()
+    private static DisplayChoice Crowded()
     {
         var scoped = Enumerable.Range(0, 12)
             .Select(i => new ScopedLimit($"Limit {i}", null, 50 + i, Now.AddDays(2), IsActive: true))
             .ToList();
-        return new UsageSnapshot(Now, new WindowUsage(42, Now.AddHours(3)),
-            new WindowUsage(21, Now.AddDays(4)), scoped);
+        return new(new UsageSnapshot(Now, new WindowUsage(42, Now.AddHours(3)),
+            new WindowUsage(21, Now.AddDays(4)), scoped), Stale: false);
+    }
+
+    private static DisplayChoice Small()
+        => new(new UsageSnapshot(Now, new WindowUsage(42, Now.AddHours(3)),
+            new WindowUsage(21, Now.AddDays(4))), Stale: false);
+
+    private static Panel Host(UsagePopup popup)
+        => popup.Controls.Find("scrollHost", searchAllChildren: true).OfType<Panel>().Single();
+
+    /// <summary>The actual size, not PreferredSize: Form.PreferredSize is GetPreferredSize(Empty)
+    /// and ignores the clamp entirely, so asserting on it would pass whatever the clamp did.</summary>
+    [Fact]
+    public void Popup_OverTheCap_ClampsItsHeight()
+    {
+        using var popup = new UsagePopup(Crowded(), new Settings(), Now, maxHeight: 200);
+        popup.CreateControl();
+
+        Assert.True(popup.Height <= 200, $"popup is {popup.Height} px, cap was 200 px");
     }
 
     [Fact]
-    public void Popup_WithMoreRowsThanTheScreen_StaysWithinTheWorkingArea()
+    public void Popup_OverTheCap_Scrolls()
     {
-        using var popup = new UsagePopup(new DisplayChoice(Crowded(), Stale: false), new Settings(), Now);
+        using var popup = new UsagePopup(Crowded(), new Settings(), Now, maxHeight: 200);
         popup.CreateControl();
 
-        int allowed = Screen.PrimaryScreen!.WorkingArea.Height;
-        Assert.True(popup.PreferredSize.Height <= allowed,
-            $"popup wants {popup.PreferredSize.Height} px, working area is {allowed} px");
+        var host = Host(popup);
+        Assert.True(host.AutoScroll);
+        Assert.True(host.AutoScrollMinSize.Height > host.ClientSize.Height
+                    || host.VerticalScroll.Visible,
+            $"content {host.AutoScrollMinSize.Height} px must exceed viewport {host.ClientSize.Height} px");
     }
 
+    /// <summary>Under the cap nothing changes: no scrollbar, no reserved gutter, and the form still
+    /// sizes itself to its content. The common case is two windows and it looked right before.</summary>
     [Fact]
-    public void Popup_WithMoreRowsThanTheScreen_ScrollsRatherThanClips()
+    public void Popup_UnderTheCap_DoesNotScroll()
     {
-        using var popup = new UsagePopup(new DisplayChoice(Crowded(), Stale: false), new Settings(), Now);
+        using var popup = new UsagePopup(Small(), new Settings(), Now, maxHeight: 2000);
         popup.CreateControl();
 
-        var host = popup.Controls.OfType<Panel>().Single(p => p.AutoScroll);
-        Assert.True(host.VerticalScroll.Visible || host.PreferredSize.Height > host.ClientSize.Height,
-            "a popup taller than its host must be scrollable");
+        Assert.False(Host(popup).AutoScroll);
+        Assert.True(popup.Height < 2000);
     }
 
-    /// <summary>A short popup must not grow a scrollbar or a reserved gutter: the common case is two
-    /// windows and nothing else, and it looked right before this change.</summary>
+    /// <summary>And the clamp engages off the real screen when no cap is passed, which is how the app
+    /// calls it.</summary>
     [Fact]
-    public void Popup_WithTwoWindows_DoesNotScroll()
+    public void Popup_WithNoCap_StaysWithinTheWorkingArea()
     {
-        var snapshot = new UsageSnapshot(Now, new WindowUsage(42, Now.AddHours(3)),
-            new WindowUsage(21, Now.AddDays(4)));
-        using var popup = new UsagePopup(new DisplayChoice(snapshot, Stale: false), new Settings(), Now);
+        using var popup = new UsagePopup(Crowded(), new Settings(), Now);
         popup.CreateControl();
 
-        var host = popup.Controls.OfType<Panel>().Single(p => p.AutoScroll);
-        Assert.False(host.VerticalScroll.Visible);
+        Assert.True(popup.Height <= Screen.PrimaryScreen!.WorkingArea.Height);
     }
 }
 ```
 
-`12` scoped limits is chosen to overflow a 1080-px working area with certainty; if the suite runs on a
-4K display where it does not, raise the count rather than lowering the bar.
-
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopupHeightTests`
-Expected: FAIL — no `Panel` with `AutoScroll` exists, so `Single` throws; the height assertion fails
-as well.
+Expected: FAIL — the constructor has no `maxHeight` parameter (CS1739), and there is no control named
+`scrollHost`.
 
 - [ ] **Step 3: Host the layout in a scrollable panel**
 
-In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, the constructor currently ends with
-`Controls.Add(layout); PositionNearCursor();`. Insert a host between the form and the layout:
+Two WinForms traps to design around, both of which an earlier draft of this plan fell into:
+
+1. **`AutoScroll` and `AutoSize` on the same panel defeat each other.** A panel that grows to fit its
+   content never has content to scroll. So the host starts with `AutoScroll = false` and only turns it
+   on when the clamp engages.
+2. **A `Dock = Fill` child is sized *to* the viewport,** so `AutoScrollMinSize` stays at the client
+   size and no scrollbar ever appears. `layout` is created with `Dock = DockStyle.Fill`
+   (`UsagePopup.cs:27`); when the clamp engages, that has to be undone so the layout reports its own
+   preferred height.
+
+In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, take the cap in the constructor and insert a host
+between the form and the layout, replacing `Controls.Add(layout); PositionNearCursor();`:
+
+```csharp
+    public UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now,
+        IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null,
+        string? noDataText = null, int? maxHeight = null)
+```
 
 ```csharp
         // The row count is not bounded: PopupRows.Cap bounds only inactive scoped limits, and every
-        // active one renders past it on purpose. With a second provider's rows in the same popup an
+        // active one renders past it on purpose ("the cap must never be the reason the limit actually
+        // throttling the user is invisible"). With a second provider's rows in the same popup an
         // unbounded AutoSize form can exceed the screen, and PositionNearCursor clamps position but
-        // not size — so the height is capped here and the overflow scrolls.
+        // not size. AutoScroll stays off until the clamp engages: a panel that grows to fit its
+        // content has nothing to scroll.
         var host = new Panel
         {
-            AutoScroll = true,
+            Name = "scrollHost",
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            AutoScroll = false,
             Dock = DockStyle.Fill,
-            Padding = new Padding(0),
         };
         host.Controls.Add(layout);
         Controls.Add(host);
 
-        ClampHeight(host);
+        ClampHeight(host, layout, maxHeight);
         PositionNearCursor();
 ```
 
 and add:
 
 ```csharp
-    /// <summary>Caps the form at most of the working area of the screen the cursor is on, letting the
-    /// host scroll beyond that. Measured rather than guessed, for the same reason
-    /// PositionNearCursor measures: large system fonts and high DPI defeat any hardcoded estimate.</summary>
-    private void ClampHeight(Panel host)
+    /// <summary>Caps the form's height, letting the host scroll past the cap. Default is 90 % of the
+    /// working area of the screen the cursor is on — measured rather than guessed, for the same
+    /// reason PositionNearCursor measures: large system fonts and high DPI defeat any hardcoded
+    /// estimate. The cap is injectable so a test can exercise the overflow path without depending on
+    /// the machine's resolution.</summary>
+    private void ClampHeight(Panel host, TableLayoutPanel layout, int? maxHeight)
     {
         PerformLayout();
-        var area = Screen.FromPoint(Cursor.Position).WorkingArea;
-        int max = (int)(area.Height * 0.9);
+        int max = maxHeight ?? (int)(Screen.FromPoint(Cursor.Position).WorkingArea.Height * 0.9);
         if (PreferredSize.Height <= max) return;
+
+        // Undock the layout before enabling AutoScroll: a Fill-docked child is sized to the viewport,
+        // so the host would clip the overflow instead of scrolling it.
+        layout.Dock = DockStyle.None;
+        layout.Location = Point.Empty;
+
+        host.AutoSize = false;
+        host.AutoScroll = true;
 
         AutoSize = false;
         Height = max;
-        host.AutoSize = false;
-        host.Dock = DockStyle.Fill;
     }
 ```
 
-`PositionNearCursor` needs no change: it reads `PreferredSize`, which now reflects the clamp. Verify
-that — if it still reports the unclamped height, switch it to `Size` once `AutoSize` is off.
+`PositionNearCursor` reads `PreferredSize`, which is `GetPreferredSize(Size.Empty)` and is **not**
+affected by `AutoSize = false` — so once the clamp engages it would reposition against the unclamped
+height and push the popup off-screen. Change it to measure the real size:
+
+```csharp
+        PerformLayout();
+        var size = AutoSize ? PreferredSize : Size;
+```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1416,7 +1585,11 @@ of the screen the cursor is on."
 
 ## Done when
 
-- `dotnet test` passes with no changes to any existing assertion.
+- `dotnet test` passes. Two existing assertions are *expected* to change, and only these two:
+  `NotificationRulesUsageTests.cs:132` (the toast tag's value becomes `usage:claude`) and
+  `StatusSourceRegistryTests.cs:17-18` (`RaisesBadge` is replaced by `RaisesBadgeFor`). Every other
+  existing assertion must still hold verbatim; call sites may gain a `UsageProvider.Claude` argument,
+  but no behavioural expectation changes.
 - A Claude-only user sees the same icons, the same popup, the same toasts and the same settings.
 - `UsageNotificationRules` can be instantiated a second time with a different settings selector and a
   different Action Center slot, and nothing it touches is Claude-specific.

@@ -491,16 +491,43 @@ public class CodexUsageJsonTests
     public void Parse_NeverProducesACreditsRow()
         => Assert.Null(CodexUsageJson.Parse(Full, Now)!.Credits);
 
-    /// <summary>Review Focus 2: absent blocks yield no rows, not zero rows.</summary>
+    /// <summary>Review Focus 2: absent blocks yield no rows, not zero rows — and a payload with no
+    /// usable figure anywhere is not a snapshot at all. Adopting an empty one would reset the
+    /// freshness clock and flip CodexAvailability to Available with nothing to show.</summary>
     [Fact]
-    public void Parse_WithNoRateLimit_HasNoWindows()
+    public void Parse_WithNoRateLimit_IsNull()
+        => Assert.Null(CodexUsageJson.Parse("""{ "rate_limit": null, "plan_type": "team" }""", Now));
+
+    /// <summary>One usable window is enough to be a snapshot; the other absent block yields no row
+    /// rather than a zero row. This is the case that pins "absent means no row" — the all-absent
+    /// case above pins "no reading at all".</summary>
+    [Fact]
+    public void Parse_WithOnlyOneWindow_IsASnapshotWithOneRow()
     {
-        var snapshot = CodexUsageJson.Parse("""{ "rate_limit": null, "plan_type": "team" }""", Now);
+        var snapshot = CodexUsageJson.Parse("""
+            { "rate_limit": { "primary_window": { "used_percent": 7, "reset_at": 1791932468 } } }
+            """, Now);
 
         Assert.NotNull(snapshot);
-        Assert.Null(snapshot!.FiveHour);
+        Assert.Equal(7, snapshot!.FiveHour!.Percent);
         Assert.Null(snapshot.SevenDay);
         Assert.Empty(snapshot.ScopedLimits);
+    }
+
+    /// <summary>A reset_at outside DateTimeOffset's range must degrade, not throw:
+    /// FromUnixTimeSeconds raises ArgumentOutOfRangeException, and a read path that throws takes the
+    /// tray down.</summary>
+    [Theory]
+    [InlineData(long.MaxValue)]
+    [InlineData(long.MinValue)]
+    public void Parse_WithAnImpossibleReset_KeepsThePercentageAndDropsTheReset(long seconds)
+    {
+        var snapshot = CodexUsageJson.Parse($$"""
+            { "rate_limit": { "primary_window": { "used_percent": 12, "reset_at": {{seconds}} } } }
+            """, Now);
+
+        Assert.Equal(12, snapshot!.FiveHour!.Percent);
+        Assert.Null(snapshot.FiveHour.ResetsAt);
     }
 
     [Fact]
@@ -664,13 +691,19 @@ public static class CodexUsageJson
             IsActive: true) { Period = ScopedPeriod.Monthly }];
     }
 
-    /// <summary>reset_at is unix seconds, unlike the Claude payload's ISO-8601 strings.</summary>
+    /// <summary>reset_at is unix seconds, unlike the Claude payload's ISO-8601 strings. TryGetInt64
+    /// succeeds for any 64-bit integer, but FromUnixTimeSeconds throws outside roughly ±62 billion
+    /// seconds — so an absurd value drops the reset and keeps the percentage, rather than taking the
+    /// read path down.</summary>
     private static DateTimeOffset? ReadReset(JsonElement element)
-        => element.TryGetProperty("reset_at", out var reset)
-           && reset.ValueKind == JsonValueKind.Number
-           && reset.TryGetInt64(out var seconds)
-            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
-            : null;
+    {
+        if (!element.TryGetProperty("reset_at", out var reset)
+            || reset.ValueKind != JsonValueKind.Number
+            || !reset.TryGetInt64(out var seconds)) return null;
+
+        try { return DateTimeOffset.FromUnixTimeSeconds(seconds); }
+        catch (ArgumentOutOfRangeException) { return null; }
+    }
 }
 ```
 
@@ -847,6 +880,29 @@ public class CodexUsageApiClientTests
 
         Assert.Null(result.Snapshot);
     }
+
+    /// <summary>auth.json is third-party input. A control character in the account id would make
+    /// HttpHeaders.Add throw FormatException — the header is dropped instead, because an unusable
+    /// account id should cost the header, not the whole fetch.</summary>
+    [Fact]
+    public void Fetch_WithAnIllegalAccountId_SendsTheRequestWithoutTheHeader()
+    {
+        var (result, handler) = Fetch(_ => Json(HttpStatusCode.OK, Ok),
+            auth: new CodexAuth("dummy.token.value", "bad\nvalue", Now.AddDays(1)));
+
+        Assert.False(handler.LastRequest!.Headers.Contains("ChatGPT-Account-Id"));
+        Assert.NotNull(result.Snapshot);
+    }
+
+    /// <summary>And an unusable token fails the fetch rather than throwing out of it.</summary>
+    [Fact]
+    public void Fetch_WithAnIllegalToken_NeverThrows()
+    {
+        var (result, _) = Fetch(_ => Json(HttpStatusCode.OK, Ok),
+            auth: new CodexAuth("bad\ntoken", null, Now.AddDays(1)));
+
+        Assert.Null(result.Snapshot);
+    }
 }
 ```
 
@@ -884,8 +940,11 @@ public static class CodexUsageApiClient
             using var request = new HttpRequestMessage(HttpMethod.Get, EndpointUrl);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
             // Omitted rather than sent empty when absent: the endpoint resolves the account from the
-            // token, and a blank header is a worse request than none.
-            if (!string.IsNullOrEmpty(auth.AccountId))
+            // token, and a blank header is a worse request than none. Also omitted when the value
+            // would not be a legal header: auth.json is third-party input, and
+            // HttpHeaders.Add throws FormatException on a control character — a throw this method
+            // promises never to make.
+            if (HeaderSafe(auth.AccountId))
                 request.Headers.Add("ChatGPT-Account-Id", auth.AccountId);
             request.Headers.Accept.ParseAdd("application/json");
             request.Headers.UserAgent.ParseAdd(UserAgent);
@@ -906,13 +965,23 @@ public static class CodexUsageApiClient
             return new UsageFetchResult(CodexUsageJson.Parse(body, now), false, false, null);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException
-            or OperationCanceledException or JsonException)
+            or OperationCanceledException or JsonException or FormatException or ArgumentException)
         {
+            // FormatException/ArgumentException: AuthenticationHeaderValue and Headers.Add reject
+            // values with control characters, and the token comes from a file this app does not own.
             return new UsageFetchResult(null, false, false, null);
         }
     }
+
+    /// <summary>Whether a value can legally be a header. Checked rather than caught where it is
+    /// cheap to check: an unusable account id should mean "send the request without the header",
+    /// not "fail the fetch".</summary>
+    private static bool HeaderSafe(string? value)
+        => !string.IsNullOrEmpty(value) && !value.Any(c => char.IsControl(c));
 }
 ```
+
+Add `using System.Linq;` for `Any`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1165,6 +1234,26 @@ In `src/ClaudeUsageTray/Core/Settings.cs`, next to `DisplayMode` and `UsageNotif
 
 Match how `UsageNotifications` declares its converter — if it is applied on the property, do the
 same; if it is registered in the serializer options, register this one there too.
+
+**Both new keys must be normalized, or a legal settings file crashes `Render()`.** `NormalizeFields`
+guards the Claude block at `Settings.cs:238-239`, and that guard is not decorative: for a
+reference-typed property, `System.Text.Json` assigns `null` for a JSON `null` *without* invoking the
+tolerant converter. So `"codexNotifications": null` survives `Load` as a null, and Task 9's selector
+`s => s.CodexNotifications` dereferences it inside `UsageNotificationRules.OnUsage` — a
+`NullReferenceException` raised from a read path, which the invariants forbid. Add beside the
+existing guard:
+
+```csharp
+        CodexNotifications ??= new UsageNotificationSettings();
+        if (!Enum.IsDefined(CodexNotifications.Level)) CodexNotifications.Level = NotifyLevel.Red;
+        if (!Enum.IsDefined(CodexDisplayMode)) CodexDisplayMode = DisplayMode.Both;
+```
+
+The `CodexDisplayMode` line matters for a different reason: an out-of-range *number* would otherwise
+survive, and an unparseable *string* throws `JsonException`, which `Settings.Load` answers with full
+defaults — resetting thresholds and the Claude display mode because of a typo in a Codex key. Add a
+test for `"codexNotifications": null` and one for a bad `codexDisplayMode`, both asserting the
+unrelated settings survive.
 
 - [ ] **Step 4: Retire the test placeholder**
 
@@ -1709,28 +1798,43 @@ ghost icon left in the tray after exit.
 
 - [ ] **Step 5: Give `Apply` a shape and a provider**
 
-`Apply` currently hardcodes the disc and takes Claude's degraded flag. Extend its signature and pass
-both through:
+`Apply` currently hardcodes the disc, takes Claude's degraded flag, reads the Claude-specific
+`_noDataText` field directly (`TrayApp.cs:381-383`), and calls `WithStatus(text, now)` at two sites
+(`TrayApp.cs:383` and `:395`). Prerequisites Task 3 made `WithStatus` require a provider, so all four
+of those have to change together. The full replacement:
 
 ```csharp
     private void Apply(NotifyIcon icon, char digit, DisplayChoice choice, WindowUsage? usage, string label,
         TimeSpan period, bool clockwise, bool degraded, DateTimeOffset now,
-        UsageProvider provider, BadgeShape shape)
-```
+        UsageProvider provider, BadgeShape shape, string noDataFallback)
+    {
+        int size = IconRenderer.SystemTrayIconSize();
+        var old = icon.Icon;
 
-Inside it, the two render calls take the shape, and `WithStatus` takes the provider:
-
-```csharp
+        if (usage is null)
+        {
             icon.Icon = IconRenderer.RenderNeutral(size, warning: degraded, shape: shape);
-```
-```csharp
+            // A snapshot can exist and still be missing just this window -- that is a per-window
+            // gap, not the general no-data sentence. The general sentence is the caller's, because
+            // Claude's reason ("no credentials file") is not Codex's.
+            string noDataText = choice.Snapshot is not null ? $"{label}: no data" : noDataFallback;
+            icon.Text = WithStatus(noDataText, now, provider);
+        }
+        else
+        {
+            var elapsed = TimeMarker.ElapsedFraction(ResetPresentation.EffectiveResetsAt(usage, now), period, now);
+            var severity = UsageValues.WindowSeverity(usage, period, _settings, now);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
                 dimmed: choice.Stale, size, warning: degraded, shape: shape);
+            var tooltip = UsageTooltip.Build(label, usage, elapsed, _settings.PaceColors,
+                _settings.Thresholds.Red, choice.Stale, choice.Snapshot?.Source, choice.Snapshot?.FetchedAt, now);
+            icon.Text = WithStatus(tooltip, now, provider);
+        }
+        old?.Dispose();
+    }
 ```
 
-The no-data sentence must not claim Claude's reason for Codex: `_noDataText` is the Claude-specific
-explanation, so for Codex use `_codexFetchStatus`. Pass the fallback text in rather than branching on
-the provider inside `Apply`.
+Keep the existing doc comments on the branches; only the marked lines change.
 
 Then in `Render`:
 
@@ -1739,23 +1843,25 @@ Then in `Render`:
         bool claudeDegraded = _statusMonitor.BadgeDegraded(UsageProvider.Claude);
         bool codexDegraded = _statusMonitor.BadgeDegraded(UsageProvider.Codex);
 
+        string claudeNoData = _noDataText ?? NoDataReason.Default;
+
         if (_iconFive is not null)
             Apply(_iconFive, '5', choice, choice.Snapshot?.FiveHour, "5h", UsageValues.FiveHourPeriod,
-                clockwise: true, claudeDegraded, now, UsageProvider.Claude, BadgeShape.Disc);
+                clockwise: true, claudeDegraded, now, UsageProvider.Claude, BadgeShape.Disc, claudeNoData);
         if (_iconSeven is not null)
             Apply(_iconSeven, '7', choice, choice.Snapshot?.SevenDay, "7d", UsageValues.SevenDayPeriod,
-                clockwise: false, claudeDegraded, now, UsageProvider.Claude, BadgeShape.Disc);
+                clockwise: false, claudeDegraded, now, UsageProvider.Claude, BadgeShape.Disc, claudeNoData);
 
         // Codex tooltips are prefixed, because four badges in a tray need to say which account they
         // are about — and they carry OpenAI's outage suffix, never Claude's.
         if (_codexIconFive is not null)
             Apply(_codexIconFive, '5', codexChoice, codexChoice.Snapshot?.FiveHour, "Codex 5h",
                 UsageValues.FiveHourPeriod, clockwise: true, codexDegraded, now,
-                UsageProvider.Codex, BadgeShape.RoundedSquare);
+                UsageProvider.Codex, BadgeShape.RoundedSquare, _codexFetchStatus);
         if (_codexIconSeven is not null)
             Apply(_codexIconSeven, '7', codexChoice, codexChoice.Snapshot?.SevenDay, "Codex 7d",
                 UsageValues.SevenDayPeriod, clockwise: false, codexDegraded, now,
-                UsageProvider.Codex, BadgeShape.RoundedSquare);
+                UsageProvider.Codex, BadgeShape.RoundedSquare, _codexFetchStatus);
 ```
 
 - [ ] **Step 6: Run the tests to verify they pass**
@@ -1791,9 +1897,14 @@ outage marker and tooltip suffix, never Claude's."
 
 **Interfaces:**
 - Consumes: `CodexDisplay.Choose` (Task 4).
-- Produces: `UsagePopup(DisplayChoice claude, Settings, DateTimeOffset, IReadOnlyList<SourceView>?,
-  string?, string?, DisplayChoice? codex = null, string? codexFetchStatus = null)` — the Codex
-  parameters optional and last, so existing construction sites and tests are untouched.
+- Produces: `UsagePopup(DisplayChoice claude, Settings, DateTimeOffset, IReadOnlyList<SourceView>?
+  statusSources = null, string? lastFetchStatus = null, string? noDataText = null,
+  DisplayChoice? codex = null, string? codexFetchStatus = null, int? maxHeight = null)`.
+
+**Parameter order matters here.** Prerequisites Task 6 added `maxHeight` as the last parameter; the
+two Codex parameters go *before* it, so that `UsagePopupHeightTests`' existing
+`maxHeight: 200` named arguments keep working and nothing is passed positionally into the wrong slot.
+Every new argument stays optional, so existing construction sites and tests are untouched.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1849,7 +1960,7 @@ public class UsagePopupCodexTests
     [Fact]
     public void WithCodex_ShowsBothSectionsWithHeaders()
     {
-        using var popup = new UsagePopup(Claude(), new Settings(), Now, null, null, null, Codex(), "live");
+        using var popup = new UsagePopup(Claude(), new Settings(), Now, codex: Codex(), codexFetchStatus: "live");
         popup.CreateControl();
 
         var captions = Captions(popup).ToList();
@@ -1861,7 +1972,7 @@ public class UsagePopupCodexTests
     [Fact]
     public void WithCodex_ShowsTheSpendControlRowAsMonthly()
     {
-        using var popup = new UsagePopup(Claude(), new Settings(), Now, null, null, null, Codex(), "live");
+        using var popup = new UsagePopup(Claude(), new Settings(), Now, codex: Codex(), codexFetchStatus: "live");
         popup.CreateControl();
 
         Assert.Contains(Captions(popup), c => c.Contains("Spend control monthly") && c.Contains("111%"));
@@ -1873,7 +1984,7 @@ public class UsagePopupCodexTests
     public void WithCodex_EachSectionHasItsOwnUpdatedLine()
     {
         var staleCodex = new DisplayChoice(Codex().Snapshot, Stale: true);
-        using var popup = new UsagePopup(Claude(), new Settings(), Now, null, null, null, staleCodex, "live");
+        using var popup = new UsagePopup(Claude(), new Settings(), Now, codex: staleCodex, codexFetchStatus: "live");
         popup.CreateControl();
 
         var captions = Captions(popup).ToList();
@@ -1886,7 +1997,7 @@ public class UsagePopupCodexTests
     [Fact]
     public void WithCodex_NoCreditsRow()
     {
-        using var popup = new UsagePopup(Claude(), new Settings(), Now, null, null, null, Codex(), "live");
+        using var popup = new UsagePopup(Claude(), new Settings(), Now, codex: Codex(), codexFetchStatus: "live");
         popup.CreateControl();
 
         Assert.DoesNotContain(Captions(popup), c => c.StartsWith("Credits"));
@@ -1945,7 +2056,8 @@ lifted into methods — keep their current styling exactly, including the `"+N m
 ```csharp
     public UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now,
         IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null,
-        string? noDataText = null, DisplayChoice? codex = null, string? codexFetchStatus = null)
+        string? noDataText = null, DisplayChoice? codex = null, string? codexFetchStatus = null,
+        int? maxHeight = null)
     {
         // ... form setup and layout creation unchanged ...
 
