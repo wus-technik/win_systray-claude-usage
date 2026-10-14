@@ -147,10 +147,15 @@ side-effect-free.
 Reused by instantiation: a second `FetchScheduler`. `NotificationRules` is **not** reusable by
 instantiation as it stands — see Notifications.
 
-`UsageSource` gains a `Codex` member, needed by `LogSourceChange` (`TrayApp.cs:418-426`), whose
-`else` branch currently hardcodes `"source: claude code"` and would otherwise mislabel Codex data.
-(An earlier draft justified the member by `NotificationRules`' rebaseline-on-source-change rule;
-that justification is vacuous, because a per-provider instance never sees its source change.)
+`UsageSource` gains a `Codex` member so a snapshot can say honestly where it came from: the popup
+asks `Source == DesktopHistory` to decide Claude-Desktop-specific wording, and a Codex snapshot has
+to answer that question correctly rather than by accident.
+
+Two justifications considered and dropped, recorded so they are not re-proposed: the member is *not*
+needed for `NotificationRules`' rebaseline-on-source-change rule (a per-provider instance never sees
+its source change), and *not* needed to fix `LogSourceChange` (`TrayApp.cs:418-426`) — that function
+is fed only by `SourceSelection.Choose` over the two Claude slots, so Codex data never reaches its
+`else` branch.
 
 ### Credits are out of scope for Codex
 
