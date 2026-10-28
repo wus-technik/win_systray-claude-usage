@@ -9,7 +9,8 @@ public sealed class UsagePopup : Form
 {
     public UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now,
         IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null,
-        string? noDataText = null, int? maxHeight = null)
+        string? noDataText = null, DisplayChoice? codex = null, string? codexFetchStatus = null,
+        int? maxHeight = null)
     {
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
         Text = AppInfo.Name;
@@ -30,11 +31,51 @@ public sealed class UsagePopup : Form
 
         AddPlatformStatus(layout, statusSources, settings, now);
 
+        // Headers arrive only with the second section, so a Claude-only popup stays unchanged.
+        AddProviderSection(layout, choice, settings, now, codex is null ? null : "Claude",
+            noDataText ?? NoDataReason.Default, lastFetchStatus);
+        if (codex is { } codexChoice)
+            AddProviderSection(layout, codexChoice, settings, now, "Codex",
+                "no Codex data", codexFetchStatus);
+
+        // Every active scoped limit renders past PopupRows.Cap on purpose: a background-row cap
+        // must never hide the limit actually throttling the user. Bound the viewport instead.
+        // AutoScroll stays off until the clamp engages: an AutoSize host has nothing to scroll.
+        var host = new Panel
+        {
+            Name = "scrollHost",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            AutoScroll = false,
+            Dock = DockStyle.Fill,
+        };
+        host.Controls.Add(layout);
+        Controls.Add(host);
+        ClampHeight(host, layout, maxHeight);
+        PositionNearCursor();
+    }
+
+    /// <summary>One provider's rows, including its independent freshness and fetch outcome. A
+    /// header is supplied only when two sections need telling apart.</summary>
+    private static void AddProviderSection(TableLayoutPanel layout, DisplayChoice choice, Settings settings,
+        DateTimeOffset now, string? header, string noDataFallback, string? fetchStatus)
+    {
+        if (header is not null)
+        {
+            layout.Controls.Add(new Label
+            {
+                Text = header,
+                AutoSize = true,
+                Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
+                Margin = new Padding(0, 8, 0, 2),
+            });
+        }
+
         if (choice.Snapshot is not { } snapshot)
         {
             // Sentences here name what is missing and can run long; wrap at the bar width like the
             // status banner does rather than stretching the form.
-            layout.Controls.Add(WrappingLabel(noDataText ?? NoDataReason.Default,
+            layout.Controls.Add(WrappingLabel(noDataFallback,
                 SystemColors.ControlText, new Padding(0)));
         }
         else
@@ -73,32 +114,16 @@ public sealed class UsagePopup : Form
             layout.Controls.Add(updatedLabel);
         }
 
-        if (!string.IsNullOrEmpty(lastFetchStatus))
+        if (!string.IsNullOrEmpty(fetchStatus))
         {
             layout.Controls.Add(new Label
             {
-                Text = $"Fetch: {lastFetchStatus}",
+                Text = $"Fetch: {fetchStatus}",
                 AutoSize = true,
                 ForeColor = SystemColors.GrayText,
                 Margin = new Padding(0, 2, 0, 0),
             });
         }
-
-        // Every active scoped limit renders past PopupRows.Cap on purpose: a background-row cap
-        // must never hide the limit actually throttling the user. Bound the viewport instead.
-        // AutoScroll stays off until the clamp engages: an AutoSize host has nothing to scroll.
-        var host = new Panel
-        {
-            Name = "scrollHost",
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            AutoScroll = false,
-            Dock = DockStyle.Fill,
-        };
-        host.Controls.Add(layout);
-        Controls.Add(host);
-        ClampHeight(host, layout, maxHeight);
-        PositionNearCursor();
     }
 
     /// <summary>Cap against the cursor screen's working area, measured because large system fonts
