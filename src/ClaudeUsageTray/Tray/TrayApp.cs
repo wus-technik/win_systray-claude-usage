@@ -290,8 +290,8 @@ public sealed class TrayApp : ApplicationContext
     {
         var now = DateTimeOffset.UtcNow;
         if (_codexFetchInFlight) return;
-        if (!_codexScheduler.CanFetch(now)) return;   // silent: the 10 min floor skips most ticks
-
+        // Credential disappearance must be noticed on the next poll even during HTTP backoff.
+        // Only the request is budget-gated; local reads do not consume the endpoint budget.
         var auth = CodexCredentialsReader.TryRead(_codexAuthPath, now);
         if (auth is null)
         {
@@ -316,6 +316,7 @@ public sealed class TrayApp : ApplicationContext
 
         _codexAvailability.NoteCredentialsReadable();
         if (auth.AccessToken == _codexRejectedToken) return;
+        if (!_codexScheduler.CanFetch(now)) return;   // silent: the 10 min floor skips most ticks
 
         _codexFetchInFlight = true;
         _codexScheduler.RecordAttempt(now);
