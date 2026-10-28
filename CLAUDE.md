@@ -40,7 +40,7 @@ exist as separate state machines is that each was pulled out of the UI to be tes
 
 ### Data flow
 
-Three independent sources feed one `UsageSnapshot` (`Core/UsageSnapshot.cs`), newest wins via
+Claude's independent sources feed one `UsageSnapshot` (`Core/UsageSnapshot.cs`), newest wins via
 `SnapshotPrecedence.IsNewer` — which is what stops the 30 s cache re-read from clobbering a fresher
 API result:
 
@@ -57,7 +57,14 @@ API result:
    `StatusDetail`. Kept fully independent of the usage path, and of each other: one source's failure
    must never null, clobber, or delay the other's data or the usage data.
 
-Both network paths are gated by a scheduler (`FetchScheduler` for usage, `StatusScheduler` for
+4. **Codex live API** — `Core/Codex/CodexUsageApiClient` reads Codex usage using the token
+   `CodexCredentialsReader` extracts from `auth.json` under `CODEX_HOME` or `~/.codex`. It produces
+   the same `UsageSnapshot` type in a separate slot, never competing with Claude's snapshots.
+   `CodexDisplay` decides freshness and `CodexAvailability` retains badges through transient
+   credential-read failures. Its scheduler, in-flight flag, notifications and fetch outcome are
+   independent of Claude's. Shared popup rows, severity and rendering consume both providers.
+
+The network paths are gated by a scheduler (`FetchScheduler` for usage, `StatusScheduler` for
 status) that owns the floors, backoff, and budget. `TrayApp` enforces single-flight with a bool on
 the UI thread. Fetch outcomes land in `%APPDATA%\ClaudeUsageTray\fetch.log` — percentages and
 outcomes only, **never** money amounts, currency, or account-specific model names.
@@ -71,17 +78,23 @@ from `UsageValues` — the badge, the popup bar and the toast all call it, so th
 
 ### Non-negotiable invariants
 
-- **The token is read-only.** Never write, refresh, or log credential material anywhere, `fetch.log`
-  included.
+- **Both providers' tokens are read-only.** Never write, refresh, or log credential material
+  anywhere, `fetch.log` included. Never modify Codex's `auth.json`.
 - **Nothing in the read paths throws.** `UsageCacheReader`, `CredentialsReader`, `UsageApiClient`,
-  and `Settings.Load` swallow IO/JSON errors and return null / defaults. A malformed file must
-  degrade the display, not kill the tray.
+  the `Core/Codex/` readers, and `Settings.Load` swallow IO/JSON errors and return null / defaults.
+  A malformed file must degrade the display, not kill the tray.
+- **Codex payload privacy.** `email`, `user_id`, `account_id` and spend-control money amounts
+  (`limit`, `used`, `balance`) never reach `fetch.log` or the display. Spend control logs only as
+  `spend=N%`; its label is an app-owned fixed string.
+- **Codex credits produce no row.** Capability flags with no usable percentage cannot map onto
+  `CreditUsage`; inventing a zero would draw a green 0 % placeholder.
 - **Labels come from the payload**, not from a hardcoded model list — a renamed or new model has to
   show up with no app update.
 - **Absent data means no row.** Never render a placeholder `0 %` or `—` for a limit the account
   does not have.
-- **Toasts never name scoped limits in the log.** `fetch.log` may carry `5h`, `7d`, `credits` and
-  counts; a scoped limit's label is an account-specific model name and is logged as `scoped=N`.
+- **Toasts never name payload-labelled scoped limits in the log.** `fetch.log` may carry `5h`,
+  `7d`, `credits` and counts; an account-specific model label is logged as `scoped=N`. Codex's
+  app-owned spend-control label is the exception and logs as `spend=N%`.
 - **The app and its tests target `net10.0-windows10.0.19041.0`; nothing else does.** The setup stub
   stays on `net10.0-windows` — pulling the Windows SDK projection into a NativeAOT build buys nothing.
 
@@ -96,6 +109,10 @@ of that token** — this tray *and* every running `claude.exe` on the machine. M
 persistent 429s — for the user's real Claude Code sessions too. Test against `UsageApiClientTests`
 with canned responses instead of live calls. For the same reason the `.claude.json` cache can lag
 many hours: Claude Code hits the same limit.
+
+The Codex endpoint's request budget is **unmeasured**. Do not probe `chatgpt.com` during
+implementation or tests: use `CodexUsageApiClientTests` with canned responses. Codex's independent
+scheduler has a 10-minute floor and 6/h cap; Claude's measured budget says nothing about Codex's.
 
 ## Verifying UI drawing without a human
 
