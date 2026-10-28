@@ -12,6 +12,55 @@
 
 **Depends on:** [2026-10-14-codex-usage-prerequisites.md](2026-10-14-codex-usage-prerequisites.md) — all six tasks landed. This plan assumes `UsageNotificationRules`, `ScopedLimit.Period`, `StatusSource.BadgeFor`, nullable `StatusSourceSettings.Enabled`, `BadgeShape` and the bounded popup already exist.
 
+## Execution record — 2026-10-28
+
+All twelve implementation tasks are committed on `feature/codex-usage`, using three subagents
+for the Core pipeline, settings/notifications, and popup/documentation; the parent integrated and
+reviewed `TrayApp`.
+
+Verification:
+
+- Release solution build: zero errors; only existing test-analyzer warnings.
+- App tests: 962/962 pass in Release with normal collection parallelism; 962/962 also pass
+  in an isolated Debug run with a temporary output-directory xUnit serialization setting.
+  That temporary runner setting was removed afterwards.
+- Setup-stub tests: 153/153 pass in Debug and Release. The combined Release run first failed
+  the existing `DownloaderTests.DownloadsToTheDestinationAndReportsProgress` assertion on an
+  asynchronously reported final progress value; an immediate stub-only rerun passed 153/153
+  without code changes. The app's 962 tests passed in that combined run.
+- Earlier app runs were stopped prematurely while the slow WinForms tests were still making
+  progress. The completed runs confirm those were slow tests rather than a deadlock.
+- Synthetic two-provider popup, Claude-only popup and Codex settings tab were rendered and
+  inspected. No live Codex calls or real credential changes were made.
+- `git diff --check` is clean. No existing assertion was weakened.
+
+Commands (with `DOTNET_CLI_HOME` directed under ignored `artifacts/`):
+
+```powershell
+dotnet build ClaudeUsageTray.sln -c Release --no-restore -m:1 -nr:false --disable-build-servers
+dotnet test ClaudeUsageTray.sln -c Release --no-build --no-restore -m:1 -nr:false --disable-build-servers
+dotnet test tests/ClaudeUsageTraySetupStub.Tests/ClaudeUsageTraySetupStub.Tests.csproj -c Release --no-build --no-restore -m:1 -nr:false --disable-build-servers
+```
+
+Canned-data tests cover signed-in, missing credentials, recovery and provider isolation; live
+signed-in-machine acceptance checks remain intentionally unperformed to preserve the request budget.
+
+Execution adjustments:
+
+- The referenced Superpowers skill was unavailable; native subagents followed the plan directly.
+- Initial red-test runs were partly blocked by .NET first-run permissions and parallel MSBuild
+  startup. Do not interpret the implementation checkboxes below as complete red/green evidence.
+- Failed requests or credential reads mark retained Codex data stale immediately. A readable token
+  resets the unreadable-credentials streak even when its subsequent request fails.
+- Configured polling floors also apply to network/rate-limit backoff; malformed percentages and
+  header/file inputs are guarded in read paths.
+- Credential reads precede the HTTP budget gate so deletion is detected even during backoff.
+- The real-app dialog launch was replaced by synthetic popup/dialog bitmap inspection to honour
+  the prohibition on development calls to the live Codex endpoint. Temporary probes were removed;
+  images remain under ignored `artifacts/codex-ui/`.
+- Commits group related settings/status changes and keep final tray integration together; every
+  implementation task is represented, without requiring each illustrative commit boundary.
+
 ## Global Constraints
 
 - App and tests target `net10.0-windows10.0.19041.0`. Nothing else does.
@@ -66,7 +115,7 @@ task.
   - `CodexCredentialsReader.TryRead(string authFilePath, DateTimeOffset now)` → `CodexAuth?`
   - `CodexCredentialsReader.Status(string authFilePath, DateTimeOffset now)` → `CredentialStatus`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/CodexPathTests.cs`:
 
@@ -242,7 +291,7 @@ public class CodexCredentialsReaderTests
 Run: `dotnet test --filter "FullyQualifiedName~CodexPathTests|FullyQualifiedName~CodexCredentialsReaderTests"`
 Expected: FAIL — `CodexPath` does not exist (CS0246).
 
-- [ ] **Step 3: Implement the path resolver**
+- [x] **Step 3: Implement the path resolver**
 
 Create `src/ClaudeUsageTray/Core/Codex/CodexPath.cs`:
 
@@ -277,7 +326,7 @@ public static class CodexPath
 
 Add `using System.Security;` at the top.
 
-- [ ] **Step 4: Implement the credentials reader**
+- [x] **Step 4: Implement the credentials reader**
 
 Create `src/ClaudeUsageTray/Core/Codex/CodexCredentialsReader.cs`:
 
@@ -377,12 +426,12 @@ public static class CodexCredentialsReader
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~CodexPathTests|FullyQualifiedName~CodexCredentialsReaderTests"`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Codex tests/ClaudeUsageTray.Tests/CodexPathTests.cs tests/ClaudeUsageTray.Tests/CodexCredentialsReaderTests.cs
@@ -418,7 +467,7 @@ application of an invariant:
 - Produces: `CodexUsageJson.Parse(string json, DateTimeOffset fetchedAt)` → `UsageSnapshot?`
   and `CodexUsageJson.SpendControlLabel` → `"Spend control"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/CodexUsageJsonTests.cs`:
 
@@ -595,7 +644,7 @@ public class CodexUsageJsonTests
 Run: `dotnet test --filter FullyQualifiedName~CodexUsageJsonTests`
 Expected: FAIL — `CodexUsageJson` does not exist; `UsageSource.Codex` does not exist.
 
-- [ ] **Step 3: Add the enum member**
+- [x] **Step 3: Add the enum member**
 
 In `src/ClaudeUsageTray/Core/UsageSnapshot.cs`, extend `UsageSource` and its doc comment:
 
@@ -607,7 +656,7 @@ In `src/ClaudeUsageTray/Core/UsageSnapshot.cs`, extend `UsageSource` and its doc
 public enum UsageSource { ClaudeCode, DesktopHistory, Codex }
 ```
 
-- [ ] **Step 4: Implement the parser**
+- [x] **Step 4: Implement the parser**
 
 Create `src/ClaudeUsageTray/Core/Codex/CodexUsageJson.cs`:
 
@@ -707,18 +756,18 @@ public static class CodexUsageJson
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexUsageJsonTests`
 Expected: PASS
 
-- [ ] **Step 6: Run the whole suite for regressions**
+- [x] **Step 6: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS. `UsageSnapshotTests` and anything switching on `UsageSource` may need the new member
 handled; a `switch` that was exhaustive over two members is the likely break.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Codex/CodexUsageJson.cs src/ClaudeUsageTray/Core/UsageSnapshot.cs tests/ClaudeUsageTray.Tests/CodexUsageJsonTests.cs
@@ -743,7 +792,7 @@ would draw the placeholder bar the display invariants forbid."
 - Produces: `CodexUsageApiClient.FetchAsync(HttpClient, CodexAuth, DateTimeOffset, CancellationToken)`
   → `Task<UsageFetchResult>` (the existing result record) and `CodexUsageApiClient.EndpointUrl`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/CodexUsageApiClientTests.cs`:
 
@@ -911,7 +960,7 @@ public class CodexUsageApiClientTests
 Run: `dotnet test --filter FullyQualifiedName~CodexUsageApiClientTests`
 Expected: FAIL — `CodexUsageApiClient` does not exist (CS0246).
 
-- [ ] **Step 3: Implement the client**
+- [x] **Step 3: Implement the client**
 
 Create `src/ClaudeUsageTray/Core/Codex/CodexUsageApiClient.cs`:
 
@@ -983,12 +1032,12 @@ public static class CodexUsageApiClient
 
 Add `using System.Linq;` for `Any`.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexUsageApiClientTests`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Codex/CodexUsageApiClient.cs tests/ClaudeUsageTray.Tests/CodexUsageApiClientTests.cs
@@ -1015,7 +1064,7 @@ allowances.
 - Consumes: `SourceSelection.Age`, `DisplayChoice`.
 - Produces: `CodexDisplay.Choose(UsageSnapshot?, DateTimeOffset, Settings)` → `DisplayChoice`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/CodexDisplayTests.cs`:
 
@@ -1075,7 +1124,7 @@ public class CodexDisplayTests
 Run: `dotnet test --filter FullyQualifiedName~CodexDisplayTests`
 Expected: FAIL — `CodexDisplay` does not exist (CS0246).
 
-- [ ] **Step 3: Implement it**
+- [x] **Step 3: Implement it**
 
 Create `src/ClaudeUsageTray/Core/Codex/CodexDisplay.cs`:
 
@@ -1098,12 +1147,12 @@ public static class CodexDisplay
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexDisplayTests`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Codex/CodexDisplay.cs tests/ClaudeUsageTray.Tests/CodexDisplayTests.cs
@@ -1129,7 +1178,7 @@ skew is clamped exactly as it is for Claude's slots."
 - Produces: `Settings.CodexDisplayMode` → `DisplayMode` (default `Both`);
   `Settings.CodexNotifications` → `UsageNotificationSettings`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
 
@@ -1214,7 +1263,7 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: FAIL — `CodexDisplayMode` is not a member of `Settings`.
 
-- [ ] **Step 3: Add the properties**
+- [x] **Step 3: Add the properties**
 
 In `src/ClaudeUsageTray/Core/Settings.cs`, next to `DisplayMode` and `UsageNotifications`:
 
@@ -1255,19 +1304,19 @@ defaults — resetting thresholds and the Claude display mode because of a typo 
 test for `"codexNotifications": null` and one for a bad `codexDisplayMode`, both asserting the
 unrelated settings survive.
 
-- [ ] **Step 4: Retire the test placeholder**
+- [x] **Step 4: Retire the test placeholder**
 
 Delete `SecondaryNotificationsForTest` from `Settings`, and in
 `tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs` point
 `OnUsage_ReadsTheProvidersOwnNotificationSettings` at the real thing: `CodexNotifications` instead of
 `SecondaryNotificationsForTest`, and `s => s.CodexNotifications` as the selector.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsTests|FullyQualifiedName~NotificationRulesUsageTests"`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs
@@ -1304,7 +1353,7 @@ is not the same thing as one per ten minutes.
   - `CodexAvailability` with `State`, `NoteSnapshot()`, `NoteCredentialsMissing()`,
     `NoteCredentialsUnreadable()`, `NoteFetchFailure()`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/CodexAvailabilityTests.cs`:
 
@@ -1444,7 +1493,7 @@ Add to `tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs`:
 Run: `dotnet test --filter "FullyQualifiedName~CodexAvailabilityTests|FullyQualifiedName~FetchSchedulerTests"`
 Expected: FAIL — `CodexAvailability` does not exist; `FetchScheduler` has no `floor` parameter.
 
-- [ ] **Step 3: Make the scheduler's floor configurable**
+- [x] **Step 3: Make the scheduler's floor configurable**
 
 In `src/ClaudeUsageTray/Core/FetchScheduler.cs`, replace the static `Floor` with an instance field:
 
@@ -1468,7 +1517,7 @@ In `src/ClaudeUsageTray/Core/FetchScheduler.cs`, replace the static `Floor` with
 Replace every use of `Floor` in `CanFetch` and `RecordAttempt` with `_floor`. Read the file first:
 there are two or three, and one of them is inside the rate-limit backoff computation.
 
-- [ ] **Step 4: Implement the availability state machine**
+- [x] **Step 4: Implement the availability state machine**
 
 Create `src/ClaudeUsageTray/Core/Codex/CodexAvailability.cs`:
 
@@ -1526,7 +1575,7 @@ public sealed class CodexAvailability
 }
 ```
 
-- [ ] **Step 5: Wire the fetch loop into TrayApp**
+- [x] **Step 5: Wire the fetch loop into TrayApp**
 
 In `src/ClaudeUsageTray/Tray/TrayApp.cs`, add beside the Claude fetch state:
 
@@ -1649,18 +1698,18 @@ Add the two methods beside their Claude counterparts:
 
 Add `using System.Linq;` if the file does not already have it.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~CodexAvailabilityTests|FullyQualifiedName~FetchSchedulerTests"`
 Expected: PASS
 
-- [ ] **Step 7: Run the whole suite for regressions**
+- [x] **Step 7: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS. `ApplyDisplayMode` and `Render` are called from new places; `SmokeTests` is the one
 most likely to catch a null-reference in a path that now runs before the first fetch.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/FetchScheduler.cs src/ClaudeUsageTray/Core/Codex/CodexAvailability.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/CodexAvailabilityTests.cs tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs
@@ -1687,7 +1736,7 @@ fetch never changes the tray's shape."
   (Task 5), `StatusMonitor.BadgeDegraded(UsageProvider)` (prerequisites Task 3).
 - Produces: no new public API.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 The icon wiring lives in `TrayApp`, which tests do not construct. Pin the decision instead, by
 extracting it: a pure function that says which icons should exist.
@@ -1738,7 +1787,7 @@ public class CodexIconTests
 Run: `dotnet test --filter FullyQualifiedName~CodexIconTests`
 Expected: FAIL — `IconPresence` does not exist (CS0246).
 
-- [ ] **Step 3: Extract the decision into Core**
+- [x] **Step 3: Extract the decision into Core**
 
 Create `src/ClaudeUsageTray/Core/IconPresence.cs`:
 
@@ -1767,7 +1816,7 @@ public static class IconPresence
 }
 ```
 
-- [ ] **Step 4: Use it for both providers in TrayApp**
+- [x] **Step 4: Use it for both providers in TrayApp**
 
 Replace `ApplyDisplayMode` in `src/ClaudeUsageTray/Tray/TrayApp.cs`:
 
@@ -1796,7 +1845,7 @@ two are disposed — the dispose path, the exit path, and the update-and-restart
 `TrayApp.cs` for `DisposeNotifyIcon(ref _iconFive)` and extend each occurrence; a missed one is a
 ghost icon left in the tray after exit.
 
-- [ ] **Step 5: Give `Apply` a shape and a provider**
+- [x] **Step 5: Give `Apply` a shape and a provider**
 
 `Apply` currently hardcodes the disc, takes Claude's degraded flag, reads the Claude-specific
 `_noDataText` field directly (`TrayApp.cs:381-383`), and calls `WithStatus(text, now)` at two sites
@@ -1864,17 +1913,17 @@ Then in `Render`:
                 UsageProvider.Codex, BadgeShape.RoundedSquare, _codexFetchStatus);
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexIconTests`
 Expected: PASS
 
-- [ ] **Step 7: Run the whole suite for regressions**
+- [x] **Step 7: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/IconPresence.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/CodexIconTests.cs
@@ -1906,7 +1955,7 @@ two Codex parameters go *before* it, so that `UsagePopupHeightTests`' existing
 `maxHeight: 200` named arguments keep working and nothing is passed positionally into the wrong slot.
 Every new argument stays optional, so existing construction sites and tests are untouched.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/UsagePopupCodexTests.cs`:
 
@@ -2010,7 +2059,7 @@ public class UsagePopupCodexTests
 Run: `dotnet test --filter FullyQualifiedName~UsagePopupCodexTests`
 Expected: FAIL — the constructor has no Codex parameters (CS1501).
 
-- [ ] **Step 3: Extract the per-provider block**
+- [x] **Step 3: Extract the per-provider block**
 
 In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, move the body of the `else` branch (window rows, scoped
 rows, the "+N more" line, credits, and the updated line) into one private method, then call it twice:
@@ -2076,7 +2125,7 @@ lifted into methods — keep their current styling exactly, including the `"+N m
     }
 ```
 
-- [ ] **Step 4: Pass the Codex choice from TrayApp**
+- [x] **Step 4: Pass the Codex choice from TrayApp**
 
 In `ShowPopup`, hand over the Codex side only when its icons exist — a popup section for a provider
 with no badge would be the one place Codex appears unannounced:
@@ -2090,24 +2139,24 @@ with no badge would be the one place Codex appears unannounced:
             codex, codex is null ? null : _codexFetchStatus);
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopup`
 Expected: PASS — including the existing width, source, status and height tests, which all construct
 the popup without the new arguments.
 
-- [ ] **Step 6: Look at it once**
+- [x] **Step 6: Look at it once**
 
 Render the two-provider popup to PNG with `Control.DrawToBitmap`, scaled 6x with
 `InterpolationMode.NearestNeighbor` per CLAUDE.md. Check the section headers, that the spend-control
 bar is red, and that the Claude-only popup is unchanged. Delete the probe file afterwards.
 
-- [ ] **Step 7: Run the whole suite for regressions**
+- [x] **Step 7: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/UsagePopupCodexTests.cs
@@ -2134,7 +2183,7 @@ each section carries its own freshness and fetch line."
   `CodexUsageJson.SpendControlLabel` (Task 2).
 - Produces: `UsageNotificationRules.ForCodex()`; `Describe` names spend control.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/CodexNotificationTests.cs`:
 
@@ -2238,7 +2287,7 @@ public class CodexNotificationTests
 Run: `dotnet test --filter FullyQualifiedName~CodexNotificationTests`
 Expected: FAIL — `ForCodex` does not exist.
 
-- [ ] **Step 3: Add the Codex factory and the provider-named title**
+- [x] **Step 3: Add the Codex factory and the provider-named title**
 
 In `src/ClaudeUsageTray/Core/UsageNotificationRules.cs`, add beside `ForClaude`:
 
@@ -2268,7 +2317,7 @@ and in `Compose`:
 That keeps "Usage limit red" for Claude and gives "Codex usage limit red" for Codex. Check the
 existing title assertions in `NotificationRulesUsageTests` and keep them passing verbatim.
 
-- [ ] **Step 4: Name spend control in the log**
+- [x] **Step 4: Name spend control in the log**
 
 In `Describe`:
 
@@ -2291,7 +2340,7 @@ In `Describe`:
     }
 ```
 
-- [ ] **Step 5: Wire both providers in TrayApp**
+- [x] **Step 5: Wire both providers in TrayApp**
 
 Add the Codex rules field beside the Claude one:
 
@@ -2333,17 +2382,17 @@ In `OnCodexFetchCompleted`, arm the Codex rules from each outcome, mirroring Cla
 call `NoteLiveOutcome(LiveOutcome.NoToken)` on the missing-credentials path in `StartCodexFetch`, for
 the same reason Claude does: a machine that will never have a token must not wait forever to arm.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~CodexNotificationTests|FullyQualifiedName~NotificationRules"`
 Expected: PASS
 
-- [ ] **Step 7: Run the whole suite for regressions**
+- [x] **Step 7: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageNotificationRules.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/CodexNotificationTests.cs
@@ -2368,7 +2417,7 @@ supplies, unlike a payload-labelled scoped limit."
 - Consumes: nullable `Enabled` (prerequisites Task 4), `CodexState` (Task 6).
 - Produces: `Settings.EnabledSources(CodexState codex = CodexState.Unknown)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
 
@@ -2428,7 +2477,7 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: FAIL — `EnabledSources` takes no arguments (CS1501).
 
-- [ ] **Step 3: Resolve the default against Codex availability**
+- [x] **Step 3: Resolve the default against Codex availability**
 
 In `src/ClaudeUsageTray/Core/Settings.cs`:
 
@@ -2453,7 +2502,7 @@ In `src/ClaudeUsageTray/Core/Settings.cs`:
     }
 ```
 
-- [ ] **Step 4: Re-apply when availability changes**
+- [x] **Step 4: Re-apply when availability changes**
 
 In `src/ClaudeUsageTray/Tray/TrayApp.cs`, pass the state at every `EnabledSources()` call site — the
 constructor and the settings-save path — and re-apply after a Codex fetch concludes. Add to both
@@ -2467,17 +2516,17 @@ constructor and the settings-save path — and re-apply after a Codex fetch conc
 `ApplyEnabled` already keeps the state of sources that stay enabled, so calling it on every fetch
 cannot blank a banner or the badge for a poll cycle.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsTests|FullyQualifiedName~StatusMonitorTests"`
 Expected: PASS
 
-- [ ] **Step 6: Run the whole suite for regressions**
+- [x] **Step 6: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -2501,7 +2550,7 @@ settings is never overridden."
 - Produces: no new public API beyond the dialog's existing constructor shape — extend it with the
   Codex state, defaulted so existing tests are untouched.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/SettingsDialogCodexTests.cs`:
 
@@ -2561,7 +2610,7 @@ tests do.
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogCodexTests`
 Expected: FAIL — the dialog constructor takes no Codex state, and there is no Codex page.
 
-- [ ] **Step 3: Add the page**
+- [x] **Step 3: Add the page**
 
 In `src/ClaudeUsageTray/Tray/SettingsDialog.cs`, take the state in the constructor (defaulted to
 `CodexState.Unknown` so existing call sites and tests compile unchanged) and add the page
@@ -2670,24 +2719,24 @@ untouched.
 
 In `TrayApp`, pass `_codexAvailability.State` where the dialog is constructed.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialog`
 Expected: PASS. `EveryPageFitsWithoutScrolling` is known to fail only under parallel solution-level
 runs — if it fails, rerun the app project alone before treating it as real.
 
-- [ ] **Step 5: Look at the dialog once**
+- [x] **Step 5: Look at the dialog once**
 
 Open the real dialog (`dotnet run --project src/ClaudeUsageTray`) with Codex available and check the
 fifth tab's header does not push the dialog wider than the screen, and that the page's controls line
 up with the other pages'.
 
-- [ ] **Step 6: Run the whole suite for regressions**
+- [x] **Step 6: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/SettingsDialogCodexTests.cs
@@ -2707,7 +2756,7 @@ that is not installed."
 - Modify: `CLAUDE.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] **Step 1: Describe the behaviour in README.md**
+- [x] **Step 1: Describe the behaviour in README.md**
 
 README is the reference for *what* the app does. Add, in the voice the existing sections use: the
 rounded-square Codex badges and what distinguishes them from Claude's discs; the Codex popup section;
@@ -2715,7 +2764,7 @@ that Codex appears by itself when the Codex CLI is signed in and needs no config
 `codexDisplayMode` and `codexNotifications` settings keys, alongside the existing key documentation;
 and that `status.openai.com` is watched once Codex is present.
 
-- [ ] **Step 2: Describe the mechanics in CLAUDE.md**
+- [x] **Step 2: Describe the mechanics in CLAUDE.md**
 
 CLAUDE.md covers *how to work on it*. Extend the Data flow section with the Codex pipeline as a
 fourth source, and add to the invariants:
@@ -2727,13 +2776,13 @@ fourth source, and add to the invariants:
 - The Codex endpoint's request budget is **unmeasured**: do not probe it, and test against
   `CodexUsageApiClientTests` with canned responses. Its poll floor is 10 minutes for that reason.
 
-- [ ] **Step 3: Add a CHANGELOG entry**
+- [x] **Step 3: Add a CHANGELOG entry**
 
 Add an `## Unreleased` section (or extend the existing one) describing the feature in user-facing
 terms. Note that a release will need its own version section — `changelog-section.ps1` hard-fails
 without one.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md CLAUDE.md CHANGELOG.md
