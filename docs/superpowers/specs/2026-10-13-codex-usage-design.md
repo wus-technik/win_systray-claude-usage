@@ -4,6 +4,14 @@ Date: 2026-10-13
 Extends: [2026-08-26-openai-status-source-design.md](2026-08-26-openai-status-source-design.md),
 [2026-09-05-desktop-notifications-design.md](2026-09-05-desktop-notifications-design.md)
 
+## Endpoint correction — 2026-10-28
+
+The original `/backend-api/codex/usage` URL below was incorrect for the ChatGPT base URL.
+OpenAI's [backend-client routing](https://github.com/openai/codex/blob/main/codex-rs/backend-client/src/client/rate_limit_resets.rs)
+uses `/wham/usage` for `PathStyle::ChatGptApi`, so the app now requests
+`https://chatgpt.com/backend-api/wham/usage`. The original local build received 401/403 even
+with a newly signed-in token. The canned HTTP test pins the literal URL to prevent regression.
+
 ## Problem
 
 The tray shows Claude's limits. The same machine runs OpenAI Codex against a second set of limits

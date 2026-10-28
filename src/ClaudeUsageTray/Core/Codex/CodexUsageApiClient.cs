@@ -9,7 +9,7 @@ namespace ClaudeUsageTray.Core;
 /// handling — adopt, back off, arm — is one shape for both providers.</summary>
 public static class CodexUsageApiClient
 {
-    public const string EndpointUrl = "https://chatgpt.com/backend-api/codex/usage";
+    public const string EndpointUrl = "https://chatgpt.com/backend-api/wham/usage";
 
     private static readonly string UserAgent =
         $"ClaudeUsageTray/{typeof(CodexUsageApiClient).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"}";

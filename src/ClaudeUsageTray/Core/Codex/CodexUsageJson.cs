@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace ClaudeUsageTray.Core;
 
 /// <summary>
-/// Parses `GET /backend-api/codex/usage` into the app's own <see cref="UsageSnapshot"/>, so every
+/// Parses `GET /backend-api/wham/usage` into the app's own <see cref="UsageSnapshot"/>, so every
 /// severity, pace and drawing decision downstream is the one Claude's data already gets.
 ///
 /// Three deliberate omissions. **Credits produce no row**: the block carries has_credits, unlimited

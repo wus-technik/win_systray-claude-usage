@@ -320,7 +320,7 @@ public sealed class TrayApp : ApplicationContext
 
         _codexFetchInFlight = true;
         _codexScheduler.RecordAttempt(now);
-        _log.Write(now, "codex: attempt: GET codex/usage");
+        _log.Write(now, "codex: attempt: GET wham/usage");
         _ = Task.Run(async () =>
         {
             var result = await CodexUsageApiClient.FetchAsync(Http, auth, DateTimeOffset.UtcNow,

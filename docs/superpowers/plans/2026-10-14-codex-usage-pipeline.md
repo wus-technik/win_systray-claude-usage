@@ -45,6 +45,11 @@ dotnet test tests/ClaudeUsageTraySetupStub.Tests/ClaudeUsageTraySetupStub.Tests.
 Canned-data tests cover signed-in, missing credentials, recovery and provider isolation; live
 signed-in-machine acceptance checks remain intentionally unperformed to preserve the request budget.
 
+Endpoint follow-up: the initial installed build received 401/403 after login. OpenAI's public
+backend-client routes ChatGPT usage through `/backend-api/wham/usage`; the original URL in this
+plan was wrong. The client and request log now use the correct route, and a canned-response test
+asserts the literal URL rather than echoing the client constant. See the spec's endpoint correction.
+
 Execution adjustments:
 
 - The referenced Superpowers skill was unavailable; native subagents followed the plan directly.

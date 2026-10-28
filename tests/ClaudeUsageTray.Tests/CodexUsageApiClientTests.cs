@@ -58,7 +58,9 @@ public class CodexUsageApiClientTests
         var (_, handler) = Fetch(_ => Json(HttpStatusCode.OK, Ok));
         var request = handler.LastRequest!;
 
-        Assert.Equal(CodexUsageApiClient.EndpointUrl, request.RequestUri!.ToString());
+        // The ChatGPT base URL routes usage through /wham, not /codex. Pin the actual URL
+        // rather than comparing with the client constant, which cannot catch a wrong endpoint.
+        Assert.Equal("https://chatgpt.com/backend-api/wham/usage", request.RequestUri!.ToString());
         Assert.Equal("Bearer", request.Headers.Authorization!.Scheme);
         Assert.Equal(Auth.AccessToken, request.Headers.Authorization.Parameter);
         Assert.Equal("00000000-0000-0000-0000-000000000000",
