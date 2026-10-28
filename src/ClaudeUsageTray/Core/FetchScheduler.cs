@@ -8,7 +8,8 @@ namespace ClaudeUsageTray.Core;
 /// </summary>
 public sealed class FetchScheduler
 {
-    private static readonly TimeSpan Floor = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultFloor = TimeSpan.FromSeconds(30);
+    private readonly TimeSpan _floor;
 
     /// <summary>
     /// Minimum wait after a 429. The endpoint's per-token budget is shared with Claude Code and
@@ -24,8 +25,13 @@ public sealed class FetchScheduler
     private DateTimeOffset _notBefore = DateTimeOffset.MinValue;
     private int _failureStreak;
 
-    /// <summary>Default 20/h: safety margin under the endpoint's measured ~28-30/h per-token budget.</summary>
-    public FetchScheduler(int maxPerHour = 20) => _maxPerHour = maxPerHour;
+    /// <summary>Default 20/h with a 30 s floor: safety margin under Claude's measured budget.
+    /// An unmeasured endpoint can supply a slower floor without sharing that budget.</summary>
+    public FetchScheduler(int maxPerHour = 20, TimeSpan? floor = null)
+    {
+        _maxPerHour = maxPerHour;
+        _floor = floor ?? DefaultFloor;
+    }
 
     public bool CanFetch(DateTimeOffset now)
     {
@@ -37,18 +43,23 @@ public sealed class FetchScheduler
     public void RecordAttempt(DateTimeOffset now)
     {
         _attempts.Enqueue(now);
-        _notBefore = now + Floor;
+        _notBefore = now + _floor;
     }
 
     public void RecordSuccess() => _failureStreak = 0;
 
     public void RecordRateLimited(DateTimeOffset now, TimeSpan? retryAfter)
-        => _notBefore = now + (retryAfter is { } ra && ra > RateLimitFloor ? ra : RateLimitFloor);
+    {
+        var delay = retryAfter is { } ra && ra > RateLimitFloor ? ra : RateLimitFloor;
+        if (delay < _floor) delay = _floor;
+        _notBefore = now + delay;
+    }
 
     public void RecordFailure(DateTimeOffset now)
     {
         _failureStreak = Math.Min(_failureStreak + 1, 3);
         var minutes = _failureStreak switch { 1 => 5, 2 => 10, _ => 20 };
-        _notBefore = now + TimeSpan.FromMinutes(minutes);
+        var delay = TimeSpan.FromMinutes(minutes);
+        _notBefore = now + (delay > _floor ? delay : _floor);
     }
 }

@@ -129,4 +129,37 @@ public class FetchSchedulerTests
         Assert.False(s.CanFetch(T0.AddSeconds(59)));
         Assert.True(s.CanFetch(T0.AddSeconds(60)));
     }
+    /// <summary>The unmeasured Codex endpoint has its own ten-minute floor.</summary>
+    [Fact]
+    public void CanFetch_HonoursAConfiguredFloor()
+    {
+        var scheduler = new FetchScheduler(maxPerHour: 6, floor: TimeSpan.FromMinutes(10));
+        Assert.True(scheduler.CanFetch(T0));
+        scheduler.RecordAttempt(T0);
+        Assert.False(scheduler.CanFetch(T0.AddMinutes(5)));
+        Assert.True(scheduler.CanFetch(T0.AddMinutes(10)));
+    }
+
+    [Fact]
+    public void CanFetch_DefaultFloorIsThirtySeconds()
+    {
+        var scheduler = new FetchScheduler();
+        scheduler.RecordAttempt(T0);
+        Assert.False(scheduler.CanFetch(T0.AddSeconds(29)));
+        Assert.True(scheduler.CanFetch(T0.AddSeconds(30)));
+    }
+
+    /// <summary>Failure backoff cannot shorten a provider's minimum request interval.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ConfiguredFloor_SurvivesFailureBackoff(bool rateLimited)
+    {
+        var scheduler = new FetchScheduler(floor: TimeSpan.FromMinutes(10));
+        scheduler.RecordAttempt(T0);
+        if (rateLimited) scheduler.RecordRateLimited(T0, TimeSpan.Zero);
+        else scheduler.RecordFailure(T0);
+        Assert.False(scheduler.CanFetch(T0.AddMinutes(5)));
+        Assert.True(scheduler.CanFetch(T0.AddMinutes(10)));
+    }
 }
