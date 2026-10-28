@@ -41,10 +41,11 @@ public sealed class TrayApp : ApplicationContext
         new(StringComparer.OrdinalIgnoreCase);
 
     // Desktop notifications. Every decision — baseline, arming, hysteresis, fingerprint, per-source
-    // status state — lives in the clock-free NotificationRules; the presenter only shows what it is
+    // status state — lives in clock-free notification rules; the presenter only shows what it is
     // handed. One call site, in Render(): every path that changes data ends there, and the rules
     // make re-evaluating unchanged data a no-op, so a single site cannot be forgotten.
-    private readonly NotificationRules _notifications = new();
+    private readonly UsageNotificationRules _usageNotifications = UsageNotificationRules.ForClaude();
+    private readonly StatusNotificationRules _statusNotifications = new();
     private readonly ToastPresenter _toasts;
 
     private readonly ContextMenuStrip _menu;
@@ -199,7 +200,7 @@ public sealed class TrayApp : ApplicationContext
             // No usable token is a terminal outcome for arming: on a desktop-only machine this is
             // the permanent state, and waiting for a fetch that will never happen would leave usage
             // notifications off forever.
-            if (_notifications.NoteLiveOutcome(LiveOutcome.NoToken) is { } armed) _log.Write(now, armed);
+            if (_usageNotifications.NoteLiveOutcome(LiveOutcome.NoToken) is { } armed) _log.Write(now, armed);
             return;
         }
         if (token == _rejectedToken) { _log.Write(now, "skip: token previously rejected (401/403); waiting for refresh"); return; }
@@ -264,7 +265,7 @@ public sealed class TrayApp : ApplicationContext
 
     private void Arm(LiveOutcome outcome, DateTimeOffset now)
     {
-        if (_notifications.NoteLiveOutcome(outcome) is { } line) _log.Write(now, line);
+        if (_usageNotifications.NoteLiveOutcome(outcome) is { } line) _log.Write(now, line);
     }
 
     // ---- platform status polling ----
@@ -329,7 +330,7 @@ public sealed class TrayApp : ApplicationContext
         var choice = SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings);
         LogSourceChange(choice, now);
         Notify(choice, now);
-        bool degraded = _statusMonitor.BadgeDegraded();
+        bool degraded = _statusMonitor.BadgeDegraded(UsageProvider.Claude);
 
         if (_iconFive is not null)
             Apply(_iconFive, '5', choice, choice.Snapshot?.FiveHour, "5h", UsageValues.FiveHourPeriod,
@@ -354,12 +355,12 @@ public sealed class TrayApp : ApplicationContext
     /// same clock from flapping it.</summary>
     private void Notify(DisplayChoice choice, DateTimeOffset now)
     {
-        var usage = _notifications.OnUsage(choice, _settings, now);
+        var usage = _usageNotifications.OnUsage(choice, _settings, now);
         foreach (var line in usage.Log) _log.Write(now, line);
-        if (usage.RemoveUsageToast) _toasts.Remove(NotificationRules.UsageTag);
+        if (usage.RemoveUsageToast) _toasts.Remove(_usageNotifications.Tag);
         if (usage.Notification is { } toast) _toasts.Show(toast);
 
-        foreach (var outcome in _notifications.OnStatus(_statusMonitor.Sources(), _settings))
+        foreach (var outcome in _statusNotifications.OnStatus(_statusMonitor.Sources(), _settings))
         {
             foreach (var line in outcome.Log) _log.Write(now, line);
             if (outcome.Notification is { } status) _toasts.Show(status);
@@ -380,7 +381,7 @@ public sealed class TrayApp : ApplicationContext
             string noDataText = choice.Snapshot is not null
                 ? $"{label}: no data"
                 : _noDataText ?? NoDataReason.Default;
-            icon.Text = WithStatus(noDataText, now);
+            icon.Text = WithStatus(noDataText, now, UsageProvider.Claude);
         }
         else
         {
@@ -392,7 +393,7 @@ public sealed class TrayApp : ApplicationContext
                 dimmed: choice.Stale, size, warning: degraded);
             var tooltip = UsageTooltip.Build(label, usage, elapsed, _settings.PaceColors,
                 _settings.Thresholds.Red, choice.Stale, choice.Snapshot?.Source, choice.Snapshot?.FetchedAt, now);
-            icon.Text = WithStatus(tooltip, now);
+            icon.Text = WithStatus(tooltip, now, UsageProvider.Claude);
         }
         old?.Dispose();
     }
@@ -428,8 +429,8 @@ public sealed class TrayApp : ApplicationContext
     /// <summary>The usage tooltip plus every relevant disruption, composed in Core so the badge-raising
     /// suffix is reserved before anything is cut (StatusDetail.ComposeTooltip). TrimTooltip stays as
     /// the last-resort guard for the NotifyIcon limit; after ComposeTooltip it should never fire.</summary>
-    private string WithStatus(string text, DateTimeOffset now)
-        => TrimTooltip(StatusDetail.ComposeTooltip(text, _statusMonitor.Sources(), now, _settings.StalenessMinutes));
+    private string WithStatus(string text, DateTimeOffset now, UsageProvider provider)
+        => TrimTooltip(StatusDetail.ComposeTooltip(text, _statusMonitor.Sources(), now, _settings.StalenessMinutes, provider));
 
     // ---- display mode / icons ----
 

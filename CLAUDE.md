@@ -51,8 +51,8 @@ API result:
    `FileSystemWatcher` + 500 ms debounce, plus a 30 s tick as the recovery path for missed events.
 3. **Platform status** — one unauthenticated GET per enabled source every 60 s, gated per source by
    `StatusMonitor` (which owns a `StatusScheduler`, the last-known-good result, and the in-flight
-   flag for each). `StatusSourceRegistry` holds the two curated sources; `RaisesBadge` is a field of
-   the source, which is why only Claude can mark the tray icon. All display decisions — relevance
+   flag for each). `StatusSourceRegistry` holds the two curated sources; `BadgeFor` names the usage
+   provider whose icons a source can mark. All display decisions — relevance
    under the watch filter, row selection, headers, tooltip suffixes — are pure functions in
    `StatusDetail`. Kept fully independent of the usage path, and of each other: one source's failure
    must never null, clobber, or delay the other's data or the usage data.
@@ -62,9 +62,10 @@ status) that owns the floors, backoff, and budget. `TrayApp` enforces single-fli
 the UI thread. Fetch outcomes land in `%APPDATA%\ClaudeUsageTray\fetch.log` — percentages and
 outcomes only, **never** money amounts, currency, or account-specific model names.
 
-**Notifications** are evaluated once per `Render()` by `NotificationRules` (usage crossings with
-arming, hysteresis and a settings fingerprint; per-source status transitions on `IsRelevant`) and
-shown by `Tray/ToastPresenter`, which decides nothing and never throws. Every value's severity comes
+**Notifications** are evaluated once per `Render()` by per-provider `UsageNotificationRules` (usage
+crossings with arming, hysteresis and a settings fingerprint) and one `StatusNotificationRules`
+(per-source status transitions on `IsRelevant`), then shown by `Tray/ToastPresenter`, which decides
+nothing and never throws. Every value's severity comes
 from `UsageValues` — the badge, the popup bar and the toast all call it, so they cannot disagree. See
 `docs/superpowers/specs/2026-09-05-desktop-notifications-design.md` before touching any of this.
 

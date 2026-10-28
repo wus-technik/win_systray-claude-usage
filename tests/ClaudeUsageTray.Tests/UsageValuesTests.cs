@@ -187,4 +187,55 @@ public class UsageValuesTests
         Assert.Equal(Severity.Red, UsageValues.WindowSeverities(usage, UsageValues.FiveHourPeriod,
             new Settings(), new DateTimeOffset(2026, 9, 10, 10, 55, 0, TimeSpan.Zero)).Draw);
     }
+
+    private static readonly DateTimeOffset TScoped = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);
+
+    /// <summary>The caption takes its word from the limit's own period. A monthly cap captioned
+    /// "weekly" is a plain falsehood, and the same string goes into the toast.</summary>
+    [Fact]
+    public void Enumerate_LabelsAMonthlyScopedLimitMonthly()
+    {
+        var limit = new ScopedLimit("Spend control", null, 111, TScoped.AddDays(19), true)
+            { Period = ScopedPeriod.Monthly };
+        var snapshot = new UsageSnapshot(TScoped, null, null, [limit]);
+
+        var value = Assert.Single(UsageValues.Enumerate(snapshot, new Settings { PaceColors = false }, TScoped));
+        Assert.Equal("Spend control monthly", value.Label);
+    }
+
+    /// <summary>Review Focus 1: a reset further out than the period (a 31-day month against a 30-day
+    /// length) must pace as absolute-only. ElapsedFraction returns null there, and the absolute
+    /// thresholds decide.
+    ///
+    /// The percentage has to sit *inside* the pace band for this to prove anything.
+    /// SeverityRules.ForPace opens with `if (percent > redAbove) return Severity.Red;`, so anything
+    /// above 85 is Red whatever the fraction is — a 95 % fixture would pass with the pace path
+    /// completely broken. 60 % is Orange absolutely (orangeAt 50) and would be Green if a bogus
+    /// fraction were applied, so the assertion actually discriminates.</summary>
+    [Fact]
+    public void Enumerate_MonthlyLimitResettingBeyondItsPeriod_PacesAbsolute()
+    {
+        var limit = new ScopedLimit("Spend control", null, 60, TScoped.AddDays(31), true)
+            { Period = ScopedPeriod.Monthly };
+        var snapshot = new UsageSnapshot(TScoped, null, null, [limit]);
+        var settings = new Settings { PaceColors = true };
+
+        var value = Assert.Single(UsageValues.Enumerate(snapshot, settings, TScoped));
+        Assert.Equal(Severity.Orange, value.Severity);
+    }
+
+    /// <summary>The companion case: a reset inside the period does pace, so the test above is
+    /// measuring the fallback and not merely the absence of pacing everywhere.</summary>
+    [Fact]
+    public void Enumerate_MonthlyLimitResettingInsideItsPeriod_Paces()
+    {
+        // 60 % used with 29 of 30 days elapsed is ahead of pace, not behind it.
+        var limit = new ScopedLimit("Spend control", null, 60, TScoped.AddDays(1), true)
+            { Period = ScopedPeriod.Monthly };
+        var snapshot = new UsageSnapshot(TScoped, null, null, [limit]);
+
+        var value = Assert.Single(
+            UsageValues.Enumerate(snapshot, new Settings { PaceColors = true }, TScoped));
+        Assert.Equal(Severity.Green, value.Severity);
+    }
 }

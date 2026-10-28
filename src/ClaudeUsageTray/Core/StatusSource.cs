@@ -1,8 +1,8 @@
 namespace ClaudeUsageTray.Core;
 
 /// <summary>One public status page the tray may watch. Everything that differs between pages is a
-/// field here rather than a branch at the call site — <see cref="RaisesBadge"/> in particular, so
-/// "an OpenAI outage never marks the tray icon" is a value a test can assert.</summary>
+/// field here rather than a branch at the call site — <see cref="BadgeFor"/> in particular, so
+/// which provider's icons a page marks is a value a test can assert.</summary>
 /// <param name="Id">The settings.json token. Lower-case ASCII.</param>
 /// <param name="EnabledByDefault">Watched when settings carry no entry for this source.</param>
 /// <param name="DefaultComponents">Watch filter used when settings carry no list for this source.
@@ -13,9 +13,14 @@ public sealed record StatusSource(
     string SummaryUrl,
     string PageUrl,
     string PageLabel,
-    bool RaisesBadge,
+    UsageProvider? BadgeFor,
     bool EnabledByDefault,
-    IReadOnlyList<string> DefaultComponents);
+    IReadOnlyList<string> DefaultComponents)
+{
+    /// <summary>Whether this page's disruptions mark the given provider's icons. Was an absolute
+    /// bool while one provider had icons; with two, the question always names a target.</summary>
+    public bool RaisesBadgeFor(UsageProvider provider) => BadgeFor == provider;
+}
 
 /// <summary>A source paired with its current state, as the popup and the tooltip consume it, so
 /// neither reaches back into <see cref="Settings"/>.</summary>
@@ -33,7 +38,7 @@ public static class StatusSourceRegistry
         SummaryUrl: "https://status.claude.com/api/v2/summary.json",
         PageUrl: "https://status.claude.com",
         PageLabel: "status.claude.com",
-        RaisesBadge: true,
+        BadgeFor: UsageProvider.Claude,
         EnabledByDefault: true,
         // All six of Claude's components matter to this app; the field exists for symmetry.
         DefaultComponents: []);
@@ -44,7 +49,9 @@ public static class StatusSourceRegistry
         SummaryUrl: "https://status.openai.com/api/v2/summary.json",
         PageUrl: "https://status.openai.com",
         PageLabel: "status.openai.com",
-        RaisesBadge: false,
+        // Marks the Codex icons. This was RaisesBadge: false only because no Codex icon
+        // existed to mark; status belongs to a provider rather than to the tray at large.
+        BadgeFor: UsageProvider.Codex,
         EnabledByDefault: false,
         // 25 components span products a Codex user does not use (Sora, Ads API, FedRAMP, …).
         // "codex" alone matches Codex API, Codex Web, and Codex in ChatGPT Desktop.

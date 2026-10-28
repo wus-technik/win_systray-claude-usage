@@ -85,7 +85,10 @@ public static class ThresholdRules
 /// an empty list means watch every component.</summary>
 public sealed class StatusSourceSettings
 {
-    public bool Enabled { get; set; }
+    /// <summary>Null means never decided: the registry default applies and may still change. An
+    /// explicit true or false is the user's answer. This distinction must survive normalization,
+    /// which runs on Save as well as Load.</summary>
+    public bool? Enabled { get; set; }
     /// <summary>Toast when this source's relevant state flips. Defaults on: whoever enabled a page
     /// did it to hear about its outages. Independent of Enabled so an off/on cycle keeps the choice.</summary>
     public bool Notify { get; set; } = true;
@@ -179,6 +182,13 @@ public sealed class Settings
     [JsonConverter(typeof(TolerantUsageNotificationsConverter))]
     public UsageNotificationSettings UsageNotifications { get; set; } = new();
 
+    /// <summary>A second usage-notification block with no consumer yet. It exists so the
+    /// per-provider selector in UsageNotificationRules is exercised by a test rather than only by
+    /// the provider that arrives in the next plan. Not serialized: no settings key, no dialog
+    /// control, no migration.</summary>
+    [JsonIgnore]
+    public UsageNotificationSettings SecondaryNotificationsForTest { get; set; } = new();
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -248,7 +258,8 @@ public sealed class Settings
             sources[source.Id] = entry is null
                 ? new StatusSourceSettings
                 {
-                    Enabled = source.EnabledByDefault,      // Claude on, OpenAI off
+                    // An invented entry records no decision. Persisting EnabledByDefault here
+                    // would make the registry default permanent on the first Save.
                     Components = [.. source.DefaultComponents],
                 }
                 : new StatusSourceSettings
@@ -270,7 +281,8 @@ public sealed class Settings
         var result = new List<(StatusSource, IReadOnlyList<string>)>();
         foreach (var source in StatusSourceRegistry.All)
         {
-            if (StatusSources.TryGetValue(source.Id, out var entry) && entry is { Enabled: true })
+            if (!StatusSources.TryGetValue(source.Id, out var entry) || entry is null) continue;
+            if (entry.Enabled ?? source.EnabledByDefault)
                 result.Add((source, entry.Components ?? []));
         }
         return result;

@@ -409,4 +409,44 @@ public class SettingsTests : IDisposable
         Assert.Equal(42, s.StalenessMinutes);                                      // unrelated settings survive
         Assert.Equal(["claude"], s.EnabledSources().Select(e => e.Source.Id));      // back to the default, on
     }
+
+    /// <summary>An entry without an enabled key remains undecided after Save as well as Load.</summary>
+    [Fact]
+    public void Save_KeepsAnUndecidedSourceUndecided()
+    {
+        var path = PathFor("undecided.json");
+        File.WriteAllText(path, """{ "statusSources": { "openai": { "components": ["codex"] } } }""");
+        var loaded = Settings.Load(path);
+        Assert.Null(loaded.StatusSources["openai"]!.Enabled);
+        loaded.Save(path);
+        Assert.Null(Settings.Load(path).StatusSources["openai"]!.Enabled);
+    }
+
+    /// <summary>An explicit opt-out survives just as faithfully as no decision.</summary>
+    [Fact]
+    public void Save_KeepsAnExplicitOptOut()
+    {
+        var path = PathFor("opt-out.json");
+        File.WriteAllText(path, """{ "statusSources": { "openai": { "enabled": false } } }""");
+        var loaded = Settings.Load(path);
+        Assert.False(loaded.StatusSources["openai"]!.Enabled);
+        loaded.Save(path);
+        Assert.False(Settings.Load(path).StatusSources["openai"]!.Enabled);
+    }
+
+    [Fact]
+    public void EnabledSources_ResolvesUndecidedAgainstTheRegistryDefault()
+    {
+        var settings = new Settings
+        {
+            StatusSources = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["claude"] = new StatusSourceSettings { Enabled = null },
+                ["openai"] = new StatusSourceSettings { Enabled = null },
+            },
+        };
+        var ids = settings.EnabledSources().Select(e => e.Source.Id).ToList();
+        Assert.Contains("claude", ids);
+        Assert.DoesNotContain("openai", ids);
+    }
 }

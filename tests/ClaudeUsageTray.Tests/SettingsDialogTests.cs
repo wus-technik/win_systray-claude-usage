@@ -912,4 +912,16 @@ public class SettingsDialogTests : IDisposable
 
         Assert.Equal(new[] { "reset", "cancel", "save" }, walked);
     }
+
+    /// <summary>Saving unrelated settings must not make a status-default decision.</summary>
+    [Fact]
+    public void UntouchedSave_KeepsStatusSourcesUndecided()
+    {
+        Settings? saved = null;
+        var dialog = Dialog(new Settings(), save: edited => { saved = edited; return true; });
+        Button(dialog, "save").PerformClick();
+        Assert.NotNull(saved);
+        Assert.Null(saved.StatusSources["openai"]!.Enabled);
+        Assert.Null(saved.StatusSources["claude"]!.Enabled);
+    }
 }

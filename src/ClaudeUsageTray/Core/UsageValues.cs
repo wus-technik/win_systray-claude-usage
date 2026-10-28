@@ -46,10 +46,11 @@ public static class UsageValues
                 usage.Origin == ResetOrigin.Inferred ? null : fraction));
     }
 
-    /// <summary>Scoped limits are weekly, whatever model or surface they are scoped to.</summary>
+    /// <summary>A scoped limit paces over its own window, not over a fixed week: a monthly cap
+    /// compared against seven days would read as wildly ahead of pace all month.</summary>
     public static Severity ScopedSeverity(ScopedLimit limit, Settings settings, DateTimeOffset now)
         => SeverityRules.ForSettings(settings, limit.Percent,
-            TimeMarker.ElapsedFraction(limit.ResetsAt, SevenDayPeriod, now));
+            TimeMarker.ElapsedFraction(limit.ResetsAt, ScopedPeriods.Length(limit.Period), now));
 
     /// <summary>Credits prefer the payload's own severity: it can encode account state — a spend cap
     /// already reached — that a percentage cannot express. Only when the payload says nothing do the
@@ -79,7 +80,8 @@ public static class UsageValues
             // Scoped limits and credits never carry an inferred reset: only the desktop reader
             // assigns Inferred, and it emits neither.
             var severity = ScopedSeverity(limit, settings, now);
-            values.Add(new(limit.Label, $"{limit.Label} weekly", limit.Percent, severity, limit.ResetsAt, severity));
+            values.Add(new(limit.Label, $"{limit.Label} {ScopedPeriods.Word(limit.Period)}",
+                limit.Percent, severity, limit.ResetsAt, severity));
         }
         if (snapshot.Credits is { } credits)
         {

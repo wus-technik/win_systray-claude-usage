@@ -37,7 +37,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void NullStatusIsNotAReading_ThenDegradedIsABaseline()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         Assert.Null(Single(rules.OnStatus([View(Claude, null)], new Settings())));
         Assert.Null(Single(rules.OnStatus([View(Claude, Down(Claude))], new Settings())));
     }
@@ -45,7 +45,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void LaunchingIntoADegradedPageIsSilent_RecoveryThenNotifies()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(Claude, Down(Claude))], new Settings());
         var recovered = Single(rules.OnStatus([View(Claude, Ok(Claude))], new Settings()));
         Assert.NotNull(recovered);
@@ -58,7 +58,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void GoingDownNamesTheIncidentsInThePagesOwnWords()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(Claude, Ok(Claude))], new Settings());
         var down = Single(rules.OnStatus([View(Claude, Down(Claude,
             incidents: [Incident("Elevated errors on Claude Code", "Claude Code"), Incident("Login issues")]))], new Settings()));
@@ -70,7 +70,7 @@ public class NotificationRulesStatusTests
     public void WithoutIncidents_ComponentsWithTheirStatusesAreTheBody()
     {
         // The OpenAI shape: no incidents array, only component statuses.
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(OpenAi, Ok(OpenAi), "codex")], new Settings());
         var down = Single(rules.OnStatus([View(OpenAi, Down(OpenAi, "minor",
             components: [new("Codex API", "partial_outage"), new("Sora", "major_outage")]), "codex")], new Settings()));
@@ -80,7 +80,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void UnclassifiableDisruption_FallsBackToTheBanner()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(OpenAi, Ok(OpenAi), "codex")], new Settings());
         var down = Single(rules.OnStatus([View(OpenAi, Down(OpenAi), "codex")], new Settings()));
         Assert.NotNull(down);   // IsRelevant fails towards visible
@@ -90,7 +90,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void DegradedToDifferentlyDegradedIsSilent()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(Claude, Ok(Claude))], new Settings());
         rules.OnStatus([View(Claude, Down(Claude, incidents: [Incident("A")]))], new Settings());
         Assert.Null(Single(rules.OnStatus([View(Claude, Down(Claude, "critical", [Incident("A"), Incident("B")]))], new Settings())));
@@ -99,7 +99,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void OutsideTheWatchFilterIsSilent_InsideNotifies()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(OpenAi, Ok(OpenAi), "codex")], new Settings());
         Assert.Null(Single(rules.OnStatus([View(OpenAi, Down(OpenAi, components: [new("Sora", "major_outage")]), "codex")], new Settings())));
         Assert.NotNull(Single(rules.OnStatus([View(OpenAi, Down(OpenAi, components: [new("Sora", "major_outage"), new("Codex Web", "degraded_performance")]), "codex")], new Settings())));
@@ -108,7 +108,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void RecoveryOfTheWatchedPart_WhilePageStillDegraded_DoesNotClaimAllClear()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(OpenAi, Ok(OpenAi), "codex")], new Settings());
         rules.OnStatus([View(OpenAi, Down(OpenAi, components: [new("Codex API", "partial_outage"), new("Sora", "major_outage")]), "codex")], new Settings());
         var partial = Single(rules.OnStatus([View(OpenAi, Down(OpenAi, components: [new("Sora", "major_outage")]), "codex")], new Settings()));
@@ -121,7 +121,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void SourcesAreIndependent()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         var settings = new Settings();
         rules.OnStatus([View(Claude, Ok(Claude)), View(OpenAi, Ok(OpenAi))], settings);
         var outcomes = rules.OnStatus([View(Claude, Down(Claude)), View(OpenAi, Ok(OpenAi))], settings);
@@ -134,7 +134,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void DisabledSourceDropsItsState_ReenablingRebaselines()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(Claude, Ok(Claude)), View(OpenAi, Ok(OpenAi))], new Settings());
         rules.OnStatus([View(Claude, Ok(Claude))], new Settings());                       // openai disabled
         Assert.Null(Single(rules.OnStatus([View(Claude, Ok(Claude)), View(OpenAi, Down(OpenAi))], new Settings())));
@@ -143,7 +143,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void WideningTheFilterOverAnUnchangedPayloadIsSilent()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         var sora = Down(OpenAi, components: [new("Sora", "major_outage")]);
         rules.OnStatus([View(OpenAi, Ok(OpenAi), "codex")], new Settings());
         rules.OnStatus([View(OpenAi, sora, "codex")], new Settings());              // not relevant
@@ -155,7 +155,7 @@ public class NotificationRulesStatusTests
     [Fact]
     public void ChangingNotifyRebaselines_AndOffSuppressesOnlyTheOutput()
     {
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         rules.OnStatus([View(Claude, Ok(Claude))], WithNotify("claude", true));
         var off = rules.OnStatus([View(Claude, Down(Claude))], WithNotify("claude", false));   // notify changed → rebaseline
         Assert.Null(Single(off));
@@ -182,7 +182,7 @@ public class NotificationRulesStatusTests
         Assert.Equal("", StatusDetail.Summary(Down(OpenAi), ["codex"]));
     }
 
-    /// <summary>A badge change caused solely by a filter edit is silent: BadgeDegraded() is
+    /// <summary>A badge change caused solely by a filter edit is silent: BadgeDegraded(UsageProvider.Claude) is
     /// recomputed from scratch on the same Render() while OnStatus rebaselines on its settings
     /// fingerprint and returns nothing. The user's own edit is not news. Same class as the
     /// paced-badge/absolute-toast divergence already recorded in the repo.</summary>
@@ -190,7 +190,7 @@ public class NotificationRulesStatusTests
     public void WideningTheFilterRebaselinesInsteadOfToasting()
     {
         var cowork = Down(Claude, "minor", components: [new PlatformComponent("Claude Cowork", "degraded_performance")]);
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         var settings = WithNotify("claude", notify: true);
 
         rules.OnStatus([View(Claude, cowork, "Claude Code")], settings);          // baseline: not relevant
@@ -206,7 +206,7 @@ public class NotificationRulesStatusTests
     public void NotifyOff_WithAMatchingFilter_SuppressesOnlyTheToast()
     {
         var cowork = Down(Claude, "minor", components: [new PlatformComponent("Claude Cowork", "degraded_performance")]);
-        var rules = new NotificationRules();
+        var rules = new StatusNotificationRules();
         var settings = WithNotify("claude", notify: false);
 
         rules.OnStatus([View(Claude, Ok(Claude), "Cowork")], settings);           // baseline: healthy
@@ -215,6 +215,6 @@ public class NotificationRulesStatusTests
         var monitor = new StatusMonitor([(Claude, ["Cowork"])]);
         monitor.TakeDue(T0);
         monitor.Accept("claude", cowork, T0);
-        Assert.True(monitor.BadgeDegraded());
+        Assert.True(monitor.BadgeDegraded(UsageProvider.Claude));
     }
 }

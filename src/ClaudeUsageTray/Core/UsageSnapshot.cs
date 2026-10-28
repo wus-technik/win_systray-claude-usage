@@ -21,12 +21,17 @@ public sealed record WindowUsage(int Percent, DateTimeOffset? ResetsAt)
     public ResetOrigin Origin { get; init; } = ResetOrigin.Reported;
 }
 
-/// <summary>One scoped weekly limit from limits[] — scoped to a model (e.g. Fable), a surface, or
+/// <summary>One scoped limit from limits[] — scoped to a model (e.g. Fable), a surface, or
 /// both. Label is payload-derived and doubles as the dedup key. IsActive is retained but never
 /// filtered on: the observed payload has a real 90% weekly limit flagged is_active:false, so the
 /// flag cannot mean "does not apply".</summary>
 public sealed record ScopedLimit(
-    string Label, string? ModelId, int Percent, DateTimeOffset? ResetsAt, bool IsActive);
+    string Label, string? ModelId, int Percent, DateTimeOffset? ResetsAt, bool IsActive)
+{
+    /// <summary>The limit's window. Weekly by default so every Claude construction site keeps its
+    /// meaning untouched; a provider whose limit resets monthly sets it explicitly.</summary>
+    public ScopedPeriod Period { get; init; } = ScopedPeriod.Weekly;
+}
 
 /// <summary>An amount in the payload's own money encoding: minor units + ISO code + exponent.</summary>
 public sealed record Money(long AmountMinor, string Currency, int Exponent);

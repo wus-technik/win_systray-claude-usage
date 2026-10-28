@@ -22,6 +22,12 @@ public sealed class SettingsDialog : Form
     private const double PreviewElapsedFraction = 0.5;
 
     private readonly Settings _draft;
+    // Null is no decision. Saving an unrelated page preserves it; even a checkbox toggled back to
+    // its initial value is a deliberate answer, so track edits rather than just comparing values.
+    private bool? _loadedClaudeEnabled;
+    private bool? _loadedOpenAiEnabled;
+    private bool _claudeWatchEdited;
+    private bool _openAiWatchEdited;
     private readonly bool _canRunAtStartup;
     private readonly Func<Settings, bool> _save;
 
@@ -614,7 +620,9 @@ public sealed class SettingsDialog : Form
         // false here only covers a dialog constructed straight from a file, as the tests do.
         _betaReleases.Checked = source.UseBetaReleases ?? false;
         var claude = source.StatusSources.GetValueOrDefault("claude");
-        _watchClaude.Checked = claude?.Enabled ?? true;
+        _loadedClaudeEnabled = claude?.Enabled;
+        _claudeWatchEdited = false;
+        _watchClaude.Checked = claude?.Enabled ?? StatusSourceRegistry.Claude.EnabledByDefault;
         _claudeComponents.Text = ComponentFilter.Format(
             claude?.Components ?? [.. StatusSourceRegistry.Claude.DefaultComponents]);
         _claudeComponents.Enabled = _watchClaude.Checked;
@@ -622,7 +630,9 @@ public sealed class SettingsDialog : Form
         _notifyClaude.Checked = claude?.Notify ?? true;
         _notifyClaude.Enabled = _watchClaude.Checked;
         var openAi = source.StatusSources.GetValueOrDefault("openai");
-        _watchOpenAi.Checked = openAi?.Enabled ?? false;
+        _loadedOpenAiEnabled = openAi?.Enabled;
+        _openAiWatchEdited = false;
+        _watchOpenAi.Checked = openAi?.Enabled ?? StatusSourceRegistry.OpenAi.EnabledByDefault;
         _openAiComponents.Text = ComponentFilter.Format(
             openAi?.Components ?? [.. StatusSourceRegistry.OpenAi.DefaultComponents]);
         _openAiComponents.Enabled = _watchOpenAi.Checked;
@@ -669,12 +679,14 @@ public sealed class SettingsDialog : Form
         _paceColors.CheckedChanged += (_, _) => SyncRangesAndPreview();
         _watchClaude.CheckedChanged += (_, _) =>
         {
+            if (!_suspendSync) _claudeWatchEdited = true;
             _claudeComponents.Enabled = _watchClaude.Checked;
             _claudeComponentsHint.Enabled = _watchClaude.Checked;
             _notifyClaude.Enabled = _watchClaude.Checked;   // disabled, not unchecked: the choice survives
         };
         _watchOpenAi.CheckedChanged += (_, _) =>
         {
+            if (!_suspendSync) _openAiWatchEdited = true;
             _openAiComponents.Enabled = _watchOpenAi.Checked;
             _openAiComponentsHint.Enabled = _watchOpenAi.Checked;
             _notifyOpenAi.Enabled = _watchOpenAi.Checked;   // disabled, not unchecked: the choice survives
@@ -726,7 +738,7 @@ public sealed class SettingsDialog : Form
         // back on does not lose either.
         draft.StatusSources["openai"] = new StatusSourceSettings
         {
-            Enabled = _watchOpenAi.Checked,
+            Enabled = _openAiWatchEdited ? _watchOpenAi.Checked : _loadedOpenAiEnabled,
             Notify = _notifyOpenAi.Checked,
             Components = [.. ComponentFilter.Parse(_openAiComponents.Text)],
         };
@@ -734,7 +746,7 @@ public sealed class SettingsDialog : Form
         // unchecked, so turning the source back on does not lose either.
         draft.StatusSources["claude"] = new StatusSourceSettings
         {
-            Enabled = _watchClaude.Checked,
+            Enabled = _claudeWatchEdited ? _watchClaude.Checked : _loadedClaudeEnabled,
             Notify = _notifyClaude.Checked,
             Components = [.. ComponentFilter.Parse(_claudeComponents.Text)],
         };

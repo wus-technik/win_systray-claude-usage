@@ -87,7 +87,7 @@ reference would go stale.
   - `StatusNotificationRules()` and `.OnStatus(IReadOnlyList<SourceView>, Settings)` → `IReadOnlyList<NotificationOutcome>`
   - `NotificationTags.OpenPopupArgument`, `NotificationTags.Usage(string provider)`, `NotificationTags.Status(string sourceId)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs`:
 
@@ -155,12 +155,12 @@ The test needs a second `UsageNotificationSettings` on `Settings` to select. Add
     public UsageNotificationSettings SecondaryNotificationsForTest { get; set; } = new();
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRulesUsageTests`
 Expected: FAIL — `UsageNotificationRules` does not exist (CS0246), `ForClaude` undefined.
 
-- [ ] **Step 3: Create the shared notification types**
+- [x] **Step 3: Create the shared notification types**
 
 Create `src/ClaudeUsageTray/Core/Notification.cs`:
 
@@ -198,7 +198,7 @@ public static class NotificationTags
 }
 ```
 
-- [ ] **Step 4: Create the usage half as its own type**
+- [x] **Step 4: Create the usage half as its own type**
 
 Create `src/ClaudeUsageTray/Core/UsageNotificationRules.cs` with the entire contents of the current
 `NotificationRules.cs`, minus the three types now in `Notification.cs`, and with these changes:
@@ -281,7 +281,7 @@ And make `Compose` an instance method so it can stamp this provider's slot:
     }
 ```
 
-- [ ] **Step 5: Create the status half as its own type**
+- [x] **Step 5: Create the status half as its own type**
 
 Create `src/ClaudeUsageTray/Core/StatusNotificationRules.cs` with the contents of
 `NotificationRules.Status.cs`, changing only the declaration and the two shared references:
@@ -304,7 +304,7 @@ public sealed class StatusNotificationRules
 Then delete `src/ClaudeUsageTray/Core/NotificationRules.cs` and
 `src/ClaudeUsageTray/Core/NotificationRules.Status.cs`.
 
-- [ ] **Step 6: Update TrayApp**
+- [x] **Step 6: Update TrayApp**
 
 In `src/ClaudeUsageTray/Tray/TrayApp.cs`, replace line 47:
 
@@ -324,7 +324,7 @@ Lines 202 and 267 become `_usageNotifications.NoteLiveOutcome(...)`. In `Notify`
         foreach (var outcome in _statusNotifications.OnStatus(_statusMonitor.Sources(), _settings))
 ```
 
-- [ ] **Step 7: Update the existing tests mechanically**
+- [x] **Step 7: Update the existing tests mechanically**
 
 `NotificationRulesUsageTests.cs` references the deleted type in **five** distinct ways, not just the
 constructor. Grep `NotificationRules` in that file and fix every hit:
@@ -353,17 +353,17 @@ it alone here; it is Task 3's problem.
 The 92 `OnUsage(` call sites need no change — that is why the selector is a constructor parameter
 and not a method parameter.
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [x] **Step 8: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRules`
 Expected: PASS — all usage and status tests, plus the three new ones. German output: `Bestanden!`
 
-- [ ] **Step 9: Run the whole suite for regressions**
+- [x] **Step 9: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS. `SmokeTests` constructs real UI and is the one most likely to catch a missed call site.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Notification.cs src/ClaudeUsageTray/Core/UsageNotificationRules.cs src/ClaudeUsageTray/Core/StatusNotificationRules.cs src/ClaudeUsageTray/Core/Settings.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs tests/ClaudeUsageTray.Tests/NotificationRulesStatusTests.cs
@@ -406,7 +406,7 @@ absolute-only for its first day rather than going wrong — that is the Review F
   - `ScopedPeriods.Word(ScopedPeriod)` → `string`
   - `ScopedLimit.Period` → `ScopedPeriod` (init-only, default `Weekly`)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/ScopedPeriodTests.cs`:
 
@@ -498,12 +498,12 @@ Add to `tests/ClaudeUsageTray.Tests/UsageValuesTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~ScopedPeriodTests`
 Expected: FAIL — `ScopedPeriod` does not exist (CS0246).
 
-- [ ] **Step 3: Create the period type**
+- [x] **Step 3: Create the period type**
 
 Create `src/ClaudeUsageTray/Core/ScopedPeriod.cs`:
 
@@ -537,7 +537,7 @@ public static class ScopedPeriods
 }
 ```
 
-- [ ] **Step 4: Add the period to `ScopedLimit`**
+- [x] **Step 4: Add the period to `ScopedLimit`**
 
 In `src/ClaudeUsageTray/Core/UsageSnapshot.cs`, extend the record. An init property rather than a
 positional member, for the reason `WindowUsage.Origin` already records: a positional one would change
@@ -553,7 +553,7 @@ public sealed record ScopedLimit(
 }
 ```
 
-- [ ] **Step 5: Derive severity and caption from the period**
+- [x] **Step 5: Derive severity and caption from the period**
 
 In `src/ClaudeUsageTray/Core/UsageValues.cs`:
 
@@ -573,7 +573,7 @@ and in `Enumerate`:
                 limit.Percent, severity, limit.ResetsAt, severity));
 ```
 
-- [ ] **Step 6: Derive the popup row from the period**
+- [x] **Step 6: Derive the popup row from the period**
 
 In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, in `AddScopedRow`:
 
@@ -587,18 +587,18 @@ In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, in `AddScopedRow`:
 Also update the method's doc comment: it currently begins "A model- or surface-scoped weekly limit."
 Drop the word "weekly" — the period is now the limit's own.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~ScopedPeriodTests|FullyQualifiedName~UsageValuesTests"`
 Expected: PASS
 
-- [ ] **Step 8: Run the whole suite for regressions**
+- [x] **Step 8: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS. Existing scoped-limit tests assert the word "weekly" and must still pass unchanged —
 that is the point of the default.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/ScopedPeriod.cs src/ClaudeUsageTray/Core/UsageSnapshot.cs src/ClaudeUsageTray/Core/UsageValues.cs src/ClaudeUsageTray/Tray/UsagePopup.cs tests/ClaudeUsageTray.Tests/ScopedPeriodTests.cs tests/ClaudeUsageTray.Tests/UsageValuesTests.cs
@@ -651,7 +651,7 @@ work from that list rather than from this one.
   - `StatusDetail.TooltipSuffix(IReadOnlyList<SourceView>, DateTimeOffset, int, int, UsageProvider)` → `string`
   - `StatusDetail.ComposeTooltip(string, IReadOnlyList<SourceView>, DateTimeOffset, int, UsageProvider, int)` → `string`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/ClaudeUsageTray.Tests/StatusSourceRegistryTests.cs`:
 
@@ -734,12 +734,12 @@ The injection method is `Accept(string sourceId, PlatformStatus? result, DateTim
 `Apply` — and `StatusMonitorTests` already has helpers for the `TakeDue`-then-`Accept` dance. Reuse
 them if they fit rather than repeating the two calls.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter "FullyQualifiedName~StatusSourceRegistryTests|FullyQualifiedName~StatusDetailTooltipTests|FullyQualifiedName~StatusMonitorTests"`
 Expected: FAIL — `UsageProvider` does not exist; `BadgeFor` undefined.
 
-- [ ] **Step 3: Create the provider enum**
+- [x] **Step 3: Create the provider enum**
 
 Create `src/ClaudeUsageTray/Core/UsageProvider.cs`:
 
@@ -751,7 +751,7 @@ namespace ClaudeUsageTray.Core;
 public enum UsageProvider { Claude, Codex }
 ```
 
-- [ ] **Step 4: Replace the flag on `StatusSource`**
+- [x] **Step 4: Replace the flag on `StatusSource`**
 
 In `src/ClaudeUsageTray/Core/StatusSource.cs`, replace `bool RaisesBadge` with:
 
@@ -787,7 +787,7 @@ reason it changed:
         BadgeFor: UsageProvider.Codex,
 ```
 
-- [ ] **Step 5: Scope the four consumers to a target**
+- [x] **Step 5: Scope the four consumers to a target**
 
 `src/ClaudeUsageTray/Core/StatusMonitor.cs`:
 
@@ -850,12 +850,12 @@ and the reserved-budget sentence names the target.
 Both `WithStatus` call sites inside `Apply` pass `UsageProvider.Claude`, and `Render`'s
 `_statusMonitor.BadgeDegraded()` becomes `BadgeDegraded(UsageProvider.Claude)`.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~StatusSource|FullyQualifiedName~StatusDetail|FullyQualifiedName~StatusMonitor"`
 Expected: PASS
 
-- [ ] **Step 7: Run the whole suite for regressions**
+- [x] **Step 7: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS — but **not unchanged**. Every existing caller of the four scoped methods needs
@@ -867,7 +867,7 @@ suffix and drop OpenAI's, exactly as before.
 A default value on `target` would have avoided the churn and is deliberately not used: it would let
 a future call site silently ask the Claude question about a Codex icon.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageProvider.cs src/ClaudeUsageTray/Core/StatusSource.cs src/ClaudeUsageTray/Core/StatusMonitor.cs src/ClaudeUsageTray/Core/StatusDetailRows.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/StatusSourceRegistryTests.cs tests/ClaudeUsageTray.Tests/StatusDetailTooltipTests.cs tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs
@@ -899,7 +899,7 @@ default later — including the next plan — cannot.
 - Produces: `StatusSourceSettings.Enabled` → `bool?` (null = never decided).
   `Settings.EnabledSources()` keeps its signature and resolves null against `EnabledByDefault`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
 
@@ -971,13 +971,13 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
 Match the existing temp-file idiom in `SettingsTests.cs` if it already has one, rather than
 introducing a second style.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: FAIL at runtime, not at compile time — `Assert.Null` takes `object?`, so a non-nullable
 `bool` boxes happily and the assertion simply fails on the boxed `false` that normalization wrote.
 
-- [ ] **Step 3: Make `Enabled` nullable**
+- [x] **Step 3: Make `Enabled` nullable**
 
 In `src/ClaudeUsageTray/Core/Settings.cs`:
 
@@ -988,7 +988,7 @@ In `src/ClaudeUsageTray/Core/Settings.cs`:
     public bool? Enabled { get; set; }
 ```
 
-- [ ] **Step 4: Stop normalization from inventing a decision**
+- [x] **Step 4: Stop normalization from inventing a decision**
 
 In `NormalizeFields`, the invented entry leaves `Enabled` null, and a surviving entry keeps whatever
 it had:
@@ -1020,7 +1020,7 @@ better than hiding it — but it will appear in `settings.json` and should not b
 prefer the key omitted, add `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` to the
 property and add a test for the omission.
 
-- [ ] **Step 5: Resolve null where the answer is needed**
+- [x] **Step 5: Resolve null where the answer is needed**
 
 ```csharp
     public IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)> EnabledSources()
@@ -1036,7 +1036,7 @@ property and add a test for the omission.
     }
 ```
 
-- [ ] **Step 6: Update the dialog**
+- [x] **Step 6: Update the dialog**
 
 `src/ClaudeUsageTray/Tray/SettingsDialog.cs` reads these at lines 617 and 625:
 
@@ -1086,17 +1086,17 @@ Apply the same to the Claude source at lines 735-740. Add a test to `SettingsDia
 the dialog, presses OK without touching anything, and asserts the OpenAI entry's `Enabled` is still
 null.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsTests|FullyQualifiedName~SettingsDialog"`
 Expected: PASS
 
-- [ ] **Step 8: Run the whole suite for regressions**
+- [x] **Step 8: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -1112,6 +1112,10 @@ point the answer is needed."
 ---
 
 ### Task 5: `BadgeShape` through both render paths
+
+Execution note: the implementation landed before the coordinated red compile, so the isolated
+Task 5 failing-test run was missed. Its red-run checkbox remains unchecked; the new tests passed
+after implementation, and both 16 px silhouettes were visually inspected.
 
 Silhouette is the only channel left to identify a provider: colour is severity, the digit is the
 window, arc direction is 5h vs 7d, dimming is staleness, and the bottom-right corner is the
@@ -1134,7 +1138,7 @@ for it.
   - `IconRenderer.Render(char, int, Severity, bool, bool, int, bool = false, BadgeShape = BadgeShape.Disc)` → `Icon`
   - `IconRenderer.RenderNeutral(int, bool = false, BadgeShape = BadgeShape.Disc)` → `Icon`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/ClaudeUsageTray.Tests/IconRendererTests.cs`:
 
@@ -1217,7 +1221,7 @@ the radius for the reason in Step 6, recompute this band first.
 Run: `dotnet test --filter FullyQualifiedName~IconRendererTests`
 Expected: FAIL — `BadgeShape` does not exist (CS0246).
 
-- [ ] **Step 3: Create the shape type**
+- [x] **Step 3: Create the shape type**
 
 Create `src/ClaudeUsageTray/Tray/BadgeShape.cs`:
 
@@ -1232,7 +1236,7 @@ namespace ClaudeUsageTray.Tray;
 public enum BadgeShape { Disc, RoundedSquare }
 ```
 
-- [ ] **Step 4: Thread the shape through the renderer**
+- [x] **Step 4: Thread the shape through the renderer**
 
 In `src/ClaudeUsageTray/Tray/IconRenderer.cs`, extend both public entry points and `Draw`, keeping
 `shape` last and optional so every existing call site is untouched:
@@ -1326,25 +1330,25 @@ In `Draw`, replace the three ellipse calls with a path, and clip the wedge to it
     }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~IconRendererTests`
 Expected: PASS. If a corner probe fails, print the actual alpha at that pixel and move the probe
 inward — do not relax the assertion to `>= 0`.
 
-- [ ] **Step 6: Eyeball the real thing once**
+- [x] **Step 6: Eyeball the real thing once**
 
 Per CLAUDE.md, drawing is verified by sampling, but the corner radius is an aesthetic judgement a
 sample cannot make. Write a throwaway file under `tests/ClaudeUsageTray.Tests/` that renders both
 shapes at 16 px and scales them 6x with `InterpolationMode.NearestNeighbor` into a PNG, look at it,
 then delete the file. It is a verification artifact, not a test.
 
-- [ ] **Step 7: Run the whole suite for regressions**
+- [x] **Step 7: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS. Every existing `IconRenderer` call omits `shape` and must behave identically.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/BadgeShape.cs src/ClaudeUsageTray/Tray/IconRenderer.cs tests/ClaudeUsageTray.Tests/IconRendererTests.cs
@@ -1381,7 +1385,7 @@ the screen" — is not a test: a dozen scoped rows come to roughly 650 px (a cap
 overflow assertion passes before the change and proves nothing, and the scrolling assertion fails
 after it. Passing the cap in makes both deterministic and independent of the machine's resolution.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/UsagePopupHeightTests.cs`:
 
@@ -1465,13 +1469,13 @@ public class UsagePopupHeightTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopupHeightTests`
 Expected: FAIL — the constructor has no `maxHeight` parameter (CS1739), and there is no control named
 `scrollHost`.
 
-- [ ] **Step 3: Host the layout in a scrollable panel**
+- [x] **Step 3: Host the layout in a scrollable panel**
 
 Two WinForms traps to design around, both of which an earlier draft of this plan fell into:
 
@@ -1550,18 +1554,18 @@ height and push the popup off-screen. Change it to measure the real size:
         var size = AutoSize ? PreferredSize : Size;
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopupHeightTests`
 Expected: PASS
 
-- [ ] **Step 5: Look at both cases once**
+- [x] **Step 5: Look at both cases once**
 
 Render a crowded popup and a two-window popup to PNG with `Control.DrawToBitmap`, per CLAUDE.md, and
 confirm the short one is unchanged and the tall one scrolls without a clipped last row. Delete the
 probe file afterwards.
 
-- [ ] **Step 6: Run the whole suite for regressions**
+- [x] **Step 6: Run the whole suite for regressions**
 
 Run: `dotnet test`
 Expected: PASS. `UsagePopupWidthTests`, `UsagePopupSourceTests` and `UsagePopupStatusTests` all
@@ -1569,7 +1573,7 @@ construct real popups and will catch a layout regression; note that
 `SettingsDialogTests.EveryPageFitsWithoutScrolling` is known to fail only under parallel
 solution-level runs — rerun the app project alone before treating it as a real failure.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs tests/ClaudeUsageTray.Tests/UsagePopupHeightTests.cs
@@ -1583,6 +1587,27 @@ of the screen the cursor is on."
 
 ---
 
+## Execution record — 2026-10-28
+
+Implemented with three subagents, followed by cross-review and centralized integration checks.
+All six tasks are included in one consolidated implementation commit because they share settings,
+tray wiring and popup files. The isolated Task 5 red run was missed, as recorded in that section.
+
+- Validation: 848 app tests passed with test collections serialized, plus all 153 setup-stub tests.
+  The first parallel app run was stopped after it appeared stalled; the sequential retry completed
+  in about 4.4 minutes. Existing UI tests take about two seconds each on this machine.
+- The sequential retry used `dotnet test tests/ClaudeUsageTray.Tests --no-restore -m:1
+  --disable-build-servers --settings artifacts/prerequisites.runsettings`, with the following
+  temporary runsettings: `<RunSettings><xUnit><MaxParallelThreads>1</MaxParallelThreads>
+  <ParallelizeTestCollections>false</ParallelizeTestCollections></xUnit></RunSettings>`.
+  `DOTNET_CLI_HOME` pointed to `artifacts/dotnet-home` to keep SDK initialization inside the workspace.
+- Dialog watch checkboxes track edits, including toggling back to the initial value, so the existing
+  explicit-opt-out test remains unchanged while untouched saves keep null.
+- Visual checks covered both badge shapes at 16 px, the short popup, and the tall popup at both ends
+  of its scroll range. They caught width clipping when AutoSize was disabled: the clamp now preserves
+  the measured width and adds the vertical scrollbar gutter. A regression test pins that behavior.
+- Existing popup status tests now traverse the new host recursively; their assertions are unchanged.
+  Temporary drawing probes were removed. `git diff --check` passed.
 ## Done when
 
 - `dotnet test` passes. Two existing assertions are *expected* to change, and only these two:

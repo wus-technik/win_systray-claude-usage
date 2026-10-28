@@ -22,8 +22,7 @@ public class UsagePopupStatusTests : IDisposable
         var popup = new UsagePopup(new DisplayChoice(null, Stale: false), new Settings(), Now, sources);
         _open.Add(popup);
         popup.CreateControl();
-        return popup.Controls.Cast<Control>()
-            .SelectMany(c => c.Controls.Cast<Control>())
+        return Descendants(popup)
             .OfType<Label>()
             .Where(l => l is not LinkLabel)
             .ToList();
@@ -34,11 +33,14 @@ public class UsagePopupStatusTests : IDisposable
         var popup = new UsagePopup(new DisplayChoice(null, Stale: false), new Settings(), Now, sources);
         _open.Add(popup);
         popup.CreateControl();
-        return popup.Controls.Cast<Control>()
-            .SelectMany(c => c.Controls.Cast<Control>())
+        return Descendants(popup)
             .OfType<LinkLabel>()
             .ToList();
     }
+
+    // The layout sits inside the scroll host; inspect content independently of that container.
+    private static IEnumerable<Control> Descendants(Control parent)
+        => parent.Controls.Cast<Control>().SelectMany(c => new[] { c }.Concat(Descendants(c)));
 
     private static SourceView View(StatusSource source, string indicator, string description,
         PlatformComponent[]? components = null, IReadOnlyList<string>? filter = null)
