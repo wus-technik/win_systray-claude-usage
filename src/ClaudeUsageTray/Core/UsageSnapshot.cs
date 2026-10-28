@@ -1,8 +1,8 @@
 namespace ClaudeUsageTray.Core;
 
 /// <summary>Which program produced the data. The cache file and the live API are both Claude
-/// Code's; the distinction the user sees is Claude Code versus the Claude Desktop history.</summary>
-public enum UsageSource { ClaudeCode, DesktopHistory }
+/// Code's; Claude Desktop history and Codex have independent pipelines and freshness.</summary>
+public enum UsageSource { ClaudeCode, DesktopHistory, Codex }
 
 /// <summary>Where a window's ResetsAt came from. Reported is the payload's own value (Claude Code,
 /// cache or live). Inferred is reconstructed from the Claude Desktop history and is marked in the UI
