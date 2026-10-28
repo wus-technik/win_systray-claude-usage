@@ -10,6 +10,8 @@ written for the person deciding whether to install it — not for the person who
 
 ## [Unreleased]
 
+## [0.7.4-beta.1] - 2026-10-28
+
 ### Added
 
 - **Codex usage alongside Claude.** Signing in to the Codex CLI automatically adds rounded-square
@@ -19,8 +21,6 @@ written for the person deciding whether to install it — not for the person who
   level, with `codexDisplayMode` and `codexNotifications` keys for settings-file users.
 - **OpenAI status follows Codex.** Monitoring starts once Codex data exists unless explicitly
   disabled, and OpenAI outages mark only Codex badges. Claude outages continue to mark Claude.
-
-<!-- A release needs its own version section; build/changelog-section.ps1 requires it. -->
 
 ## [0.7.3] - 2026-09-11
 
