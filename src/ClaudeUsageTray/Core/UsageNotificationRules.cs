@@ -17,10 +17,13 @@ namespace ClaudeUsageTray.Core;
 /// any toast and so leaving red must not retract someone else's.
 /// </summary>
 public sealed class UsageNotificationRules(
-    string tag, Func<Settings, UsageNotificationSettings> notifications)
+    string tag, Func<Settings, UsageNotificationSettings> notifications, string titlePrefix = "")
 {
     public static UsageNotificationRules ForClaude()
         => new(NotificationTags.Usage("claude"), s => s.UsageNotifications);
+
+    public static UsageNotificationRules ForCodex()
+        => new(NotificationTags.Usage("codex"), s => s.CodexNotifications, "Codex ");
 
     /// <summary>This provider's Action Center slot. The retraction site reads it from here rather
     /// than from a constant, so emission and retraction cannot drift.</summary>
@@ -219,7 +222,9 @@ public sealed class UsageNotificationRules(
         }
 
         var worst = crossed.Any(v => Verdict(v) == Severity.Red) ? "red" : "orange";
-        var title = crossed.Count == 1 ? $"Usage limit {worst}" : $"Usage limits {worst}";
+        var title = crossed.Count == 1
+            ? $"{titlePrefix}usage limit {worst}" : $"{titlePrefix}usage limits {worst}";
+        title = char.ToUpperInvariant(title[0]) + title[1..];
 
         DateTimeOffset? latestReset = crossed.Select(v => v.ResetsAt).Where(r => r is { } d && d > now).Max();
         var expires = latestReset ?? now + DefaultUsageToastLifetime;
@@ -227,12 +232,16 @@ public sealed class UsageNotificationRules(
     }
 
     /// <summary>Log-safe: the fixed keys by name, scoped limits by count only — their labels are the
-    /// account-specific model names fetch.log must never carry.</summary>
+    /// account-specific model names fetch.log must never carry. Codex spend control is a fixed
+    /// app-supplied label and may be named with its percentage.</summary>
     private static string Describe(IReadOnlyList<UsageValue> values)
     {
         var fixedKeys = values.Where(v => v.Key is "5h" or "7d" or "credits").Select(v => $"{v.Key}={v.Percent}%");
-        int scoped = values.Count(v => v.Key is not ("5h" or "7d" or "credits"));
+        int scoped = values.Count(v => v.Key is not ("5h" or "7d" or "credits")
+            && v.Key != CodexUsageJson.SpendControlLabel);
         var parts = fixedKeys.ToList();
+        parts.AddRange(values.Where(v => v.Key == CodexUsageJson.SpendControlLabel)
+            .Select(v => $"spend={v.Percent}%"));
         if (scoped > 0) parts.Add($"scoped={scoped}");
         return string.Join(" ", parts);
     }
