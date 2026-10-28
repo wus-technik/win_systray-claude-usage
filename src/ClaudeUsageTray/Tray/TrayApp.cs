@@ -27,6 +27,20 @@ public sealed class TrayApp : ApplicationContext
     private string? _rejectedToken;
     private string _lastFetchStatus = "no fetch yet";
 
+    // Codex usage polling. Fully independent of the Claude path: its own scheduler, its own
+    // single-flight flag, its own last-known-good snapshot. One provider's failure must never null,
+    // clobber or delay the other's data. Driven by the same 5 min _poll tick, gated to 10 min by the
+    // scheduler's floor — Claude's 20/h was tuned against a measured ceiling this endpoint does not
+    // share, so Codex starts at half the rate and is revisited only if observed 429s justify it.
+    private readonly FetchScheduler _codexScheduler = new(maxPerHour: 6, floor: TimeSpan.FromMinutes(10));
+    private readonly CodexAvailability _codexAvailability = new();
+    private readonly string _codexAuthPath = CodexPath.AuthFile(CodexPath.HomeFromEnvironment());
+    private UsageSnapshot? _codexSnapshot;
+    private bool _codexFetchInFlight;
+    private bool _codexFetchFailed;
+    private string? _codexRejectedToken;
+    private string _codexFetchStatus = "no fetch yet";
+
     // Platform status polling: 60 s steady state (StatusPage's recommended cadence). All per-source
     // budget, backoff, single-flight and last-known-good state lives in the unit-tested
     // StatusMonitor. Fully independent of the usage path: a status failure can never null, clobber,
@@ -45,6 +59,7 @@ public sealed class TrayApp : ApplicationContext
     // handed. One call site, in Render(): every path that changes data ends there, and the rules
     // make re-evaluating unchanged data a no-op, so a single site cannot be forgotten.
     private readonly UsageNotificationRules _usageNotifications = UsageNotificationRules.ForClaude();
+    private readonly UsageNotificationRules _codexNotifications = UsageNotificationRules.ForCodex();
     private readonly StatusNotificationRules _statusNotifications = new();
     private readonly ToastPresenter _toasts;
 
@@ -53,6 +68,8 @@ public sealed class TrayApp : ApplicationContext
 
     private NotifyIcon? _iconFive;
     private NotifyIcon? _iconSeven;
+    private NotifyIcon? _codexIconFive;
+    private NotifyIcon? _codexIconSeven;
     // Two sources, one shown: Claude Code's (cache + live, merged by SnapshotPrecedence) and the
     // Claude Desktop history. SourceSelection picks between them at render time; each slot keeps its
     // last-known-good value until its own allowance runs out, so a transient read failure never
@@ -74,7 +91,7 @@ public sealed class TrayApp : ApplicationContext
         _isVelopackInstalled = isVelopackInstalled;
         _sync.CreateControl();
         _menu = BuildMenu();
-        _statusMonitor = new StatusMonitor(settings.EnabledSources());
+        _statusMonitor = new StatusMonitor(settings.EnabledSources(_codexAvailability.State));
         _toasts = new ToastPresenter(AppInfo.Aumid, _sync, ShowPopup,
             message => _log.Write(DateTimeOffset.UtcNow, message));
 
@@ -100,7 +117,7 @@ public sealed class TrayApp : ApplicationContext
         _retry.Tick += (_, _) => { _retry.Stop(); Refresh(); };
         _tick.Tick += (_, _) => Refresh(); // update relative text and recover from missed watcher events
         _tick.Start();
-        _poll.Tick += (_, _) => StartApiFetch();
+        _poll.Tick += (_, _) => { StartApiFetch(); StartCodexFetch(); };
         _poll.Start();
         _statusPoll.Tick += (_, _) => StartStatusFetch();
         _statusPoll.Start();
@@ -108,6 +125,7 @@ public sealed class TrayApp : ApplicationContext
         ApplyDisplayMode();
         Refresh();
         StartApiFetch();
+        StartCodexFetch();
         StartStatusFetch();
     }
 
@@ -268,6 +286,109 @@ public sealed class TrayApp : ApplicationContext
         if (_usageNotifications.NoteLiveOutcome(outcome) is { } line) _log.Write(now, line);
     }
 
+    private void StartCodexFetch()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_codexFetchInFlight) return;
+        if (!_codexScheduler.CanFetch(now)) return;   // silent: the 10 min floor skips most ticks
+
+        var auth = CodexCredentialsReader.TryRead(_codexAuthPath, now);
+        if (auth is null)
+        {
+            _codexFetchFailed = true;
+            var status = CodexCredentialsReader.Status(_codexAuthPath, now);
+            if (status == CredentialStatus.Missing)
+            {
+                _codexAvailability.NoteCredentialsMissing();
+                _codexFetchStatus = "no Codex credentials";
+            }
+            else
+            {
+                _codexAvailability.NoteCredentialsUnreadable();
+                _codexFetchStatus = "Codex credentials unusable";
+            }
+            ArmCodex(LiveOutcome.NoToken, now);
+            ApplyDisplayMode();
+            _statusMonitor.ApplyEnabled(_settings.EnabledSources(_codexAvailability.State));
+            Render();
+            return;
+        }
+
+        _codexAvailability.NoteCredentialsReadable();
+        if (auth.AccessToken == _codexRejectedToken) return;
+
+        _codexFetchInFlight = true;
+        _codexScheduler.RecordAttempt(now);
+        _log.Write(now, "codex: attempt: GET codex/usage");
+        _ = Task.Run(async () =>
+        {
+            var result = await CodexUsageApiClient.FetchAsync(Http, auth, DateTimeOffset.UtcNow,
+                CancellationToken.None).ConfigureAwait(false);
+            try { _sync.BeginInvoke((Action)(() => OnCodexFetchCompleted(result, auth.AccessToken))); }
+            catch (InvalidOperationException) { /* app shutting down */ }
+        });
+    }
+
+    private void OnCodexFetchCompleted(UsageFetchResult result, string token)
+    {
+        _codexFetchInFlight = false;
+        _codexFetchFailed = result.Snapshot is null;
+        var now = DateTimeOffset.UtcNow;
+
+        if (result.Snapshot is not null)
+        {
+            _codexScheduler.RecordSuccess();
+            _codexRejectedToken = null;
+            _codexSnapshot = result.Snapshot;
+            _codexAvailability.NoteSnapshot();
+            ArmCodex(LiveOutcome.Snapshot, now);
+
+            string five = result.Snapshot.FiveHour?.Percent.ToString() ?? "-";
+            string seven = result.Snapshot.SevenDay?.Percent.ToString() ?? "-";
+            // Percentages only. The payload also carries an email, a user id, an account id and the
+            // spend cap's money amounts; none of them is ever written here.
+            string spend = result.Snapshot.ScopedLimits
+                .FirstOrDefault(l => l.Label == CodexUsageJson.SpendControlLabel) is { } s
+                ? $" spend={s.Percent}%" : "";
+            _codexFetchStatus = $"live · 5h={five}% 7d={seven}%";
+            _log.Write(now, $"codex: 200 ok: 5h={five}% 7d={seven}%{spend}");
+        }
+        else if (result.Unauthorized)
+        {
+            _codexRejectedToken = token;
+            ArmCodex(LiveOutcome.Unauthorized, now);
+            _codexAvailability.NoteFetchFailure();
+            _codexFetchStatus = "Codex token rejected (401/403)";
+            _log.Write(now, "codex: 401/403 unauthorized: token rejected; waiting for Codex to refresh it");
+        }
+        else if (result.RateLimited)
+        {
+            _codexScheduler.RecordRateLimited(now, result.RetryAfter);
+            ArmCodex(LiveOutcome.RateLimited, now);
+            _codexAvailability.NoteFetchFailure();
+            string ra = result.RetryAfter is { } r ? $"{(int)r.TotalSeconds}s" : "none";
+            _codexFetchStatus = "Codex rate-limited (429)";
+            _log.Write(now, $"codex: 429 rate-limited: retry-after={ra}");
+        }
+        else
+        {
+            _codexScheduler.RecordFailure(now);
+            ArmCodex(LiveOutcome.Failed, now);
+            _codexAvailability.NoteFetchFailure();
+            _codexFetchStatus = "Codex network/other error";
+            _log.Write(now, "codex: network/other error: no response");
+        }
+
+        ApplyDisplayMode();
+        _statusMonitor.ApplyEnabled(_settings.EnabledSources(_codexAvailability.State));
+        Render();
+    }
+
+    private void ArmCodex(LiveOutcome outcome, DateTimeOffset now)
+    {
+        if (_codexNotifications.NoteLiveOutcome(outcome) is { } line) _log.Write(now, $"codex: {line}");
+    }
+
     // ---- platform status polling ----
 
     private void StartStatusFetch()
@@ -329,15 +450,30 @@ public sealed class TrayApp : ApplicationContext
         var now = DateTimeOffset.UtcNow;
         var choice = SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings);
         LogSourceChange(choice, now);
-        Notify(choice, now);
-        bool degraded = _statusMonitor.BadgeDegraded(UsageProvider.Claude);
+        var codexChoice = CodexDisplay.Choose(_codexSnapshot, now, _settings, _codexFetchFailed);
+        Notify(choice, codexChoice, now);
+        bool claudeDegraded = _statusMonitor.BadgeDegraded(UsageProvider.Claude);
+        bool codexDegraded = _statusMonitor.BadgeDegraded(UsageProvider.Codex);
+
+        string claudeNoData = _noDataText ?? NoDataReason.Default;
 
         if (_iconFive is not null)
             Apply(_iconFive, '5', choice, choice.Snapshot?.FiveHour, "5h", UsageValues.FiveHourPeriod,
-                clockwise: true, degraded, now);
+                clockwise: true, claudeDegraded, now, UsageProvider.Claude, BadgeShape.Disc, claudeNoData);
         if (_iconSeven is not null)
             Apply(_iconSeven, '7', choice, choice.Snapshot?.SevenDay, "7d", UsageValues.SevenDayPeriod,
-                clockwise: false, degraded, now);
+                clockwise: false, claudeDegraded, now, UsageProvider.Claude, BadgeShape.Disc, claudeNoData);
+
+        // Codex tooltips are prefixed, because four badges in a tray need to say which account they
+        // are about — and they carry OpenAI's outage suffix, never Claude's.
+        if (_codexIconFive is not null)
+            Apply(_codexIconFive, '5', codexChoice, codexChoice.Snapshot?.FiveHour, "Codex 5h",
+                UsageValues.FiveHourPeriod, clockwise: true, codexDegraded, now,
+                UsageProvider.Codex, BadgeShape.RoundedSquare, _codexFetchStatus);
+        if (_codexIconSeven is not null)
+            Apply(_codexIconSeven, '7', codexChoice, codexChoice.Snapshot?.SevenDay, "Codex 7d",
+                UsageValues.SevenDayPeriod, clockwise: false, codexDegraded, now,
+                UsageProvider.Codex, BadgeShape.RoundedSquare, _codexFetchStatus);
 
         _updatedItem.Text = _settingsSaveFailed
             ? "Settings could not be saved"
@@ -353,12 +489,20 @@ public sealed class TrayApp : ApplicationContext
     /// required, not merely tolerated: pace severity moves with the clock, so a value crossing into
     /// red because the window elapsed is a real crossing, and the rules' hysteresis is what stops the
     /// same clock from flapping it.</summary>
-    private void Notify(DisplayChoice choice, DateTimeOffset now)
+    private void Notify(DisplayChoice choice, DisplayChoice codexChoice, DateTimeOffset now)
     {
         var usage = _usageNotifications.OnUsage(choice, _settings, now);
         foreach (var line in usage.Log) _log.Write(now, line);
         if (usage.RemoveUsageToast) _toasts.Remove(_usageNotifications.Tag);
         if (usage.Notification is { } toast) _toasts.Show(toast);
+
+        if (_codexAvailability.State == CodexState.Available)
+        {
+            var codex = _codexNotifications.OnUsage(codexChoice, _settings, now);
+            foreach (var line in codex.Log) _log.Write(now, $"codex: {line}");
+            if (codex.RemoveUsageToast) _toasts.Remove(_codexNotifications.Tag);
+            if (codex.Notification is { } codexToast) _toasts.Show(codexToast);
+        }
 
         foreach (var outcome in _statusNotifications.OnStatus(_statusMonitor.Sources(), _settings))
         {
@@ -368,32 +512,30 @@ public sealed class TrayApp : ApplicationContext
     }
 
     private void Apply(NotifyIcon icon, char digit, DisplayChoice choice, WindowUsage? usage, string label,
-        TimeSpan period, bool clockwise, bool degraded, DateTimeOffset now)
+        TimeSpan period, bool clockwise, bool degraded, DateTimeOffset now,
+        UsageProvider provider, BadgeShape shape, string noDataFallback)
     {
         int size = IconRenderer.SystemTrayIconSize();
         var old = icon.Icon;
 
         if (usage is null)
         {
-            icon.Icon = IconRenderer.RenderNeutral(size, warning: degraded);
-            // A snapshot can exist and still be missing just this window (e.g. a desktop sample
-            // without fh) -- that is a per-window gap, not the general no-data sentence.
-            string noDataText = choice.Snapshot is not null
-                ? $"{label}: no data"
-                : _noDataText ?? NoDataReason.Default;
-            icon.Text = WithStatus(noDataText, now, UsageProvider.Claude);
+            icon.Icon = IconRenderer.RenderNeutral(size, warning: degraded, shape: shape);
+            // A snapshot can exist and still be missing just this window -- that is a per-window
+            // gap, not the general no-data sentence. The general sentence is the caller's, because
+            // Claude's reason ("no credentials file") is not Codex's.
+            string noDataText = choice.Snapshot is not null ? $"{label}: no data" : noDataFallback;
+            icon.Text = WithStatus(noDataText, now, provider);
         }
         else
         {
-            // No hysteresis: fetches are minutes apart and the ratio only moves fast early in a
-            // period, which SeverityRules' dead zone already keeps out of the badge.
             var elapsed = TimeMarker.ElapsedFraction(ResetPresentation.EffectiveResetsAt(usage, now), period, now);
             var severity = UsageValues.WindowSeverity(usage, period, _settings, now);
             icon.Icon = IconRenderer.Render(digit, usage.Percent, severity, clockwise,
-                dimmed: choice.Stale, size, warning: degraded);
+                dimmed: choice.Stale, size, warning: degraded, shape: shape);
             var tooltip = UsageTooltip.Build(label, usage, elapsed, _settings.PaceColors,
                 _settings.Thresholds.Red, choice.Stale, choice.Snapshot?.Source, choice.Snapshot?.FetchedAt, now);
-            icon.Text = WithStatus(tooltip, now, UsageProvider.Claude);
+            icon.Text = WithStatus(tooltip, now, provider);
         }
         old?.Dispose();
     }
@@ -436,14 +578,20 @@ public sealed class TrayApp : ApplicationContext
 
     private void ApplyDisplayMode()
     {
-        bool wantFive = _settings.DisplayMode is DisplayMode.FiveHour or DisplayMode.Both;
-        bool wantSeven = _settings.DisplayMode is DisplayMode.SevenDay or DisplayMode.Both;
+        var claude = IconPresence.ForClaude(_settings.DisplayMode);
+        var codex = IconPresence.ForCodex(_codexAvailability.State, _settings.CodexDisplayMode);
 
-        // Best effort only: Windows decides notification-area order and overflow placement.
-        if (!wantFive) DisposeNotifyIcon(ref _iconFive);
-        if (!wantSeven) DisposeNotifyIcon(ref _iconSeven);
-        if (wantFive && _iconFive is null) _iconFive = CreateIcon();
-        if (wantSeven && _iconSeven is null) _iconSeven = CreateIcon();
+        // Best effort only: Windows decides notification-area order and overflow placement. That is
+        // also why the provider is encoded in the badge's silhouette rather than in its position.
+        if (!claude.Five) DisposeNotifyIcon(ref _iconFive);
+        if (!claude.Seven) DisposeNotifyIcon(ref _iconSeven);
+        if (!codex.Five) DisposeNotifyIcon(ref _codexIconFive);
+        if (!codex.Seven) DisposeNotifyIcon(ref _codexIconSeven);
+
+        if (claude.Five && _iconFive is null) _iconFive = CreateIcon();
+        if (claude.Seven && _iconSeven is null) _iconSeven = CreateIcon();
+        if (codex.Five && _codexIconFive is null) _codexIconFive = CreateIcon();
+        if (codex.Seven && _codexIconSeven is null) _codexIconSeven = CreateIcon();
     }
 
     private NotifyIcon CreateIcon()
@@ -459,7 +607,10 @@ public sealed class TrayApp : ApplicationContext
         if (_popup is { IsDisposed: false }) { _popup.Close(); }
         var now = DateTimeOffset.UtcNow;
         _popup = new UsagePopup(SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, now, _settings),
-            _settings, now, _statusMonitor.Sources(), _lastFetchStatus, _noDataText);
+            _settings, now, _statusMonitor.Sources(), _lastFetchStatus, _noDataText,
+            codex: _codexAvailability.State == CodexState.Available
+                ? CodexDisplay.Choose(_codexSnapshot, now, _settings, _codexFetchFailed) : null,
+            codexFetchStatus: _codexFetchStatus);
         _popup.Show();
         _popup.Activate();
     }
@@ -471,11 +622,13 @@ public sealed class TrayApp : ApplicationContext
         _updatedItem = new ToolStripMenuItem("Updated —") { Enabled = false };
 
         // Disabled until a staged update is downloaded (see Render()). ApplyUpdatesAndRestart
-        // terminates the process, so both NotifyIcons must be disposed first to avoid ghost icons.
+        // terminates the process, so all NotifyIcons must be disposed first to avoid ghost icons.
         _restartToUpdateItem = new ToolStripMenuItem("Restart to update", null, (_, _) =>
         {
             DisposeNotifyIcon(ref _iconFive);
             DisposeNotifyIcon(ref _iconSeven);
+            DisposeNotifyIcon(ref _codexIconFive);
+            DisposeNotifyIcon(ref _codexIconSeven);
             try { UpdateCheck.RestartToApply(); }
             catch { /* Velopack apply failed; recover below */ }
             // Still running means the apply did not restart the process (no-op on stale
@@ -487,7 +640,7 @@ public sealed class TrayApp : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add(new ToolStripMenuItem("Settings…", null, (_, _) => ShowSettings()));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => { Refresh(); StartApiFetch(); StartStatusFetch(); }));
+        menu.Items.Add(new ToolStripMenuItem("Refresh now", null, (_, _) => { Refresh(); StartApiFetch(); StartCodexFetch(); StartStatusFetch(); }));
         menu.Items.Add(_restartToUpdateItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_updatedItem);
@@ -497,6 +650,8 @@ public sealed class TrayApp : ApplicationContext
         {
             DisposeNotifyIcon(ref _iconFive);
             DisposeNotifyIcon(ref _iconSeven);
+            DisposeNotifyIcon(ref _codexIconFive);
+            DisposeNotifyIcon(ref _codexIconSeven);
             ExitThread();
         }));
         return menu;
@@ -519,7 +674,7 @@ public sealed class TrayApp : ApplicationContext
             ApplySettings, BuildUpdateOptions(),
             SourceSelection.Choose(_cliSnapshot, _desktopSnapshot, DateTimeOffset.UtcNow, _settings)
                 .Snapshot?.Source == UsageSource.DesktopHistory,
-            _componentNames);
+            _componentNames, codexState: _codexAvailability.State);
         _settingsDialog.FormClosed += (_, _) => _settingsDialog = null;
         _settingsDialog.Show();
         _settingsDialog.Activate();
@@ -544,10 +699,12 @@ public sealed class TrayApp : ApplicationContext
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes,
         RestartToApply: () =>
         {
-            // ApplyUpdatesAndRestart terminates the process, so both NotifyIcons must go first or the
+            // ApplyUpdatesAndRestart terminates the process, so all NotifyIcons must go first or the
             // tray keeps ghost entries until the user mouses over them.
             DisposeNotifyIcon(ref _iconFive);
             DisposeNotifyIcon(ref _iconSeven);
+            DisposeNotifyIcon(ref _codexIconFive);
+            DisposeNotifyIcon(ref _codexIconSeven);
             try { UpdateCheck.RestartToApply(); }
             catch { /* apply failed; recover below */ }
             // Still here means the apply did not restart us. Put the icons back so the app stays
@@ -579,6 +736,8 @@ public sealed class TrayApp : ApplicationContext
         }
 
         _settings.DisplayMode = edited.DisplayMode;
+        _settings.CodexDisplayMode = edited.CodexDisplayMode;
+        _settings.CodexNotifications = edited.CodexNotifications;
         _settings.Thresholds = edited.Thresholds;
         _settings.StalenessMinutes = edited.StalenessMinutes;
         _settings.DesktopStalenessHours = edited.DesktopStalenessHours;
@@ -594,7 +753,7 @@ public sealed class TrayApp : ApplicationContext
 
         PersistSettings();
         ApplyDisplayMode();
-        _statusMonitor.ApplyEnabled(_settings.EnabledSources());
+        _statusMonitor.ApplyEnabled(_settings.EnabledSources(_codexAvailability.State));
         StartStatusFetch();
         Refresh();
         // The popup closes when it loses focus, so it is normally already gone by the time Save is
@@ -640,6 +799,8 @@ public sealed class TrayApp : ApplicationContext
         {
             DisposeNotifyIcon(ref _iconFive);
             DisposeNotifyIcon(ref _iconSeven);
+            DisposeNotifyIcon(ref _codexIconFive);
+            DisposeNotifyIcon(ref _codexIconSeven);
             _settingsDialog?.Dispose();
             _watcher?.Dispose();
             _debounce.Dispose();
