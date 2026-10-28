@@ -602,10 +602,10 @@ public class NotificationRulesUsageTests
         {
             PaceColors = false,
             UsageNotifications = new UsageNotificationSettings { Enabled = true, Level = NotifyLevel.Orange },
-            SecondaryNotificationsForTest = new UsageNotificationSettings { Enabled = true, Level = NotifyLevel.Red },
+            CodexNotifications = new UsageNotificationSettings { Enabled = true, Level = NotifyLevel.Red },
         };
 
-        var other = new UsageNotificationRules("usage:other", s => s.SecondaryNotificationsForTest);
+        var other = new UsageNotificationRules("usage:other", s => s.CodexNotifications);
         other.NoteLiveOutcome(LiveOutcome.Snapshot);
         other.OnUsage(Fresh(Snap(10, T0)), settings, T0);
 
@@ -644,14 +644,14 @@ public class NotificationRulesUsageTests
     [Fact]
     public void OnUsage_ReadsTheProvidersSettingsAfterSettingsReplacement()
     {
-        var rules = new UsageNotificationRules("usage:other", s => s.SecondaryNotificationsForTest);
+        var rules = new UsageNotificationRules("usage:other", s => s.CodexNotifications);
         var before = Absolute(enabled: false);
-        before.SecondaryNotificationsForTest.Enabled = false;
+        before.CodexNotifications.Enabled = false;
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules.OnUsage(Fresh(Snap(10, T0)), before, T0);
 
         var after = Absolute(enabled: false);
-        after.SecondaryNotificationsForTest.Enabled = true;
+        after.CodexNotifications.Enabled = true;
 
         Assert.NotNull(rules.OnUsage(Fresh(Snap(95, T0)), after, T0).Notification);
     }
