@@ -14,6 +14,15 @@ with a newly signed-in token. The canned HTTP test pins the literal URL to preve
 
 ## Problem
 
+### Window mapping correction — 2026-10-29
+
+The positional mapping below was based on one account and does not hold for weekly-only accounts:
+`primary_window` can carry the seven-day limit while `secondary_window` is null. Map each window
+by `limit_window_seconds`: 18000 to `FiveHour`, 604800 to `SevenDay`, irrespective of position.
+Only an absent duration retains the original positional fallback for compatibility. Explicitly
+unsupported or malformed durations are omitted rather than labelled and paced as the wrong period.
+If both windows map to the same period, keep the first usable reading. Missing windows remain null.
+
 The tray shows Claude's limits. The same machine runs OpenAI Codex against a second set of limits
 that fill independently and are invisible until Codex refuses a turn. The question this design
 answers is whether Codex exposes the same metrics the app is built around, and what the smallest
@@ -144,7 +153,7 @@ side-effect-free.
   ExpiresAt)`, decoding `exp` from the JWT payload so an expired token is a known no-data reason
   rather than a 401 surprise. Read-only, swallows IO/JSON errors, returns null.
 - **`CodexUsageJson`** — `Parse(json, fetchedAt)` into the existing `UsageSnapshot`:
-  `primary_window` → `FiveHour`, `secondary_window` → `SevenDay`, and
+  windows map by duration (see the 2026-10-29 correction above), and
   `spend_control.individual_limit` → a `ScopedLimit("Spend control", …)` carrying its own period
   (see Spend control below). **Credits do not map across** (see below).
 - **`CodexDisplay`** — Codex has one source, so this is `SourceSelection`'s one-line counterpart:

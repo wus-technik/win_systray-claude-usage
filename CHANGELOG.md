@@ -10,6 +10,13 @@ written for the person deciding whether to install it — not for the person who
 
 ## [Unreleased]
 
+## [0.7.5-beta.1] - 2026-10-29
+
+### Fixed
+
+- **Weekly-only Codex limits appear under 7-day.** Window durations now determine the label and
+  pace calculation, so a weekly limit supplied as the primary window no longer appears as 5-hour.
+
 ## [0.7.4-beta.1] - 2026-10-28
 
 ### Added

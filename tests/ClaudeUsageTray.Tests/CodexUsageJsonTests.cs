@@ -48,6 +48,57 @@ public class CodexUsageJsonTests
     }
 
     [Fact]
+    public void Parse_WeeklyOnlyPrimaryWindow_IsSevenDay()
+    {
+        var snapshot = CodexUsageJson.Parse("""
+            { "rate_limit": {
+                "primary_window": { "used_percent": 3, "limit_window_seconds": 604800, "reset_at": 1792474516 },
+                "secondary_window": null
+              } }
+            """, Now);
+
+        Assert.Null(snapshot!.FiveHour);
+        Assert.Equal(3, snapshot.SevenDay!.Percent);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1792474516), snapshot.SevenDay.ResetsAt);
+        Assert.Equal("7d", Assert.Single(UsageValues.Enumerate(snapshot, new Settings(), Now)).Key);
+    }
+
+    [Fact]
+    public void Parse_ReversedWindows_MapByDuration()
+    {
+        var snapshot = CodexUsageJson.Parse("""
+            { "rate_limit": {
+                "primary_window": { "used_percent": 21, "limit_window_seconds": 604800 },
+                "secondary_window": { "used_percent": 42, "limit_window_seconds": 18000 }
+              } }
+            """, Now);
+
+        Assert.Equal(42, snapshot!.FiveHour!.Percent);
+        Assert.Equal(21, snapshot.SevenDay!.Percent);
+    }
+
+    [Theory]
+    [InlineData("86400")]
+    [InlineData("0")]
+    [InlineData("-18000")]
+    [InlineData("null")]
+    [InlineData("\"604800\"")]
+    [InlineData("18000.5")]
+    [InlineData("1e400")]
+    public void Parse_UnsupportedOrMalformedDuration_DropsOnlyThatWindow(string duration)
+    {
+        var snapshot = CodexUsageJson.Parse($$"""
+            { "rate_limit": {
+                "primary_window": { "used_percent": 42, "limit_window_seconds": {{duration}} },
+                "secondary_window": { "used_percent": 21, "limit_window_seconds": 604800 }
+              } }
+            """, Now);
+
+        Assert.Null(snapshot!.FiveHour);
+        Assert.Equal(21, snapshot.SevenDay!.Percent);
+    }
+
+    [Fact]
     public void Parse_ReadsSpendControlAsAMonthlyScopedLimit()
     {
         var limit = Assert.Single(CodexUsageJson.Parse(Full, Now)!.ScopedLimits);

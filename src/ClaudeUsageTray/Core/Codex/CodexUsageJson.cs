@@ -9,10 +9,10 @@ namespace ClaudeUsageTray.Core;
 /// Three deliberate omissions. **Credits produce no row**: the block carries has_credits, unlimited
 /// and a null balance — a capability flag, not a measurement — and CreditUsage needs a percentage,
 /// so a synthesised zero would draw a green 0 % bar, which is exactly the placeholder the display
-/// invariants forbid. **The windows map positionally**, primary → five-hour and secondary →
-/// seven-day: limit_window_seconds is not consulted, because the app has two window slots with
-/// fixed periods and dropping a window whose declared length changed would be worse than showing
-/// it. **Nothing throws**: any shape that is not an object with at least one usable figure is null.
+/// invariants forbid. **Windows map by duration**: primary can be a weekly-only limit. Only when
+/// limit_window_seconds is absent do primary and secondary fall back to five-hour and seven-day.
+/// Unsupported or malformed durations cannot use the app's fixed-period slots. **Nothing throws**:
+/// any shape that is not an object with at least one usable figure is null.
 /// </summary>
 public static class CodexUsageJson
 {
@@ -32,8 +32,8 @@ public static class CodexUsageJson
             if (doc.RootElement.TryGetProperty("rate_limit", out var rate)
                 && rate.ValueKind == JsonValueKind.Object)
             {
-                five = ReadWindow(rate, "primary_window");
-                seven = ReadWindow(rate, "secondary_window");
+                ReadWindow(rate, "primary_window", 18000, ref five, ref seven);
+                ReadWindow(rate, "secondary_window", 604800, ref five, ref seven);
             }
 
             var scoped = ReadSpendControl(doc.RootElement);
@@ -47,15 +47,24 @@ public static class CodexUsageJson
         catch (JsonException) { return null; }
     }
 
-    private static WindowUsage? ReadWindow(JsonElement rate, string name)
+    private static void ReadWindow(JsonElement rate, string name, int fallbackSeconds,
+        ref WindowUsage? five, ref WindowUsage? seven)
     {
         if (!rate.TryGetProperty(name, out var window) || window.ValueKind != JsonValueKind.Object)
-            return null;
+            return;
+
+        var seconds = fallbackSeconds;
+        if (window.TryGetProperty("limit_window_seconds", out var duration)
+            && (duration.ValueKind != JsonValueKind.Number || !duration.TryGetInt32(out seconds)))
+            return;
+
         if (!window.TryGetProperty("used_percent", out var percent)
             || percent.ValueKind != JsonValueKind.Number
-            || !TryPercent(percent, out var used)) return null;
+            || !TryPercent(percent, out var used)) return;
 
-        return new WindowUsage(used, ReadReset(window));
+        // Keep the first usable reading if a malformed payload repeats the same period.
+        if (seconds == 18000) five ??= new WindowUsage(used, ReadReset(window));
+        else if (seconds == 604800) seven ??= new WindowUsage(used, ReadReset(window));
     }
 
     /// <summary>The workspace spend cap, as a scoped limit with its own period. Its reset is a
