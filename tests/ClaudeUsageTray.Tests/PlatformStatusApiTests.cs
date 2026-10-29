@@ -37,7 +37,7 @@ public class PlatformStatusApiTests
     /// second endpoint-override overload existing purely for them.</summary>
     private static StatusSource TestSource(string id = "claude", bool raisesBadge = true)
         => new(id, id, $"https://status.{id}.test/api/v2/summary.json", $"https://status.{id}.test",
-            $"status.{id}.test", raisesBadge, raisesBadge, []);
+            $"status.{id}.test", raisesBadge ? UsageProvider.Claude : null, raisesBadge, []);
 
     private const string OpenAiShape = """
         {

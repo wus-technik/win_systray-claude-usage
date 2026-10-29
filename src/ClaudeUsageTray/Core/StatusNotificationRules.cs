@@ -1,9 +1,11 @@
 namespace ClaudeUsageTray.Core;
 
-public sealed partial class NotificationRules
+/// <summary>The platform-status half of notifications, split out from the usage half so a
+/// per-provider usage-rules instance cannot bring a second copy of this state with it: OnStatus
+/// iterates every source, and two instances would announce every outage twice. There is exactly one
+/// of these, whatever the provider count.</summary>
+public sealed class StatusNotificationRules
 {
-    public static string StatusTag(string sourceId) => "status:" + sourceId;
-
     /// <summary>Per-source memory. Relevant is the state being watched — IsRelevant under the watch
     /// filter, not Degraded — and Filter/Notify are what re-baselines it when they change.</summary>
     private sealed class SourceState
@@ -55,7 +57,7 @@ public sealed partial class NotificationRules
         bool filterChanged = !state.Filter.SequenceEqual(view.Filter, StringComparer.OrdinalIgnoreCase);
         if (filterChanged || state.Notify != notify)
         {
-            log.Add($"notify[{StatusTag(id)}]: {(filterChanged ? "filter change" : "notify change")}; rebaselining");
+            log.Add($"notify[{NotificationTags.Status(id)}]: {(filterChanged ? "filter change" : "notify change")}; rebaselining");
             state.Relevant = relevant;
             state.Filter = view.Filter;
             state.Notify = notify;
@@ -69,10 +71,10 @@ public sealed partial class NotificationRules
         var direction = relevant ? "degraded" : "recovered";
         if (!notify)
         {
-            log.Add($"notify[{StatusTag(id)}]: switched off; suppressed {direction}");
+            log.Add($"notify[{NotificationTags.Status(id)}]: switched off; suppressed {direction}");
             return new(null, log, false);
         }
-        log.Add($"notify[{StatusTag(id)}]: emitted {direction} (indicator={status.Indicator})");
+        log.Add($"notify[{NotificationTags.Status(id)}]: emitted {direction} (indicator={status.Indicator})");
         return new(notification, log, false);
     }
 
@@ -82,7 +84,7 @@ public sealed partial class NotificationRules
         var body = summary.Length > 0 ? summary
             : string.IsNullOrWhiteSpace(status.Description) ? status.Indicator : status.Description;
         return new Notification(StatusDetail.Header(source, status, relevant: true, stale: false), body,
-            OpenPopupArgument, StatusTag(source.Id), null);
+            NotificationTags.OpenPopupArgument, NotificationTags.Status(source.Id), null);
     }
 
     /// <summary>The watched disruption is over. The body is the popup's own header for this state,
@@ -92,5 +94,5 @@ public sealed partial class NotificationRules
     private static Notification Recovered(StatusSource source, PlatformStatus status)
         => new($"{source.DisplayName} status recovered",
             StatusDetail.Header(source, status, relevant: false, stale: false),
-            OpenPopupArgument, StatusTag(source.Id), null);
+            NotificationTags.OpenPopupArgument, NotificationTags.Status(source.Id), null);
 }

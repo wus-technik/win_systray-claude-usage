@@ -409,4 +409,194 @@ public class SettingsTests : IDisposable
         Assert.Equal(42, s.StalenessMinutes);                                      // unrelated settings survive
         Assert.Equal(["claude"], s.EnabledSources().Select(e => e.Source.Id));      // back to the default, on
     }
+
+    /// <summary>An entry without an enabled key remains undecided after Save as well as Load.</summary>
+    [Fact]
+    public void Save_KeepsAnUndecidedSourceUndecided()
+    {
+        var path = PathFor("undecided.json");
+        File.WriteAllText(path, """{ "statusSources": { "openai": { "components": ["codex"] } } }""");
+        var loaded = Settings.Load(path);
+        Assert.Null(loaded.StatusSources["openai"]!.Enabled);
+        loaded.Save(path);
+        Assert.Null(Settings.Load(path).StatusSources["openai"]!.Enabled);
+    }
+
+    /// <summary>An explicit opt-out survives just as faithfully as no decision.</summary>
+    [Fact]
+    public void Save_KeepsAnExplicitOptOut()
+    {
+        var path = PathFor("opt-out.json");
+        File.WriteAllText(path, """{ "statusSources": { "openai": { "enabled": false } } }""");
+        var loaded = Settings.Load(path);
+        Assert.False(loaded.StatusSources["openai"]!.Enabled);
+        loaded.Save(path);
+        Assert.False(Settings.Load(path).StatusSources["openai"]!.Enabled);
+    }
+
+    [Fact]
+    public void EnabledSources_ResolvesUndecidedAgainstTheRegistryDefault()
+    {
+        var settings = new Settings
+        {
+            StatusSources = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["claude"] = new StatusSourceSettings { Enabled = null },
+                ["openai"] = new StatusSourceSettings { Enabled = null },
+            },
+        };
+        var ids = settings.EnabledSources().Select(e => e.Source.Id).ToList();
+        Assert.Contains("claude", ids);
+        Assert.DoesNotContain("openai", ids);
+    }
+    [Fact]
+    public void CodexDisplayMode_DefaultsToBoth()
+        => Assert.Equal(DisplayMode.Both, new Settings().CodexDisplayMode);
+
+    [Fact]
+    public void CodexNotifications_DefaultToOnAtRed()
+    {
+        var settings = new Settings();
+        Assert.True(settings.CodexNotifications.Enabled);
+        Assert.Equal(NotifyLevel.Red, settings.CodexNotifications.Level);
+    }
+
+    [Fact]
+    public void Load_ReadsTheCodexKeys()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, """
+                { "codexDisplayMode": "fiveHour",
+                  "codexNotifications": { "enabled": false, "level": "orange" } }
+                """);
+
+            var settings = Settings.Load(path);
+            Assert.Equal(DisplayMode.FiveHour, settings.CodexDisplayMode);
+            Assert.False(settings.CodexNotifications.Enabled);
+            Assert.Equal(NotifyLevel.Orange, settings.CodexNotifications.Level);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>The tolerant converter applies here too: a typo'd level resets that level alone and
+    /// must not take the Claude block, the thresholds or the display mode down with it.</summary>
+    [Fact]
+    public void Load_WithABadCodexLevel_KeepsEverythingElse()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, """
+                { "thresholds": { "orange": 55, "red": 85 },
+                  "codexNotifications": { "enabled": false, "level": "purple" } }
+                """);
+
+            var settings = Settings.Load(path);
+            Assert.Equal(55, settings.Thresholds.Orange);
+            Assert.False(settings.CodexNotifications.Enabled);
+            Assert.Equal(NotifyLevel.Red, settings.CodexNotifications.Level);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>Round-trips, so a dialog save does not silently drop a key the dialog does not own.</summary>
+    [Fact]
+    public void Save_RoundTripsTheCodexKeys()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            var settings = new Settings
+            {
+                CodexDisplayMode = DisplayMode.SevenDay,
+                CodexNotifications = new UsageNotificationSettings { Enabled = false, Level = NotifyLevel.Orange },
+            };
+            settings.Save(path);
+
+            var again = Settings.Load(path);
+            Assert.Equal(DisplayMode.SevenDay, again.CodexDisplayMode);
+            Assert.False(again.CodexNotifications.Enabled);
+            Assert.Equal(NotifyLevel.Orange, again.CodexNotifications.Level);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>An OpenAI outage badge that nothing can draw on is not worth polling for; one that
+    /// can be drawn is worth having without configuration. So the registry default is overridden by
+    /// Codex being present — and only while the user has expressed no opinion.</summary>
+    [Fact]
+    public void EnabledSources_TurnsOpenAiOnWhenCodexIsAvailable()
+    {
+        var settings = new Settings
+        {
+            StatusSources = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["claude"] = new StatusSourceSettings { Enabled = null },
+                ["openai"] = new StatusSourceSettings { Enabled = null },
+            },
+        };
+
+        Assert.DoesNotContain("openai", settings.EnabledSources(CodexState.Unknown).Select(e => e.Source.Id));
+        Assert.Contains("openai", settings.EnabledSources(CodexState.Available).Select(e => e.Source.Id));
+    }
+
+    /// <summary>An explicit opt-out is never overridden, however much Codex is in use.</summary>
+    [Fact]
+    public void EnabledSources_RespectsAnExplicitOptOutEvenWithCodex()
+    {
+        var settings = new Settings
+        {
+            StatusSources = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["openai"] = new StatusSourceSettings { Enabled = false },
+            },
+        };
+
+        Assert.DoesNotContain("openai", settings.EnabledSources(CodexState.Available).Select(e => e.Source.Id));
+    }
+
+    /// <summary>And Codex's presence says nothing about Claude's source.</summary>
+    [Fact]
+    public void EnabledSources_CodexDoesNotAffectTheClaudeSource()
+    {
+        var settings = new Settings
+        {
+            StatusSources = new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["claude"] = new StatusSourceSettings { Enabled = false },
+            },
+        };
+
+        Assert.DoesNotContain("claude", settings.EnabledSources(CodexState.Available).Select(e => e.Source.Id));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{\"enabled\":false,\"level\":\"purple\"}")]
+    public void Load_NullOrMalformedCodexNotifications_PreservesUnrelatedSettings(string block)
+    {
+        var path = PathFor("codex-null.json");
+        File.WriteAllText(path, "{\"thresholds\":{\"orange\":55,\"red\":90},\"codexNotifications\":" + block + "}");
+        var loaded = Settings.Load(path);
+        Assert.Equal(55, loaded.Thresholds.Orange);
+        Assert.NotNull(loaded.CodexNotifications);
+        Assert.Equal(NotifyLevel.Red, loaded.CodexNotifications.Level);
+    }
+
+    [Theory]
+    [InlineData("\"purple\"")]
+    [InlineData("99")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    public void Load_BadCodexDisplayMode_ResetsOnlyThatField(string mode)
+    {
+        var path = PathFor("codex-mode.json");
+        File.WriteAllText(path, "{\"thresholds\":{\"orange\":55,\"red\":90},\"displayMode\":\"fiveHour\",\"codexDisplayMode\":" + mode + "}");
+        var loaded = Settings.Load(path);
+        Assert.Equal(55, loaded.Thresholds.Orange);
+        Assert.Equal(DisplayMode.FiveHour, loaded.DisplayMode);
+        Assert.Equal(DisplayMode.Both, loaded.CodexDisplayMode);
+    }
 }

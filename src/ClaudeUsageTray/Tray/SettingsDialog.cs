@@ -22,12 +22,26 @@ public sealed class SettingsDialog : Form
     private const double PreviewElapsedFraction = 0.5;
 
     private readonly Settings _draft;
+    private readonly CodexState _codexState;
+    // Null is no decision. Saving an unrelated page preserves it; even a checkbox toggled back to
+    // its initial value is a deliberate answer, so track edits rather than just comparing values.
+    private bool? _loadedClaudeEnabled;
+    private bool? _loadedOpenAiEnabled;
+    private bool _claudeWatchEdited;
+    private bool _openAiWatchEdited;
     private readonly bool _canRunAtStartup;
     private readonly Func<Settings, bool> _save;
 
     private readonly RadioButton _modeFive = new() { Name = "modeFive", Text = "5-hour window only", AutoSize = true };
     private readonly RadioButton _modeSeven = new() { Name = "modeSeven", Text = "7-day window only", AutoSize = true };
     private readonly RadioButton _modeBoth = new() { Name = "modeBoth", Text = "Both", AutoSize = true };
+    private readonly RadioButton _codexModeFive = new() { Name = "codexModeFive", Text = "5-hour window only", AutoSize = true };
+    private readonly RadioButton _codexModeSeven = new() { Name = "codexModeSeven", Text = "7-day window only", AutoSize = true };
+    private readonly RadioButton _codexModeBoth = new() { Name = "codexModeBoth", Text = "Both", AutoSize = true };
+    private readonly CheckBox _codexNotify = new()
+        { Name = "codexNotify", Text = "Notify when a Codex limit turns", AutoSize = true };
+    private readonly ComboBox _codexNotifyLevel = new()
+        { Name = "codexNotifyLevel", DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
     private readonly CheckBox _startup = new() { Name = "startup", Text = "Run at startup", AutoSize = true };
     private readonly NumericUpDown _orange = new() { Name = "orange", Minimum = 0, Maximum = 99, Width = 60 };
     private readonly NumericUpDown _red = new() { Name = "red", Minimum = 1, Maximum = 100, Width = 60 };
@@ -133,11 +147,14 @@ public sealed class SettingsDialog : Form
     /// live: StatusMonitor holds no entry for a disabled source, which is exactly the case where the
     /// user has opened this dialog to turn a page back on and narrow it. A missing or empty entry
     /// reads "not fetched yet".</param>
+    /// <param name="codexState">Availability at open time; the Codex page follows the data.</param>
     public SettingsDialog(Settings settings, bool canRunAtStartup, bool runAtStartup,
         Func<Settings, bool> save, UpdateOptions updates, bool desktopSource,
-        IReadOnlyDictionary<string, IReadOnlyList<string>> componentNames)
+        IReadOnlyDictionary<string, IReadOnlyList<string>> componentNames,
+        CodexState codexState = CodexState.Unknown)
     {
         _draft = Clone(settings);
+        _codexState = codexState;
         _canRunAtStartup = canRunAtStartup;
         _save = save;
         _desktopSource = desktopSource;
@@ -185,7 +202,7 @@ public sealed class SettingsDialog : Form
         return layout;
     }
 
-    /// <summary>Four pages grouped by what a user changes together, not by the order the sections
+    /// <summary>Pages grouped by what a user changes together, not by the order the sections
     /// were written in. Notifications sits with Platform status because two of its three controls are
     /// per-source status toggles; the beta ring sits with About because it steers the updater
     /// directly above it.</summary>
@@ -194,6 +211,8 @@ public sealed class SettingsDialog : Form
         _tabs.TabPages.Add(Page("general", "General", BuildGeneralPage()));
         _tabs.TabPages.Add(Page("appearance", "Appearance", BuildAppearancePage()));
         _tabs.TabPages.Add(Page("status", "Status", BuildStatusPage()));
+        if (_codexState == CodexState.Available)
+            _tabs.TabPages.Add(Page("codex", "Codex", BuildCodexPage()));
         _tabs.TabPages.Add(Page("about", "About", BuildAboutPage()));
         return _tabs;
     }
@@ -375,6 +394,33 @@ public sealed class SettingsDialog : Form
         // usageRow, not the two controls inside it: they sit one level down and get their own run above.
         SetOrder(_watchClaude, _claudeComponents, _watchOpenAi, _openAiComponents,
             usageRow, _notifyClaude, _notifyOpenAi);
+        return page;
+    }
+
+    /// <summary>Codex has its own badge mode and notification switch. The radios share this
+    /// page's container, independently of Claude's radios on General.</summary>
+    private Control BuildCodexPage()
+    {
+        var page = PagePanel();
+        page.Controls.Add(Heading("Codex badges"));
+        page.Controls.Add(Indent(_codexModeFive));
+        page.Controls.Add(Indent(_codexModeSeven));
+        page.Controls.Add(Indent(_codexModeBoth));
+        page.Controls.Add(Indent(new Label
+        {
+            Text = "Codex badges are rounded squares; Claude's are circles.",
+            AutoSize = true,
+            ForeColor = SystemColors.GrayText,
+        }));
+        page.Controls.Add(Heading("Notifications"));
+        var row = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(16, 0, 0, 2) };
+        _codexNotify.Margin = new Padding(0, 4, 4, 0);
+        _codexNotifyLevel.Margin = new Padding(0);
+        row.Controls.Add(_codexNotify);
+        row.Controls.Add(_codexNotifyLevel);
+        SetOrder(_codexNotify, _codexNotifyLevel);
+        page.Controls.Add(row);
+        SetOrder(_codexModeFive, _codexModeSeven, _codexModeBoth, row);
         return page;
     }
 
@@ -605,6 +651,13 @@ public sealed class SettingsDialog : Form
     private void LoadFrom(Settings source, bool runAtStartup)
     {
         _suspendSync = true;
+        _codexModeFive.Checked = source.CodexDisplayMode == DisplayMode.FiveHour;
+        _codexModeSeven.Checked = source.CodexDisplayMode == DisplayMode.SevenDay;
+        _codexModeBoth.Checked = source.CodexDisplayMode == DisplayMode.Both;
+        _codexNotifyLevel.Items.AddRange(LevelLabels);
+        _codexNotify.Checked = source.CodexNotifications.Enabled;
+        _codexNotifyLevel.SelectedIndex = IndexOf(source.CodexNotifications.Level);
+        _codexNotifyLevel.Enabled = _codexNotify.Checked;
         _modeFive.Checked = source.DisplayMode == DisplayMode.FiveHour;
         _modeSeven.Checked = source.DisplayMode == DisplayMode.SevenDay;
         _modeBoth.Checked = source.DisplayMode == DisplayMode.Both;
@@ -614,7 +667,9 @@ public sealed class SettingsDialog : Form
         // false here only covers a dialog constructed straight from a file, as the tests do.
         _betaReleases.Checked = source.UseBetaReleases ?? false;
         var claude = source.StatusSources.GetValueOrDefault("claude");
-        _watchClaude.Checked = claude?.Enabled ?? true;
+        _loadedClaudeEnabled = claude?.Enabled;
+        _claudeWatchEdited = false;
+        _watchClaude.Checked = claude?.Enabled ?? StatusSourceRegistry.Claude.EnabledByDefault;
         _claudeComponents.Text = ComponentFilter.Format(
             claude?.Components ?? [.. StatusSourceRegistry.Claude.DefaultComponents]);
         _claudeComponents.Enabled = _watchClaude.Checked;
@@ -622,7 +677,10 @@ public sealed class SettingsDialog : Form
         _notifyClaude.Checked = claude?.Notify ?? true;
         _notifyClaude.Enabled = _watchClaude.Checked;
         var openAi = source.StatusSources.GetValueOrDefault("openai");
-        _watchOpenAi.Checked = openAi?.Enabled ?? false;
+        _loadedOpenAiEnabled = openAi?.Enabled;
+        _openAiWatchEdited = false;
+        _watchOpenAi.Checked = openAi?.Enabled
+            ?? (StatusSourceRegistry.OpenAi.EnabledByDefault || _codexState == CodexState.Available);
         _openAiComponents.Text = ComponentFilter.Format(
             openAi?.Components ?? [.. StatusSourceRegistry.OpenAi.DefaultComponents]);
         _openAiComponents.Enabled = _watchOpenAi.Checked;
@@ -669,16 +727,19 @@ public sealed class SettingsDialog : Form
         _paceColors.CheckedChanged += (_, _) => SyncRangesAndPreview();
         _watchClaude.CheckedChanged += (_, _) =>
         {
+            if (!_suspendSync) _claudeWatchEdited = true;
             _claudeComponents.Enabled = _watchClaude.Checked;
             _claudeComponentsHint.Enabled = _watchClaude.Checked;
             _notifyClaude.Enabled = _watchClaude.Checked;   // disabled, not unchecked: the choice survives
         };
         _watchOpenAi.CheckedChanged += (_, _) =>
         {
+            if (!_suspendSync) _openAiWatchEdited = true;
             _openAiComponents.Enabled = _watchOpenAi.Checked;
             _openAiComponentsHint.Enabled = _watchOpenAi.Checked;
             _notifyOpenAi.Enabled = _watchOpenAi.Checked;   // disabled, not unchecked: the choice survives
         };
+        _codexNotify.CheckedChanged += (_, _) => _codexNotifyLevel.Enabled = _codexNotify.Checked;
         _notifyUsage.CheckedChanged += (_, _) => _notifyLevel.Enabled = _notifyUsage.Checked;
         _weeklyAnchor.TextChanged += (_, _) =>
         {
@@ -711,6 +772,13 @@ public sealed class SettingsDialog : Form
         draft.DisplayMode = _modeFive.Checked ? DisplayMode.FiveHour
             : _modeSeven.Checked ? DisplayMode.SevenDay
             : DisplayMode.Both;
+        draft.CodexDisplayMode = _codexModeFive.Checked ? DisplayMode.FiveHour
+            : _codexModeSeven.Checked ? DisplayMode.SevenDay : DisplayMode.Both;
+        draft.CodexNotifications = new UsageNotificationSettings
+        {
+            Enabled = _codexNotify.Checked,
+            Level = LevelAt(_codexNotifyLevel.SelectedIndex),
+        };
         draft.Thresholds = new Thresholds { Orange = (int)_orange.Value, Red = (int)_red.Value };
         draft.PaceColors = _paceColors.Checked;
         draft.StalenessMinutes = (int)_staleness.Value;
@@ -726,7 +794,7 @@ public sealed class SettingsDialog : Form
         // back on does not lose either.
         draft.StatusSources["openai"] = new StatusSourceSettings
         {
-            Enabled = _watchOpenAi.Checked,
+            Enabled = _openAiWatchEdited ? _watchOpenAi.Checked : _loadedOpenAiEnabled,
             Notify = _notifyOpenAi.Checked,
             Components = [.. ComponentFilter.Parse(_openAiComponents.Text)],
         };
@@ -734,7 +802,7 @@ public sealed class SettingsDialog : Form
         // unchecked, so turning the source back on does not lose either.
         draft.StatusSources["claude"] = new StatusSourceSettings
         {
-            Enabled = _watchClaude.Checked,
+            Enabled = _claudeWatchEdited ? _watchClaude.Checked : _loadedClaudeEnabled,
             Notify = _notifyClaude.Checked,
             Components = [.. ComponentFilter.Parse(_claudeComponents.Text)],
         };
@@ -792,6 +860,12 @@ public sealed class SettingsDialog : Form
     private static Settings Clone(Settings source) => new()
     {
         DisplayMode = source.DisplayMode,
+        CodexDisplayMode = source.CodexDisplayMode,
+        CodexNotifications = new UsageNotificationSettings
+        {
+            Enabled = source.CodexNotifications.Enabled,
+            Level = source.CodexNotifications.Level,
+        },
         Thresholds = new Thresholds { Orange = source.Thresholds.Orange, Red = source.Thresholds.Red },
         StalenessMinutes = source.StalenessMinutes,
         DesktopStalenessHours = source.DesktopStalenessHours,

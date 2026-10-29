@@ -13,7 +13,7 @@ public class StatusDetailTooltipTests
             filter ?? []);
 
     private static string Suffix(int available, params SourceView[] views)
-        => StatusDetail.TooltipSuffix(views, Now, stalenessMinutes: 15, available);
+        => StatusDetail.TooltipSuffix(views, Now, stalenessMinutes: 15, available, UsageProvider.Claude);
 
     [Fact]
     public void HealthyAndMissingSources_AddNothing()
@@ -67,7 +67,7 @@ public class StatusDetailTooltipTests
     }
 
     private static string Compose(string usageText, params SourceView[] views)
-        => StatusDetail.ComposeTooltip(usageText, views, Now, stalenessMinutes: 15);
+        => StatusDetail.ComposeTooltip(usageText, views, Now, stalenessMinutes: 15, UsageProvider.Claude);
 
     [Fact]
     public void Compose_ShortTextGetsEverySuffix()
@@ -104,4 +104,24 @@ public class StatusDetailTooltipTests
     public void Compose_WithNoRelevantSource_ReturnsTheUsageTextUnchanged()
         => Assert.Equal("5h 40%", Compose("5h 40%",
             View(StatusSourceRegistry.Claude, "none", "All Systems Operational")));
+    /// <summary>The target provider's suffix explains its badge and survives a full tooltip.
+    /// The other source is dropped whole rather than cut mid-word.</summary>
+    [Fact]
+    public void ComposeTooltip_KeepsTheTargetProvidersSuffixAndDropsTheOtherWhole()
+    {
+        var sources = new[]
+        {
+            View(StatusSourceRegistry.Claude, "major", "Claude API degraded performance across all endpoints"),
+            View(StatusSourceRegistry.OpenAi, "major", "Codex elevated error rates on all responses"),
+        };
+        var usage = new string('x', 60);
+        var claudeIcon = StatusDetail.ComposeTooltip(usage, sources, Now, 30, UsageProvider.Claude);
+        Assert.Contains("Claude:", claudeIcon);
+        Assert.DoesNotContain("OpenAI:", claudeIcon);
+        Assert.True(claudeIcon.Length <= StatusDetail.TooltipLimit);
+        var codexIcon = StatusDetail.ComposeTooltip(usage, sources, Now, 30, UsageProvider.Codex);
+        Assert.Contains("OpenAI:", codexIcon);
+        Assert.DoesNotContain("Claude:", codexIcon);
+        Assert.True(codexIcon.Length <= StatusDetail.TooltipLimit);
+    }
 }

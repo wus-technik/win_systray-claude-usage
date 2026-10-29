@@ -1,23 +1,12 @@
 namespace ClaudeUsageTray.Core;
 
-/// <summary>How one live usage fetch concluded, as far as arming cares. Relayed by TrayApp from the
-/// outcomes it already distinguishes; it never decides anything about them.</summary>
-public enum LiveOutcome { Snapshot, Unauthorized, RateLimited, Failed, NoToken }
-
-/// <summary>What to show. Argument is the toast's activation payload; Tag is the Action Center slot
-/// (a newer toast of a kind replaces its predecessor); ExpiresAt is when Action Center should stop
-/// asserting it, null for the platform default.</summary>
-public sealed record Notification(string Title, string Body, string Argument, string Tag, DateTimeOffset? ExpiresAt);
-
-/// <summary>One evaluation's result. Log carries one line per decision event — never per tick — so
-/// "I never got a toast" can be answered from fetch.log. RemoveUsageToast is set when a notified
-/// usage value left the level, so the presenter can retract a claim that is no longer true.</summary>
-public sealed record NotificationOutcome(Notification? Notification, IReadOnlyList<string> Log, bool RemoveUsageToast);
-
 /// <summary>
-/// Remembers what it last saw and turns readings into transitions. Stateful but clock-free: the
-/// caller supplies now, so every rule below is a unit test. Two independent halves — usage (this
-/// file's first part) and status (the second) — that share only the Notification type.
+/// Remembers what it last saw and turns one provider's readings into transitions. Stateful but
+/// clock-free: the caller supplies now, so every rule below is a unit test. One instance per
+/// provider — the provider's notification settings arrive through <paramref name="notifications"/>
+/// rather than being read off Settings, because an instance that reached for
+/// Settings.UsageNotifications would run every provider on Claude's level. A selector rather than a
+/// value: Settings is replaced wholesale on save, so a captured reference would go stale.
 ///
 /// Usage rules, in order: stale → nothing recorded; fingerprint change → clear; source switch →
 /// clear; unarmed → record baseline; per key, notify on crossing from below the level to at/above it,
@@ -27,10 +16,18 @@ public sealed record NotificationOutcome(Notification? Notification, IReadOnlyLi
 /// already red at the baseline, or one that crossed while notifications were off, was never named in
 /// any toast and so leaving red must not retract someone else's.
 /// </summary>
-public sealed partial class NotificationRules
+public sealed class UsageNotificationRules(
+    string tag, Func<Settings, UsageNotificationSettings> notifications, string titlePrefix = "")
 {
-    public const string UsageTag = "usage";
-    public const string OpenPopupArgument = "open-popup";
+    public static UsageNotificationRules ForClaude()
+        => new(NotificationTags.Usage("claude"), s => s.UsageNotifications);
+
+    public static UsageNotificationRules ForCodex()
+        => new(NotificationTags.Usage("codex"), s => s.CodexNotifications, "Codex ");
+
+    /// <summary>This provider's Action Center slot. The retraction site reads it from here rather
+    /// than from a constant, so emission and retraction cannot drift.</summary>
+    public string Tag => tag;
 
     /// <summary>Toast lifetime for a value with no known reset (credits), so Action Center does not
     /// assert a red credit line for days.</summary>
@@ -55,8 +52,9 @@ public sealed partial class NotificationRules
     private sealed record Fingerprint(int Orange, int Red, bool PaceColors, int StalenessMinutes,
         int DesktopStalenessHours, NotifyLevel Level, string? WeeklyResetAnchor)
     {
-        public static Fingerprint Of(Settings s) => new(s.Thresholds.Orange, s.Thresholds.Red, s.PaceColors,
-            s.StalenessMinutes, s.DesktopStalenessHours, s.UsageNotifications.Level, s.WeeklyResetAnchor);
+        public static Fingerprint Of(Settings s, UsageNotificationSettings n) => new(s.Thresholds.Orange,
+            s.Thresholds.Red, s.PaceColors, s.StalenessMinutes, s.DesktopStalenessHours, n.Level,
+            s.WeeklyResetAnchor);
     }
 
     private readonly Dictionary<string, KeyState> _keys = new(UsageValues.KeyComparer);
@@ -103,8 +101,10 @@ public sealed partial class NotificationRules
         }
         _lastWasStale = false;
 
+        var mine = notifications(settings);
+
         // Rule 2 — the user's own edit is never news.
-        var fingerprint = Fingerprint.Of(settings);
+        var fingerprint = Fingerprint.Of(settings, mine);
         if (_fingerprint is not null && fingerprint != _fingerprint)
         {
             _keys.Clear();
@@ -121,7 +121,7 @@ public sealed partial class NotificationRules
         _source = snapshot.Source;
 
         var values = UsageValues.Enumerate(snapshot, settings, now);
-        var level = settings.UsageNotifications.Level;
+        var level = mine.Level;
 
         // Rule 6 — eviction first, so a vanished key cannot leave a latch behind. A notified key that
         // stops being reported has left the level exactly as surely as one that drops below it — the
@@ -179,7 +179,7 @@ public sealed partial class NotificationRules
 
         if (crossed.Count == 0) return new(null, log, remove);
 
-        if (!settings.UsageNotifications.Enabled)
+        if (!mine.Enabled)
         {
             log.Add($"notify[usage]: switched off; suppressed crossing of {Describe(crossed)}");
             return new(null, log, remove);
@@ -208,7 +208,7 @@ public sealed partial class NotificationRules
 
     /// <summary>"5-hour window (90 %) and Fable weekly (92 %) are now red". Mixed severities under
     /// level Orange become one sentence per colour, red first.</summary>
-    private static Notification Compose(IReadOnlyList<UsageValue> crossed, DateTimeOffset now)
+    private Notification Compose(IReadOnlyList<UsageValue> crossed, DateTimeOffset now)
     {
         var sentences = new List<string>();
         foreach (var severity in new[] { Severity.Red, Severity.Orange })
@@ -222,20 +222,26 @@ public sealed partial class NotificationRules
         }
 
         var worst = crossed.Any(v => Verdict(v) == Severity.Red) ? "red" : "orange";
-        var title = crossed.Count == 1 ? $"Usage limit {worst}" : $"Usage limits {worst}";
+        var title = crossed.Count == 1
+            ? $"{titlePrefix}usage limit {worst}" : $"{titlePrefix}usage limits {worst}";
+        title = char.ToUpperInvariant(title[0]) + title[1..];
 
         DateTimeOffset? latestReset = crossed.Select(v => v.ResetsAt).Where(r => r is { } d && d > now).Max();
         var expires = latestReset ?? now + DefaultUsageToastLifetime;
-        return new Notification(title, string.Join(" · ", sentences), OpenPopupArgument, UsageTag, expires);
+        return new Notification(title, string.Join(" · ", sentences), NotificationTags.OpenPopupArgument, tag, expires);
     }
 
     /// <summary>Log-safe: the fixed keys by name, scoped limits by count only — their labels are the
-    /// account-specific model names fetch.log must never carry.</summary>
+    /// account-specific model names fetch.log must never carry. Codex spend control is a fixed
+    /// app-supplied label and may be named with its percentage.</summary>
     private static string Describe(IReadOnlyList<UsageValue> values)
     {
         var fixedKeys = values.Where(v => v.Key is "5h" or "7d" or "credits").Select(v => $"{v.Key}={v.Percent}%");
-        int scoped = values.Count(v => v.Key is not ("5h" or "7d" or "credits"));
+        int scoped = values.Count(v => v.Key is not ("5h" or "7d" or "credits")
+            && v.Key != CodexUsageJson.SpendControlLabel);
         var parts = fixedKeys.ToList();
+        parts.AddRange(values.Where(v => v.Key == CodexUsageJson.SpendControlLabel)
+            .Select(v => $"spend={v.Percent}%"));
         if (scoped > 0) parts.Add($"scoped={scoped}");
         return string.Join(" ", parts);
     }

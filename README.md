@@ -5,7 +5,8 @@
 **Your Claude limits, always visible — right next to the clock.**
 
 A tiny Windows tray app that shows your **5-hour** and **7-day** usage as filled badge
-icons, plus per-model weekly caps and paid credit spend at a glance.
+icons, plus per-model weekly caps and paid credit spend at a glance. Signed in to the Codex CLI?
+Its limits appear alongside Claude's automatically, with no configuration.
 
 [![Latest release](https://img.shields.io/github/v/release/wus-technik/win_systray-claude-usage?style=for-the-badge&logo=github&color=6C4BF6)](https://github.com/wus-technik/win_systray-claude-usage/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/wus-technik/win_systray-claude-usage/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/wus-technik/win_systray-claude-usage/actions/workflows/ci.yml)
@@ -38,14 +39,14 @@ and how much paid credit you've burned this month.
 
 | | |
 |---|---|
-| 📊 **Two badge icons** | Fill = usage, colour = severity, centre digit = window (`5` or `7`) |
+| 📊 **Provider badges** | Claude uses circles; Codex uses rounded squares. Fill = usage, colour = severity, centre digit = window (`5` or `7`) |
 | 🎯 **Per-model caps** | Weekly limits scoped to a model (e.g. Fable) or surface — the cap that usually bites first |
 | 💳 **Credit spend** | Paid extra-usage against your limit, in **your** account's currency |
 | ⏱️ **Reset countdowns** | "resets in 3h 58m", on hover and in the popup |
 | 📈 **Pace marker** | A line on each bar marking where the *clock* is in the period — fill past it means you're on track to hit the cap early |
 | 🚦 **Pace colours** | Colour follows usage *against the clock*, not raw percent: 60 % with 5½ of 7 days gone stays green, 40 % in the first hour of a 5-hour window goes red |
 | 🔄 **Live + offline** | Polls Anthropic's usage API every 5 min; falls back to Claude Code's local cache |
-| 🚨 **Platform status** | Claude's own service banner — while status.claude.com says anything but "All Systems Operational", a white warning badge sits on every tray icon and the popup lists the active incidents. OpenAI status is an optional second banner, off by default, popup/tooltip-only |
+| 🚨 **Platform status** | Service banners and active incidents from status.claude.com and status.openai.com. A relevant outage marks that provider's badges; OpenAI monitoring starts automatically once Codex data is present |
 | 🚀 **Zero-friction** | Per-user install, no admin, auto-updates, starts at login |
 
 ## Install
@@ -126,6 +127,12 @@ prints the launcher's own version and build commit.
 
 ### The icons
 
+Claude's badges are circles; Codex's are rounded squares, so their shape identifies the provider even
+when Windows rearranges the tray. Each provider has its own choice of 5-hour, 7-day, or both badges.
+Codex appears after the first successful fetch with the Codex CLI's existing sign-in. Without usable
+Codex credentials there are no extra icons, popup section, or Codex settings tab. Its credentials are
+read from `%USERPROFILE%\.codex\auth.json`, following `CODEX_HOME` when set.
+
 | What you see | What it means |
 |---|---|
 | 🟢 Green badge | On or under the pace the clock sets for the period |
@@ -145,7 +152,7 @@ old percent-only behaviour.
 ### Interactions
 
 - **Hover** → exact percentage and reset countdown
-- **Left-click** → the popup above: both windows, any scoped weekly caps, credit spend
+- **Left-click** → one popup with both providers: windows, scoped caps, and Claude credit spend
 - **Right-click** → `Settings…`, `Refresh now`, `Restart to update`, `Quit`
 
 <details>
@@ -160,12 +167,17 @@ placeholder `0 %` or `—` for a limit you don't have:
   payload itself**, so a renamed or newly added model shows up with no app update. On a plan
   without per-model caps, there's simply no entry — and therefore no row.
 - **Currently-binding limits sort first** and are never hidden, even when several caps exist.
-  Background limits are capped at four rows with a `+N more` line, so the popup can't grow
-  off-screen.
+  Background limits are capped at four rows with a `+N more` line. The popup scrolls when its
+  content exceeds the screen height, keeping every currently-binding limit accessible.
 - **Credits** are shown with your account's own ISO currency code and decimal precision —
   never an assumed `$`. Their bar follows the server's own severity, because "spend cap
   reached" is state a percentage can't express. `disabled` and `limit reached` get their own
   line rather than being hidden.
+
+When Codex data exists, the popup gains **Claude** and **Codex** headers. Each section has its own
+updated time, stale indication, and fetch outcome. Codex's monthly **Spend control** row shows a
+percentage and reset countdown when supplied; money amounts are never displayed. Codex has no
+credits row because its credits block supplies no usable percentage.
 
 </details>
 
@@ -174,8 +186,8 @@ placeholder `0 %` or `—` for a limit you don't have:
 
 <br>
 
-Three usage sources plus the status page. Claude Code's data wins whenever it is current; the
-Claude Desktop history steps in when it is not.
+Claude has three usage sources; Codex has its own independent live source. Claude Code's data wins
+whenever it is current; the Claude Desktop history steps in when it is not.
 
 1. **Live** — read-only `GET` against Anthropic's OAuth usage endpoint every 5 minutes,
    the same source claude.ai uses, authenticated with **Claude Code's existing token**.
@@ -217,11 +229,15 @@ Claude Desktop history steps in when it is not.
    and does raise notifications — including off a mistyped anchor, so a wrong weekday or time will
    colour and notify exactly as if you were badly over pace on the real one. The group appears only
    while the desktop history is the active source.
-4. **Platform status** — the public status page at status.claude.com, polled once a minute with
+4. **Codex live** — read-only `GET` against Codex's usage endpoint using the Codex CLI's existing
+   token, at most once every 10 minutes. The token is never written, refreshed, or logged. Fetch
+   failures keep the last data visible and dimmed; missing credentials remove the Codex badges,
+   while unreadable credentials require three consecutive failed reads before removing them.
+5. **Platform status** — the public status page at status.claude.com, polled once a minute with
    no auth and no token involved. The page's own banner decides the warning badge; incident
-   details are the page's own words. status.openai.com is an optional second source, off by
-   default — it shows up in the popup and the tooltip but never touches the badge, since an
-   OpenAI outage says nothing about your Claude usage headroom.
+   details are the page's own words. status.openai.com starts being watched once Codex data is
+   present, unless you explicitly disable it. Its warning badge marks only Codex; Claude status
+   marks only Claude.
 
 When nothing yields data, the popup says which of these is missing — `.claude.json` absent, present
 without a usage block, no credentials file for the live fetch, or a desktop history file with no
@@ -230,11 +246,15 @@ Claude Code, so `.claude.json` usually exists even on a machine that never ran t
 
 A rolling diagnostic log lands in `%APPDATA%\ClaudeUsageTray\fetch.log` so a
 "stale, never refreshes" report is debuggable. It records fetch outcomes and the two window
-percentages only — **never** money amounts, currency, or account-specific model names.
+percentages only, including `codex:` outcomes and `spend=N%` — **never** tokens, email, user or
+account identifiers, money amounts, currency, or account-specific model names.
 
 </details>
 
 ## Settings
+
+A **Codex** tab appears once Codex data is available, with its own badge display mode and notification
+switch and level. Those choices are independent of Claude's.
 
 **Right-click → `Settings…`** covers everything except the two path overrides: which icons to show,
 run-at-startup, the two colour thresholds, pace colouring, the two staleness cutoffs, a
@@ -270,6 +290,7 @@ file gives no way to tell which of the two was meant.
 
 | Key | Meaning | Default |
 |---|---|---|
+| `codexDisplayMode` | `"fiveHour"` \| `"sevenDay"` \| `"both"`, for Codex badges independently | `"both"` |
 | `displayMode` | `"fiveHour"` \| `"sevenDay"` \| `"both"` | `"both"` |
 | `thresholds` | `{ "orange": 50, "red": 85 }` severity boundaries (%) — with `paceColors` on, the red value is the absolute ceiling and both are the fallback | as shown |
 | `paceColors` | colour by usage against elapsed time instead of raw percent | `true` |
@@ -279,7 +300,8 @@ file gives no way to tell which of the two was meant.
 | `useBetaReleases` | offer pre-release builds too; `false` means stable releases only | unset — follows the channel the app was installed from |
 | `configPathOverride` | explicit path to `.claude.json` (mainly for tests); file-only, and re-read at launch | unset |
 | `desktopHistoryPathOverride` | explicit path to the desktop app's `plan-usage-history.json`; file-only, and re-read at launch | unset |
-| `statusSources` | which status pages to watch, which of their components matter, and whether a change should toast | `claude` on watching everything, `openai` off with the default filter |
+| `statusSources` | which status pages to watch, which of their components matter, and whether a change should toast | `claude` on watching everything; `openai` on once Codex is present, with the default filter |
+| `codexNotifications` | `{ "enabled": true, "level": "red" }`, for Codex limits including monthly spend control | as shown |
 | `usageNotifications` | `{ "enabled": true, "level": "red" }` — toast when a limit crosses into `red`, or into `orange` or red with `"level": "orange"` | as shown |
 | `weeklyResetAnchor` | When the weekly limit resets, as a weekday plus HH:mm in local time, e.g. `Thu 03:00`. Claude Desktop history source only; unset or unparseable means the 7-day row shows no reset time. | unset |
 
@@ -290,12 +312,13 @@ Which public status pages the tray watches, and which of their components matter
 ```json
 "statusSources": {
   "claude": { "enabled": true,  "notify": true, "components": [] },
-  "openai": { "enabled": false, "notify": true, "components": ["codex", "responses", "login", "vs code extension"] }
+  "openai": { "enabled": null, "notify": true, "components": ["codex", "responses", "login", "vs code extension"] }
 }
 ```
 
-- `enabled` — poll this page. Claude is on by default, OpenAI off; both toggles and both component
-  lists are in **Settings → Platform status**.
+- `enabled` — poll this page. `null` or an omitted value follows the default: Claude is on, and
+  OpenAI turns on once Codex data exists. Explicit `true` or `false` always wins. Both toggles and
+  component lists are in **Settings → Status**.
 - `components` — case-insensitive substring match against the page's component names; `"codex"`
   matches `Codex API`, `Codex Web`, and `Codex in ChatGPT Desktop`. An empty list watches every
   component.
@@ -307,11 +330,11 @@ marked `· outside your watched components`, and adds nothing to the tooltip. A 
 cannot attribute to any component is always shown in full — a filter narrows noise, it never hides
 an outage the page could not classify.
 
-**Only Claude's status can mark the tray icon**, and only for a component you watch. An OpenAI outage
-appears in the popup and the tooltip and leaves the badge alone, because it says nothing about your
-Claude usage headroom. A Claude disruption confined to components outside your `claude` filter is
-shown in the popup, greyed, and leaves the badge alone too — the badge, the popup rows, the tooltip
-and the toasts all decide relevance the same way. A disruption the page cannot attribute to any
+**Each status page marks its own provider's icons**, and only for a component you watch. An OpenAI
+outage marks Codex's rounded-square badges; a Claude outage marks Claude's circular badges.
+A Claude disruption confined to components outside your `claude` filter is shown in the popup,
+greyed, and leaves the badge alone too — the badge, the popup rows, the tooltip and the toasts all
+decide relevance the same way. A disruption the page cannot attribute to any
 component still marks the icon whatever your filter says.
 
 Each components box in **Settings → Platform status** carries a greyed caption listing what that page
@@ -346,7 +369,9 @@ Toasts need the Start Menu shortcut the installer creates; a `dotnet run` from s
 ## Privacy
 
 The app sends no telemetry and has no install or machine identifier. Its only network traffic is
-the Claude usage API, the Claude status page, and the Velopack update feed on GitHub Releases.
+the Claude and Codex usage APIs, the enabled Claude and OpenAI status pages, and the Velopack update
+feed on GitHub Releases. Codex email, user and account identifiers and spend-control money amounts
+never reach the display or diagnostic log.
 
 The project's only usage metric is GitHub's public download counter on release assets. A
 scheduled workflow snapshots those counters once a day into the `stats` branch, which adds a
@@ -391,5 +416,5 @@ by the tag-triggered GitHub Actions workflow — push a `v*` tag whose version m
 [MIT](LICENSE) © 2026 W&S Technik GmbH
 
 <div align="center">
-<sub>Not affiliated with Anthropic. Reads only your own local Claude Code credentials and usage data.</sub>
+<sub>Not affiliated with Anthropic or OpenAI. Reads only your own local credentials and usage data.</sub>
 </div>

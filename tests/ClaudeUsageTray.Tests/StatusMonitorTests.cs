@@ -126,11 +126,11 @@ public class StatusMonitorTests
         var m = Both(openAiFilter: ["codex"]);
         m.TakeDue(T0);
         m.Accept("openai", Ok("openai", T0, "major"), T0);
-        Assert.False(m.BadgeDegraded());
+        Assert.False(m.BadgeDegraded(UsageProvider.Claude));
 
         m.Accept("claude", new PlatformStatus("claude", T0, "major", "Partial outage", [],
             [new PlatformComponent("Sora", "major_outage")]), T0);
-        Assert.True(m.BadgeDegraded());
+        Assert.True(m.BadgeDegraded(UsageProvider.Claude));
     }
 
     // ---- the badge under a watch filter (2026-09-11) ----
@@ -147,7 +147,7 @@ public class StatusMonitorTests
     {
         m.TakeDue(T0);
         m.Accept(status.SourceId, status, T0);
-        return m.BadgeDegraded();
+        return m.BadgeDegraded(UsageProvider.Claude);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class StatusMonitorTests
     public void HealthyPage_NeverBadges()
         => Assert.False(BadgeAfter(Claudes(), Ok("claude", T0)));
 
-    /// <summary>RaisesBadge is untouched: an OpenAI outage still never marks the icon, under any
+    /// <summary>An OpenAI outage still never marks a Claude icon, under any
     /// filter, for the unrelated reason that it says nothing about Claude usage headroom.</summary>
     [Fact]
     public void OpenAiOutage_NeverBadges_UnderAnyFilter()
@@ -185,7 +185,7 @@ public class StatusMonitorTests
         var m = new StatusMonitor([(OpenAi, [])]);
         m.TakeDue(T0);
         m.Accept("claude", new PlatformStatus("claude", T0, "critical", "Major Outage", [], []), T0);
-        Assert.False(m.BadgeDegraded());
+        Assert.False(m.BadgeDegraded(UsageProvider.Claude));
     }
 
     /// <summary>A disabled and re-enabled source comes back with Status = null, so the badge is off
@@ -198,11 +198,11 @@ public class StatusMonitorTests
         BadgeAfter(m, CoworkDegraded(T0));
         m.ApplyEnabled([]);
         m.ApplyEnabled([(Claude, [])]);
-        Assert.False(m.BadgeDegraded());
+        Assert.False(m.BadgeDegraded(UsageProvider.Claude));
 
         m.TakeDue(T0.AddMinutes(1));
         m.Accept("claude", CoworkDegraded(T0.AddMinutes(1)), T0.AddMinutes(1));
-        Assert.True(m.BadgeDegraded());
+        Assert.True(m.BadgeDegraded(UsageProvider.Claude));
     }
 
     /// <summary>Fail towards visible: a degraded page whose payload identifies nothing at all still
@@ -233,6 +233,17 @@ public class StatusMonitorTests
         var m = Claudes("Claude Code");
         Assert.False(BadgeAfter(m, CoworkDegraded(T0)));
         m.ApplyEnabled([(Claude, [])]);
-        Assert.True(m.BadgeDegraded());
+        Assert.True(m.BadgeDegraded(UsageProvider.Claude));
+    }
+
+    /// <summary>An OpenAI outage marks Codex icons only.</summary>
+    [Fact]
+    public void BadgeDegraded_IsScopedToTheProviderAsked()
+    {
+        var monitor = new StatusMonitor([(OpenAi, [])]);
+        monitor.TakeDue(T0);
+        monitor.Accept(OpenAi.Id, Ok(OpenAi.Id, T0, "major"), T0);
+        Assert.True(monitor.BadgeDegraded(UsageProvider.Codex));
+        Assert.False(monitor.BadgeDegraded(UsageProvider.Claude));
     }
 }

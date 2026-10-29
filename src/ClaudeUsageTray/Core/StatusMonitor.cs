@@ -86,8 +86,8 @@ public sealed class StatusMonitor
     /// does not work. IsRelevant is false for a healthy page, so the Degraded check is subsumed
     /// rather than dropped, and its fail-towards-visible rules still apply: only a disruption the
     /// page itself attributed to an excluded component can be suppressed here.</summary>
-    public bool BadgeDegraded()
-        => _entries.Any(e => e.Source.RaisesBadge
+    public bool BadgeDegraded(UsageProvider provider)
+        => _entries.Any(e => e.Source.RaisesBadgeFor(provider)
                              && e.Status is { } s && StatusDetail.IsRelevant(s, e.Filter));
 
     /// <summary>Replaces the enabled set, keeping the state of sources that stay enabled — toggling

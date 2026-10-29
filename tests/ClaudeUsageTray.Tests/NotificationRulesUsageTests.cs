@@ -26,17 +26,17 @@ public class NotificationRulesUsageTests
     private static DisplayChoice Stale(UsageSnapshot s) => new(s, Stale: true);
 
     /// <summary>Armed by a successful fetch, then baselined at 10 %.</summary>
-    private static NotificationRules ArmedAt(int five, Settings? settings = null)
+    private static UsageNotificationRules ArmedAt(int five, Settings? settings = null)
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules.OnUsage(Fresh(Snap(five, T0)), settings ?? Absolute(), T0);
         return rules;
     }
 
-    private static NotificationRules ArmedRules()
+    private static UsageNotificationRules ArmedRules()
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         return rules;
     }
@@ -46,7 +46,7 @@ public class NotificationRulesUsageTests
     [Fact]
     public void FirstSightIsBaseline_EvenWhenAlreadyRed()
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         var outcome = rules.OnUsage(Fresh(Snap(95, T0)), Absolute(), T0);
         Assert.Null(outcome.Notification);
@@ -56,7 +56,7 @@ public class NotificationRulesUsageTests
     public void UnarmedCacheReadThenFirstLiveFetchRevealingRed_NotifiesNothing()
     {
         // The startup storm: cache says 40 %, first live fetch says 91 %.
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         Assert.Null(rules.OnUsage(Fresh(Snap(40, T0)), Absolute(), T0).Notification);
         Assert.False(rules.IsArmed);
 
@@ -76,7 +76,7 @@ public class NotificationRulesUsageTests
     [InlineData(LiveOutcome.Failed)]
     public void RateLimitOrNetworkErrorDoesNotArm(LiveOutcome first)
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.OnUsage(Fresh(Snap(40, T0)), Absolute(), T0);       // cache
         Assert.Null(rules.NoteLiveOutcome(first));
         Assert.False(rules.IsArmed);
@@ -94,7 +94,7 @@ public class NotificationRulesUsageTests
     [InlineData(LiveOutcome.Snapshot)]
     public void TerminalOutcomesArmImmediately(LiveOutcome outcome)
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         Assert.NotNull(rules.NoteLiveOutcome(outcome));
         Assert.True(rules.IsArmed);
     }
@@ -102,7 +102,7 @@ public class NotificationRulesUsageTests
     [Fact]
     public void ThirdConcludedAttemptArmsRegardless()
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         Assert.Null(rules.NoteLiveOutcome(LiveOutcome.Failed));
         Assert.Null(rules.NoteLiveOutcome(LiveOutcome.RateLimited));
         Assert.False(rules.IsArmed);
@@ -113,7 +113,7 @@ public class NotificationRulesUsageTests
     [Fact]
     public void ArmingIsABaseline_TheFirstEvaluationAfterItNeverNotifies()
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.OnUsage(Fresh(Snap(40, T0)), Absolute(), T0);
         rules.NoteLiveOutcome(LiveOutcome.Failed);
         rules.NoteLiveOutcome(LiveOutcome.Failed);
@@ -129,8 +129,8 @@ public class NotificationRulesUsageTests
         var rules = ArmedAt(10);
         var first = rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(5))), Absolute(), T0.AddMinutes(5));
         Assert.NotNull(first.Notification);
-        Assert.Equal(NotificationRules.UsageTag, first.Notification!.Tag);
-        Assert.Equal(NotificationRules.OpenPopupArgument, first.Notification.Argument);
+        Assert.Equal(NotificationTags.Usage("claude"), first.Notification!.Tag);
+        Assert.Equal(NotificationTags.OpenPopupArgument, first.Notification.Argument);
         Assert.Equal("5-hour window (90 %) is now red", first.Notification.Body);
 
         for (int i = 1; i <= 20; i++)
@@ -162,7 +162,7 @@ public class NotificationRulesUsageTests
     {
         // 5h was red before the app started and never toasted; 7d crosses and toasts. When the
         // 5-hour window resets, the 7d toast must stay: it never mentioned 5h.
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules.OnUsage(Fresh(Snap(90, T0, seven: 10)), Absolute(), T0);
         Assert.NotNull(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 91)), Absolute(), T0.AddMinutes(1)).Notification);
@@ -184,13 +184,13 @@ public class NotificationRulesUsageTests
     public void TitleIsSingularOrPlural_AndMixedSeveritiesJoinPerColour()
     {
         var orange = Absolute(NotifyLevel.Orange);
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules.OnUsage(Fresh(Snap(10, T0, seven: 10)), orange, T0);
         var one = rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 10)), orange, T0.AddMinutes(1)).Notification!;
         Assert.Equal("Usage limit red", one.Title);
 
-        var rules2 = new NotificationRules();
+        var rules2 = UsageNotificationRules.ForClaude();
         rules2.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules2.OnUsage(Fresh(Snap(10, T0, seven: 10)), orange, T0);
         var mixed = rules2.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 60)), orange, T0.AddMinutes(1)).Notification!;
@@ -203,7 +203,7 @@ public class NotificationRulesUsageTests
     {
         // The toast said "5-hour window and 7-day window are now red". When 5h drops back, that
         // sentence is false, so the toast goes — even though 7d is still red (the badge still says so).
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules.OnUsage(Fresh(Snap(10, T0, seven: 10)), Absolute(), T0);
         Assert.NotNull(rules.OnUsage(Fresh(Snap(90, T0.AddMinutes(1), seven: 90)), Absolute(), T0.AddMinutes(1)).Notification);
@@ -239,7 +239,7 @@ public class NotificationRulesUsageTests
         // ratio is back to 1.0 (Green), which re-arms — still one toast in the whole run.
         var settings = new Settings();
         var snapshot = new UsageSnapshot(T0, new WindowUsage(30, T0.AddHours(4.5)), null);
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         Assert.Null(rules.OnUsage(Fresh(snapshot), settings, T0.AddMinutes(-20)).Notification);
 
@@ -253,7 +253,7 @@ public class NotificationRulesUsageTests
     public void SeveralCrossingsCoalesceIntoOneToast_ScopedLimitsNamedInTheToastButCountedInTheLog()
     {
         // Every key must exist at the baseline: a key seen for the first time is a baseline, not a crossing.
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules.OnUsage(Fresh(Snap(10, T0, seven: 10, scoped: new ScopedLimit("Fable", null, 10, T0.AddDays(3), true))), Absolute(), T0);
         var fable = new ScopedLimit("Fable", null, 92, T0.AddDays(3), true);
@@ -280,7 +280,7 @@ public class NotificationRulesUsageTests
         rules2.OnUsage(Fresh(new UsageSnapshot(T0, new WindowUsage(10, T0.AddHours(2)), null,
             Credits: new CreditUsage(null, null, 5, "normal", new CreditState(true, null, false)))), Absolute(), T0);
         var noReset = rules2.OnUsage(Fresh(credits), Absolute(), at).Notification!;
-        Assert.Equal(at + NotificationRules.DefaultUsageToastLifetime, noReset.ExpiresAt);
+        Assert.Equal(at + UsageNotificationRules.DefaultUsageToastLifetime, noReset.ExpiresAt);
     }
 
     // ---- levels ----
@@ -323,7 +323,7 @@ public class NotificationRulesUsageTests
     [Fact]
     public void UnarmedStartupNeverBaselinesAgainstAStaleCache()
     {
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.OnUsage(Stale(Snap(10, T0.AddHours(-5))), Absolute(), T0);     // hours-old cache: nothing recorded
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         Assert.Null(rules.OnUsage(Fresh(Snap(95, T0)), Absolute(), T0).Notification);   // first sight → baseline
@@ -365,7 +365,7 @@ public class NotificationRulesUsageTests
     public void ANotifiedKeyThatVanishesFromThePayloadRetractsItsToast()
     {
         var fable = new ScopedLimit("Fable", null, 10, T0.AddDays(3), true);
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         rules.OnUsage(Fresh(Snap(10, T0, scoped: fable)), Absolute(), T0);
         Assert.NotNull(rules.OnUsage(Fresh(Snap(10, T0.AddMinutes(1), scoped: new ScopedLimit("Fable", null, 92, T0.AddDays(3), true))), Absolute(), T0.AddMinutes(1)).Notification);
@@ -403,7 +403,7 @@ public class NotificationRulesUsageTests
     public void TogglingPaceColoursIsSilent()
     {
         var pace = new Settings();
-        var rules = new NotificationRules();
+        var rules = UsageNotificationRules.ForClaude();
         rules.NoteLiveOutcome(LiveOutcome.Snapshot);
         // 84 %: Green under pace late in the window (reset in 20 min of 5 h → elapsed 0.93, ratio 0.9), Orange absolute.
         var snap = new UsageSnapshot(T0, new WindowUsage(84, T0.AddMinutes(20)), null);
@@ -587,5 +587,72 @@ public class NotificationRulesUsageTests
         // discriminating half of the assertion. If WindowSeverities regressed to null the fraction
         // for Stated too, statedOutcome.Notification would go null here and the first half would fail.
         Assert.Null(inferredOutcome.Notification);
+    }
+
+    // ---- per-provider wiring ----
+
+    /// <summary>A rules object reads the UsageNotificationSettings its selector names, not
+    /// Settings.UsageNotifications. Without this, a second provider silently runs on Claude's level.
+    /// Claude's block is Orange-and-on here and the second provider's is Red-and-on, so the 85 %
+    /// reading crosses for Claude and must not for the other.</summary>
+    [Fact]
+    public void OnUsage_ReadsTheProvidersOwnNotificationSettings()
+    {
+        var settings = new Settings
+        {
+            PaceColors = false,
+            UsageNotifications = new UsageNotificationSettings { Enabled = true, Level = NotifyLevel.Orange },
+            CodexNotifications = new UsageNotificationSettings { Enabled = true, Level = NotifyLevel.Red },
+        };
+
+        var other = new UsageNotificationRules("usage:other", s => s.CodexNotifications);
+        other.NoteLiveOutcome(LiveOutcome.Snapshot);
+        other.OnUsage(Fresh(Snap(10, T0)), settings, T0);
+
+        var claude = UsageNotificationRules.ForClaude();
+        claude.NoteLiveOutcome(LiveOutcome.Snapshot);
+        claude.OnUsage(Fresh(Snap(10, T0)), settings, T0);
+
+        var at85 = Fresh(Snap(85, T0));
+        Assert.Null(other.OnUsage(at85, settings, T0).Notification);      // 85 % is orange, level is red
+        Assert.NotNull(claude.OnUsage(at85, settings, T0).Notification);  // level is orange
+    }
+
+    /// <summary>Each provider owns an Action Center slot. One shared tag means a Codex toast replaces
+    /// a Claude toast instead of sitting beside it, and a Codex retraction pulls Claude's out.</summary>
+    [Fact]
+    public void Tag_IsPerProvider()
+    {
+        Assert.Equal("usage:claude", UsageNotificationRules.ForClaude().Tag);
+        Assert.NotEqual(UsageNotificationRules.ForClaude().Tag,
+            new UsageNotificationRules("usage:other", s => s.UsageNotifications).Tag);
+    }
+
+    /// <summary>The emitted notification carries that same slot, so the retraction site and the
+    /// emission site cannot drift apart.</summary>
+    [Fact]
+    public void EmittedNotification_CarriesTheProvidersTag()
+    {
+        var settings = Absolute();
+        var rules = ArmedAt(10, settings);
+        var outcome = rules.OnUsage(Fresh(Snap(95, T0)), settings, T0);
+        Assert.Equal(rules.Tag, outcome.Notification!.Tag);
+    }
+
+    /// <summary>The selector must run against the current settings on every reading: saving the
+    /// dialog replaces Settings, so keeping the first notification block would miss later edits.</summary>
+    [Fact]
+    public void OnUsage_ReadsTheProvidersSettingsAfterSettingsReplacement()
+    {
+        var rules = new UsageNotificationRules("usage:other", s => s.CodexNotifications);
+        var before = Absolute(enabled: false);
+        before.CodexNotifications.Enabled = false;
+        rules.NoteLiveOutcome(LiveOutcome.Snapshot);
+        rules.OnUsage(Fresh(Snap(10, T0)), before, T0);
+
+        var after = Absolute(enabled: false);
+        after.CodexNotifications.Enabled = true;
+
+        Assert.NotNull(rules.OnUsage(Fresh(Snap(95, T0)), after, T0).Notification);
     }
 }

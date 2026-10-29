@@ -14,8 +14,8 @@ public class StatusSourceRegistryTests
     [Fact]
     public void OnlyClaude_RaisesTheBadge()
     {
-        Assert.True(StatusSourceRegistry.Claude.RaisesBadge);
-        Assert.False(StatusSourceRegistry.OpenAi.RaisesBadge);
+        Assert.True(StatusSourceRegistry.Claude.RaisesBadgeFor(UsageProvider.Claude));
+        Assert.False(StatusSourceRegistry.OpenAi.RaisesBadgeFor(UsageProvider.Claude));
     }
 
     [Fact]
@@ -52,4 +52,15 @@ public class StatusSourceRegistryTests
     [InlineData("")]
     [InlineData(null)]
     public void ById_ReturnsNullForUnknown(string? id) => Assert.Null(StatusSourceRegistry.ById(id));
+    /// <summary>Each status page marks only its own provider's icons.</summary>
+    [Fact]
+    public void EachSource_MarksExactlyOneProvider()
+    {
+        Assert.Equal(UsageProvider.Claude, StatusSourceRegistry.Claude.BadgeFor);
+        Assert.Equal(UsageProvider.Codex, StatusSourceRegistry.OpenAi.BadgeFor);
+        Assert.True(StatusSourceRegistry.Claude.RaisesBadgeFor(UsageProvider.Claude));
+        Assert.False(StatusSourceRegistry.Claude.RaisesBadgeFor(UsageProvider.Codex));
+        Assert.True(StatusSourceRegistry.OpenAi.RaisesBadgeFor(UsageProvider.Codex));
+        Assert.False(StatusSourceRegistry.OpenAi.RaisesBadgeFor(UsageProvider.Claude));
+    }
 }

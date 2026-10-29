@@ -8,7 +8,9 @@ namespace ClaudeUsageTray.Tray;
 public sealed class UsagePopup : Form
 {
     public UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now,
-        IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null, string? noDataText = null)
+        IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null,
+        string? noDataText = null, DisplayChoice? codex = null, string? codexFetchStatus = null,
+        int? maxHeight = null)
     {
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
         Text = AppInfo.Name;
@@ -29,11 +31,51 @@ public sealed class UsagePopup : Form
 
         AddPlatformStatus(layout, statusSources, settings, now);
 
+        // Headers arrive only with the second section, so a Claude-only popup stays unchanged.
+        AddProviderSection(layout, choice, settings, now, codex is null ? null : "Claude",
+            noDataText ?? NoDataReason.Default, lastFetchStatus);
+        if (codex is { } codexChoice)
+            AddProviderSection(layout, codexChoice, settings, now, "Codex",
+                "no Codex data", codexFetchStatus);
+
+        // Every active scoped limit renders past PopupRows.Cap on purpose: a background-row cap
+        // must never hide the limit actually throttling the user. Bound the viewport instead.
+        // AutoScroll stays off until the clamp engages: an AutoSize host has nothing to scroll.
+        var host = new Panel
+        {
+            Name = "scrollHost",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            AutoScroll = false,
+            Dock = DockStyle.Fill,
+        };
+        host.Controls.Add(layout);
+        Controls.Add(host);
+        ClampHeight(host, layout, maxHeight);
+        PositionNearCursor();
+    }
+
+    /// <summary>One provider's rows, including its independent freshness and fetch outcome. A
+    /// header is supplied only when two sections need telling apart.</summary>
+    private static void AddProviderSection(TableLayoutPanel layout, DisplayChoice choice, Settings settings,
+        DateTimeOffset now, string? header, string noDataFallback, string? fetchStatus)
+    {
+        if (header is not null)
+        {
+            layout.Controls.Add(new Label
+            {
+                Text = header,
+                AutoSize = true,
+                Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
+                Margin = new Padding(0, 8, 0, 2),
+            });
+        }
+
         if (choice.Snapshot is not { } snapshot)
         {
             // Sentences here name what is missing and can run long; wrap at the bar width like the
             // status banner does rather than stretching the form.
-            layout.Controls.Add(WrappingLabel(noDataText ?? NoDataReason.Default,
+            layout.Controls.Add(WrappingLabel(noDataFallback,
                 SystemColors.ControlText, new Padding(0)));
         }
         else
@@ -72,19 +114,38 @@ public sealed class UsagePopup : Form
             layout.Controls.Add(updatedLabel);
         }
 
-        if (!string.IsNullOrEmpty(lastFetchStatus))
+        if (!string.IsNullOrEmpty(fetchStatus))
         {
             layout.Controls.Add(new Label
             {
-                Text = $"Fetch: {lastFetchStatus}",
+                Text = $"Fetch: {fetchStatus}",
                 AutoSize = true,
                 ForeColor = SystemColors.GrayText,
                 Margin = new Padding(0, 2, 0, 0),
             });
         }
+    }
 
-        Controls.Add(layout);
-        PositionNearCursor();
+    /// <summary>Cap against the cursor screen's working area, measured because large system fonts
+    /// and high DPI defeat a fixed estimate. Injection makes overflow tests independent of screen
+    /// resolution.</summary>
+    private void ClampHeight(Panel host, TableLayoutPanel layout, int? maxHeight)
+    {
+        PerformLayout();
+        int max = maxHeight ?? (int)(Screen.FromPoint(Cursor.Position).WorkingArea.Height * 0.9);
+        if (PreferredSize.Height <= max) return;
+        int width = PreferredSize.Width;
+
+        // Fill-docked children shrink to the viewport and do not report overflow to AutoScroll.
+        layout.Dock = DockStyle.None;
+        layout.Location = Point.Empty;
+        host.AutoSize = false;
+        host.AutoScroll = true;
+        AutoSize = false;
+        // Disabling AutoSize also freezes the current width, which can still be the form default
+        // before its handle exists. Preserve the measured content width and add the scroll gutter
+        // so enabling vertical scrolling does not clip captions or introduce a horizontal bar.
+        Size = new Size(width + SystemInformation.VerticalScrollBarWidth, max);
     }
 
     /// <param name="desktop">Whether the snapshot came from the Claude Desktop history. Gates both
@@ -193,15 +254,15 @@ public sealed class UsagePopup : Form
         catch { /* a dead link must never take the popup down */ }
     }
 
-    /// <summary>A model- or surface-scoped weekly limit. Not routed through AddWindowRow via a
+    /// <summary>A model- or surface-scoped limit. Not routed through AddWindowRow via a
     /// WindowUsage: that would discard ModelId and IsActive before rendering, making any later
     /// distinction between binding and non-binding caps a parsing change rather than a drawing one.</summary>
     private static void AddScopedRow(TableLayoutPanel layout, ScopedLimit limit,
         Settings settings, DateTimeOffset now)
     {
         var resets = limit.ResetsAt is { } r ? $" · resets in {RelativeTime.In(r, now)}" : "";
-        var elapsed = TimeMarker.ElapsedFraction(limit.ResetsAt, UsageValues.SevenDayPeriod, now);
-        AddCaption(layout, $"{limit.Label} weekly — {limit.Percent}%{resets}{PaceSuffix(limit.Percent, elapsed, settings)}");
+        var elapsed = TimeMarker.ElapsedFraction(limit.ResetsAt, ScopedPeriods.Length(limit.Period), now);
+        AddCaption(layout, $"{limit.Label} {ScopedPeriods.Word(limit.Period)} — {limit.Percent}%{resets}{PaceSuffix(limit.Percent, elapsed, settings)}");
         AddBar(layout, limit.Percent, UsageValues.ScopedSeverity(limit, settings, now), elapsed);
     }
 
@@ -254,7 +315,7 @@ public sealed class UsagePopup : Form
         // Measure the auto-sized form instead of guessing: long countdown strings, large
         // system fonts, or high DPI would overflow hardcoded estimates.
         PerformLayout();
-        var size = PreferredSize;
+        var size = AutoSize ? PreferredSize : Size;
         var cursor = Cursor.Position;
         var area = Screen.FromPoint(cursor).WorkingArea;
         // Above/centered on the cursor, clamped to the working area (tray is bottom-right).

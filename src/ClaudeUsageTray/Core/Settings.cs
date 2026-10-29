@@ -50,6 +50,23 @@ public sealed class TolerantUsageNotificationsConverter : JsonConverter<UsageNot
     }
 }
 
+/// <summary>A bad Codex display mode resets only that field, preserving unrelated settings.</summary>
+public sealed class TolerantDisplayModeConverter : JsonConverter<DisplayMode>
+{
+    public override DisplayMode Read(ref Utf8JsonReader reader, Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.String
+            && Enum.TryParse<DisplayMode>(reader.GetString(), ignoreCase: true, out var mode)
+            && Enum.IsDefined(mode)) return mode;
+        reader.Skip();
+        return DisplayMode.Both;
+    }
+
+    public override void Write(Utf8JsonWriter writer, DisplayMode value, JsonSerializerOptions options)
+        => writer.WriteStringValue(JsonNamingPolicy.CamelCase.ConvertName(value.ToString()));
+}
+
 public sealed class Thresholds
 {
     public int Orange { get; set; } = ThresholdRules.DefaultOrange;
@@ -85,7 +102,10 @@ public static class ThresholdRules
 /// an empty list means watch every component.</summary>
 public sealed class StatusSourceSettings
 {
-    public bool Enabled { get; set; }
+    /// <summary>Null means never decided: the registry default applies and may still change. An
+    /// explicit true or false is the user's answer. This distinction must survive normalization,
+    /// which runs on Save as well as Load.</summary>
+    public bool? Enabled { get; set; }
     /// <summary>Toast when this source's relevant state flips. Defaults on: whoever enabled a page
     /// did it to hear about its outages. Independent of Enabled so an off/on cycle keeps the choice.</summary>
     public bool Notify { get; set; } = true;
@@ -132,6 +152,9 @@ public sealed class TolerantStatusSourcesConverter : JsonConverter<Dictionary<st
 public sealed class Settings
 {
     public DisplayMode DisplayMode { get; set; } = DisplayMode.Both;
+    /// <summary>Which Codex badges to show, independent of Claude's.</summary>
+    [JsonConverter(typeof(TolerantDisplayModeConverter))]
+    public DisplayMode CodexDisplayMode { get; set; } = DisplayMode.Both;
     public Thresholds Thresholds { get; set; } = new();
     public int StalenessMinutes { get; set; } = ThresholdRules.DefaultStalenessMinutes;
 
@@ -179,6 +202,10 @@ public sealed class Settings
     [JsonConverter(typeof(TolerantUsageNotificationsConverter))]
     public UsageNotificationSettings UsageNotifications { get; set; } = new();
 
+    /// <summary>Codex's own notification switch and level, independent of Claude's.</summary>
+    [JsonConverter(typeof(TolerantUsageNotificationsConverter))]
+    public UsageNotificationSettings CodexNotifications { get; set; } = new();
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -219,6 +246,7 @@ public sealed class Settings
     private void NormalizeFields()
     {
         if (!Enum.IsDefined(DisplayMode)) DisplayMode = DisplayMode.Both;
+        if (!Enum.IsDefined(CodexDisplayMode)) CodexDisplayMode = DisplayMode.Both;
         Thresholds ??= new Thresholds();
         // An inconsistent pair resets as a pair: the file gives no way to tell which of the two the
         // user meant, so guessing one and keeping the other would invent a threshold they never set.
@@ -238,6 +266,9 @@ public sealed class Settings
         UsageNotifications ??= new UsageNotificationSettings();
         if (!Enum.IsDefined(UsageNotifications.Level)) UsageNotifications.Level = NotifyLevel.Red;
 
+        CodexNotifications ??= new UsageNotificationSettings();
+        if (!Enum.IsDefined(CodexNotifications.Level)) CodexNotifications.Level = NotifyLevel.Red;
+
         StatusSources ??= new(StringComparer.OrdinalIgnoreCase);
         var sources = new Dictionary<string, StatusSourceSettings?>(StringComparer.OrdinalIgnoreCase);
         foreach (var source in StatusSourceRegistry.All)
@@ -248,7 +279,8 @@ public sealed class Settings
             sources[source.Id] = entry is null
                 ? new StatusSourceSettings
                 {
-                    Enabled = source.EnabledByDefault,      // Claude on, OpenAI off
+                    // An invented entry records no decision. Persisting EnabledByDefault here
+                    // would make the registry default permanent on the first Save.
                     Components = [.. source.DefaultComponents],
                 }
                 : new StatusSourceSettings
@@ -264,13 +296,17 @@ public sealed class Settings
     }
 
     /// <summary>The enabled sources with their watch filters, in registry order — what StatusMonitor
-    /// consumes.</summary>
-    public IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)> EnabledSources()
+    /// consumes. An undecided OpenAI source follows Codex availability; an explicit choice always
+    /// wins, so automatic discovery never overrides an opt-out.</summary>
+    public IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)> EnabledSources(CodexState codex = CodexState.Unknown)
     {
         var result = new List<(StatusSource, IReadOnlyList<string>)>();
         foreach (var source in StatusSourceRegistry.All)
         {
-            if (StatusSources.TryGetValue(source.Id, out var entry) && entry is { Enabled: true })
+            if (!StatusSources.TryGetValue(source.Id, out var entry) || entry is null) continue;
+            bool byDefault = source.EnabledByDefault
+                || (source.BadgeFor == UsageProvider.Codex && codex == CodexState.Available);
+            if (entry.Enabled ?? byDefault)
                 result.Add((source, entry.Components ?? []));
         }
         return result;

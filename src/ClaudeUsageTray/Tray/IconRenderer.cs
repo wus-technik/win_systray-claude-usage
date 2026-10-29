@@ -23,7 +23,7 @@ public static class IconRenderer
     /// exclamation badge in the bottom-right corner, drawn over everything and never dimmed.
     /// </summary>
     public static Icon Render(char digit, int percent, Severity severity, bool clockwise,
-        bool dimmed, int size, bool warning = false)
+        bool dimmed, int size, bool warning = false, BadgeShape shape = BadgeShape.Disc)
     {
         var color = severity switch
         {
@@ -31,16 +31,16 @@ public static class IconRenderer
             Severity.Orange => Color.FromArgb(232, 150, 40),
             _ => Color.FromArgb(64, 184, 96),
         };
-        return Draw(digit.ToString(), Math.Clamp(percent, 0, 100), color, clockwise, dimmed, size, warning);
+        return Draw(digit.ToString(), Math.Clamp(percent, 0, 100), color, clockwise, dimmed, size, warning, shape);
     }
 
     /// <summary>Grey badge with a centered em-dash: the "no usage data yet" state. The warning
     /// badge applies here too — an outage with no usage data must still be visible.</summary>
-    public static Icon RenderNeutral(int size, bool warning = false)
-        => Draw("—", percent: 0, Color.FromArgb(150, 150, 150), clockwise: true, dimmed: false, size, warning);
+    public static Icon RenderNeutral(int size, bool warning = false, BadgeShape shape = BadgeShape.Disc)
+        => Draw("—", percent: 0, Color.FromArgb(150, 150, 150), clockwise: true, dimmed: false, size, warning, shape);
 
     private static Icon Draw(string glyph, int percent, Color color, bool clockwise, bool dimmed,
-        int size, bool warning)
+        int size, bool warning, BadgeShape shape)
     {
         if (dimmed) color = Color.FromArgb(120, color);
 
@@ -52,22 +52,28 @@ public static class IconRenderer
             g.Clear(Color.Transparent);
 
             var rect = new RectangleF(0.5f, 0.5f, size - 1f, size - 1f);
+            using var path = ShapePath(rect, shape);
 
             // Translucent tinted disc marks the unused fraction.
             using (var back = new SolidBrush(Color.FromArgb(dimmed ? 50 : 90, color)))
-                g.FillEllipse(back, rect);
+                g.FillPath(back, path);
 
             // Solid usage wedge from 12 o'clock (-90°); counter-clockwise = negative sweep (7d).
             if (percent > 0)
             {
                 float sweep = 360f * percent / 100f;
                 if (!clockwise) sweep = -sweep;
-                using var fill = new SolidBrush(color);
-                g.FillPie(fill, rect.X, rect.Y, rect.Width, rect.Height, -90f, sweep);
+                // Keep the wedge inside the silhouette. Save/Restore avoids retaining the Region
+                // allocated by reading Graphics.Clip on every tray render.
+                var state = g.Save();
+                g.SetClip(path);
+                using (var fill = new SolidBrush(color))
+                    g.FillPie(fill, rect.X, rect.Y, rect.Width, rect.Height, -90f, sweep);
+                g.Restore(state);
             }
 
             using (var rim = new Pen(color, 1f))
-                g.DrawEllipse(rim, rect);
+                g.DrawPath(rim, path);
 
             // Digit over a 1 px dark halo: readable on the filled and unfilled halves
             // and on light taskbars (the v0.1 ring left the center transparent).
@@ -98,6 +104,27 @@ public static class IconRenderer
         {
             DestroyIcon(hIcon);
         }
+    }
+
+    /// <summary>The corner radius scales with the icon so 16 px and 32 px badges read as the same
+    /// shape; below 2 px the rounding would be indistinguishable from a square.</summary>
+    private static GraphicsPath ShapePath(RectangleF rect, BadgeShape shape)
+    {
+        var path = new GraphicsPath();
+        if (shape == BadgeShape.Disc)
+        {
+            path.AddEllipse(rect);
+            return path;
+        }
+
+        float r = Math.Max(2f, rect.Width * 0.22f);
+        float d = r * 2f;
+        path.AddArc(rect.X, rect.Y, d, d, 180f, 90f);
+        path.AddArc(rect.Right - d, rect.Y, d, d, 270f, 90f);
+        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0f, 90f);
+        path.AddArc(rect.X, rect.Bottom - d, d, d, 90f, 90f);
+        path.CloseFigure();
+        return path;
     }
 
     /// <summary>White disc with a dark rim and a shape-drawn exclamation, inscribed in the

@@ -49,7 +49,7 @@ public class UsageTooltipTests
         var status = new PlatformStatus(claude.Id, Now, "major", "Major outage", [], []);
         var sources = new[] { new SourceView(claude, status, []) };
 
-        var composed = StatusDetail.ComposeTooltip(usageText, sources, Now, stalenessMinutes: 15);
+        var composed = StatusDetail.ComposeTooltip(usageText, sources, Now, stalenessMinutes: 15, UsageProvider.Claude);
 
         Assert.True(composed.Length <= StatusDetail.TooltipLimit);
         Assert.Contains("(estimate)", composed);
