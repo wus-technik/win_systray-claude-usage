@@ -762,7 +762,10 @@ public class SettingsDialogTests : IDisposable
             Assert.True(needed.Height + page.Padding.Vertical <= tabs.DisplayRectangle.Height,
                 $"{page.Name} needs {needed.Height} px, has {tabs.DisplayRectangle.Height}");
             Assert.True(needed.Width + page.Padding.Horizontal <= tabs.DisplayRectangle.Width,
-                $"{page.Name} needs {needed.Width} px, has {tabs.DisplayRectangle.Width}");
+                $"{page.Name} needs {needed.Width} px, has {tabs.DisplayRectangle.Width} DIAG " +
+                string.Join(" | ", page.Controls[0].Controls.Cast<Control>().Select(c =>
+                    $"{c.GetType().Name}:{c.Name}:{c.Text}:pref={c.PreferredSize}:b={c.Bounds}:font={c.Font.Name}/{c.Font.Size}:dpi={c.DeviceDpi}" +
+                    (c is TableLayoutPanel t ? "[" + string.Join(";", t.Controls.Cast<Control>().Select(x => $"{x.Name}:{x.Text}:{x.PreferredSize}:{x.Bounds}")) + "]" : ""))));
         }
     }
 
