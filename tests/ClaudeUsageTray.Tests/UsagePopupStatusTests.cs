@@ -8,6 +8,7 @@ namespace ClaudeUsageTray.Tests;
 
 /// <summary>Rendered offscreen with CreateControl(), never Show(): UsagePopup.OnDeactivate calls
 /// Close(), and with no message loop Show() disposes the form before anything can be inspected.</summary>
+[Collection(WinFormsCollection.Name)]
 public class UsagePopupStatusTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 26, 12, 0, 0, TimeSpan.Zero);

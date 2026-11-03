@@ -6,6 +6,7 @@ namespace ClaudeUsageTray.Tests;
 
 /// <summary>CreateControl, never Show: OnDeactivate calls Close, and with no message loop Show
 /// disposes the form and leaves a blank render with no controls and no error.</summary>
+[Collection(WinFormsCollection.Name)]
 public class UsagePopupCodexTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);

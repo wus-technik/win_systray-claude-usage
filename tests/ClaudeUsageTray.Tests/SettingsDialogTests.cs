@@ -9,6 +9,7 @@ namespace ClaudeUsageTray.Tests;
 /// <summary>The dialog is a thin shell over ThresholdRules, so these cover the shell's own promises:
 /// that it never touches the live settings, that an invalid pair is unreachable through the spinners,
 /// and that a failed save keeps it open.</summary>
+[Collection(WinFormsCollection.Name)]
 public class SettingsDialogTests : IDisposable
 {
     private readonly List<SettingsDialog> _open = [];

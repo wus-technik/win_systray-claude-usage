@@ -9,6 +9,7 @@ namespace ClaudeUsageTray.Tests;
 /// <summary>The dialog's About section: the running version, what a check found, and the two controls
 /// that act on it — refresh checks, Update now installs. The check and the restart confirmation are
 /// injected, so these run without a feed and without a modal prompt.</summary>
+[Collection(WinFormsCollection.Name)]
 public class SettingsDialogUpdateTests : IDisposable
 {
     private readonly List<SettingsDialog> _open = [];
