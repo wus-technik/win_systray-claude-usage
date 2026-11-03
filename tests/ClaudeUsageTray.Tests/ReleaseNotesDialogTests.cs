@@ -7,6 +7,7 @@ namespace ClaudeUsageTray.Tests;
 /// <summary>The window shown before a restart. These are layout tests on purpose: the first version
 /// docked the notes box over the question and both buttons, which every behavioural test passed
 /// happily because the controls existed — they were just invisible.</summary>
+[Collection(WinFormsCollection.Name)]
 public class ReleaseNotesDialogTests : IDisposable
 {
     private readonly List<Form> _open = [];

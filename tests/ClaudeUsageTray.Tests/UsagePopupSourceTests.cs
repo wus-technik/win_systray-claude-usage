@@ -6,6 +6,7 @@ using Xunit;
 namespace ClaudeUsageTray.Tests;
 
 /// <summary>What the popup says about where its numbers came from, and what it says when there are none.</summary>
+[Collection(WinFormsCollection.Name)]
 public class UsagePopupSourceTests : IDisposable
 {
     private readonly List<UsagePopup> _open = [];

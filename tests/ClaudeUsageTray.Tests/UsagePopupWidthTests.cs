@@ -7,6 +7,7 @@ namespace ClaudeUsageTray.Tests;
 /// <summary>The popup is AutoSize and PositionNearCursor clamps its position but not its size, so
 /// page-supplied text — banner wording and incident detail, both unbounded in length — must wrap
 /// instead of stretching the form sideways off the screen edge.</summary>
+[Collection(WinFormsCollection.Name)]
 public class UsagePopupWidthTests : IDisposable
 {
     private readonly List<UsagePopup> _open = [];

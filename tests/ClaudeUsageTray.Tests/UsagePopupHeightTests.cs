@@ -8,6 +8,7 @@ namespace ClaudeUsageTray.Tests;
 /// UsagePopup.OnDeactivate calls Close, and with no message loop Show disposes the form mid-test.
 /// The cap is injected rather than taken from the screen, so these assertions mean the same thing on
 /// a 1080p laptop and a 4K monitor.</summary>
+[Collection(WinFormsCollection.Name)]
 public class UsagePopupHeightTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 13, 12, 0, 0, TimeSpan.Zero);

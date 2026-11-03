@@ -5,6 +5,7 @@ using Xunit;
 
 namespace ClaudeUsageTray.Tests;
 
+[Collection(WinFormsCollection.Name)]
 public class SettingsDialogCodexTests
 {
     private static SettingsDialog NewDialog(CodexState state, Settings? settings = null)
