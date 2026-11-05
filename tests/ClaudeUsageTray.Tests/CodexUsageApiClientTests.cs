@@ -31,20 +31,19 @@ public class CodexUsageApiClientTests
                           "secondary_window": { "used_percent": 21, "reset_at": 1792474516 } } }
         """;
 
-    private static (UsageFetchResult Result, FakeHandler Handler) Fetch(
+    private static async Task<(UsageFetchResult Result, FakeHandler Handler)> Fetch(
         Func<HttpRequestMessage, HttpResponseMessage> respond, CodexAuth? auth = null)
     {
         var handler = new FakeHandler(respond);
         using var http = new HttpClient(handler);
-        var result = CodexUsageApiClient.FetchAsync(http, auth ?? Auth, Now, CancellationToken.None)
-            .GetAwaiter().GetResult();
+        var result = await CodexUsageApiClient.FetchAsync(http, auth ?? Auth, Now, CancellationToken.None);
         return (result, handler);
     }
 
     [Fact]
-    public void Fetch_Success_ReturnsASnapshot()
+    public async Task Fetch_Success_ReturnsASnapshot()
     {
-        var (result, _) = Fetch(_ => Json(HttpStatusCode.OK, Ok));
+        var (result, _) = await Fetch(_ => Json(HttpStatusCode.OK, Ok));
 
         Assert.Equal(42, result.Snapshot!.FiveHour!.Percent);
         Assert.Equal(UsageSource.Codex, result.Snapshot.Source);
@@ -53,9 +52,9 @@ public class CodexUsageApiClientTests
     }
 
     [Fact]
-    public void Fetch_SendsBearerTokenAndAccountHeader()
+    public async Task Fetch_SendsBearerTokenAndAccountHeader()
     {
-        var (_, handler) = Fetch(_ => Json(HttpStatusCode.OK, Ok));
+        var (_, handler) = await Fetch(_ => Json(HttpStatusCode.OK, Ok));
         var request = handler.LastRequest!;
 
         // The ChatGPT base URL routes usage through /wham, not /codex. Pin the actual URL
@@ -68,9 +67,9 @@ public class CodexUsageApiClientTests
     }
 
     [Fact]
-    public void Fetch_WithoutAnAccountId_OmitsTheHeader()
+    public async Task Fetch_WithoutAnAccountId_OmitsTheHeader()
     {
-        var (_, handler) = Fetch(_ => Json(HttpStatusCode.OK, Ok),
+        var (_, handler) = await Fetch(_ => Json(HttpStatusCode.OK, Ok),
             auth: new CodexAuth("dummy.token.value", null, Now.AddDays(1)));
 
         Assert.False(handler.LastRequest!.Headers.Contains("ChatGPT-Account-Id"));
@@ -79,18 +78,18 @@ public class CodexUsageApiClientTests
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.Forbidden)]
-    public void Fetch_Rejected_IsUnauthorized(HttpStatusCode status)
+    public async Task Fetch_Rejected_IsUnauthorized(HttpStatusCode status)
     {
-        var (result, _) = Fetch(_ => Json(status, "{}"));
+        var (result, _) = await Fetch(_ => Json(status, "{}"));
 
         Assert.True(result.Unauthorized);
         Assert.Null(result.Snapshot);
     }
 
     [Fact]
-    public void Fetch_TooManyRequests_IsRateLimitedWithRetryAfter()
+    public async Task Fetch_TooManyRequests_IsRateLimitedWithRetryAfter()
     {
-        var (result, _) = Fetch(_ =>
+        var (result, _) = await Fetch(_ =>
         {
             var response = Json(HttpStatusCode.TooManyRequests, "{}");
             response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
@@ -103,9 +102,9 @@ public class CodexUsageApiClientTests
     }
 
     [Fact]
-    public void Fetch_ServerError_IsAPlainFailure()
+    public async Task Fetch_ServerError_IsAPlainFailure()
     {
-        var (result, _) = Fetch(_ => Json(HttpStatusCode.InternalServerError, "{}"));
+        var (result, _) = await Fetch(_ => Json(HttpStatusCode.InternalServerError, "{}"));
 
         Assert.Null(result.Snapshot);
         Assert.False(result.Unauthorized);
@@ -113,9 +112,9 @@ public class CodexUsageApiClientTests
     }
 
     [Fact]
-    public void Fetch_SuccessWithUnusableBody_IsAPlainFailure()
+    public async Task Fetch_SuccessWithUnusableBody_IsAPlainFailure()
     {
-        var (result, _) = Fetch(_ => Json(HttpStatusCode.OK, "{ not json"));
+        var (result, _) = await Fetch(_ => Json(HttpStatusCode.OK, "{ not json"));
 
         Assert.Null(result.Snapshot);
         Assert.False(result.Unauthorized);
@@ -136,9 +135,9 @@ public class CodexUsageApiClientTests
     /// HttpHeaders.Add throw FormatException — the header is dropped instead, because an unusable
     /// account id should cost the header, not the whole fetch.</summary>
     [Fact]
-    public void Fetch_WithAnIllegalAccountId_SendsTheRequestWithoutTheHeader()
+    public async Task Fetch_WithAnIllegalAccountId_SendsTheRequestWithoutTheHeader()
     {
-        var (result, handler) = Fetch(_ => Json(HttpStatusCode.OK, Ok),
+        var (result, handler) = await Fetch(_ => Json(HttpStatusCode.OK, Ok),
             auth: new CodexAuth("dummy.token.value", "bad\nvalue", Now.AddDays(1)));
 
         Assert.False(handler.LastRequest!.Headers.Contains("ChatGPT-Account-Id"));
@@ -147,9 +146,9 @@ public class CodexUsageApiClientTests
 
     /// <summary>And an unusable token fails the fetch rather than throwing out of it.</summary>
     [Fact]
-    public void Fetch_WithAnIllegalToken_NeverThrows()
+    public async Task Fetch_WithAnIllegalToken_NeverThrows()
     {
-        var (result, _) = Fetch(_ => Json(HttpStatusCode.OK, Ok),
+        var (result, _) = await Fetch(_ => Json(HttpStatusCode.OK, Ok),
             auth: new CodexAuth("bad\ntoken", null, Now.AddDays(1)));
 
         Assert.Null(result.Snapshot);

@@ -1,6 +1,8 @@
 # Claude Desktop Usage History Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Show usage percentages to users whose only usable source is the Claude Desktop app's local `plan-usage-history.json`, without regressing users whose Claude Code cache or live fetch is current, and replace the unconditional "run Claude Code" hint with messages that name what is missing.
 
@@ -52,7 +54,7 @@
 **Interfaces:**
 - Produces: `public enum UsageSource { ClaudeCode, DesktopHistory }` and `UsageSnapshot.Source` (init-only, default `ClaudeCode`). Tasks 4, 9 and 10 rely on both names.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -77,12 +79,12 @@ public class UsageSnapshotTests
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~UsageSnapshotTests`
 Expected: build error, `UsageSource` does not exist.
 
-- [ ] **Step 3: Add the enum and property**
+- [x] **Step 3: Add the enum and property**
 
 In `src/ClaudeUsageTray/Core/UsageSnapshot.cs`, before the `UsageSnapshot` record:
 
@@ -98,12 +100,12 @@ Inside the record body, after the `ScopedLimits` property:
     public UsageSource Source { get; init; } = UsageSource.ClaudeCode;
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~UsageSnapshotTests`
 Expected: 2 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageSnapshot.cs tests/ClaudeUsageTray.Tests/UsageSnapshotTests.cs
@@ -125,7 +127,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
 **Interfaces:**
 - Produces: `ThresholdRules.DefaultDesktopStalenessHours` (`3`), `Settings.DesktopStalenessHours` (int), `Settings.DesktopHistoryPathOverride` (string?). Tasks 5, 8 and 10 use them.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsTests.cs` inside the class:
 
@@ -170,12 +172,12 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsTests.cs` inside the class:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: build error, `DesktopStalenessHours` does not exist.
 
-- [ ] **Step 3: Add the constant, properties and normalisation**
+- [x] **Step 3: Add the constant, properties and normalisation**
 
 In `ThresholdRules`, after `DefaultStalenessMinutes`:
 
@@ -208,12 +210,12 @@ In `NormalizeFields()`, after the `StalenessMinutes` line:
         if (DesktopStalenessHours <= 0) DesktopStalenessHours = ThresholdRules.DefaultDesktopStalenessHours;
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: all passed, including the three new ones.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -239,7 +241,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
   - `DesktopHistoryPath.DefaultAppData`, `DesktopHistoryPath.DefaultLocalAppData` (the two special folders)
   - Task 10 calls all four.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -361,12 +363,12 @@ public class DesktopHistoryPathTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~DesktopHistoryPathTests`
 Expected: build error, `DesktopHistoryPath` does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ClaudeUsageTray/Core/DesktopHistoryPath.cs`:
 
@@ -444,12 +446,12 @@ public static class DesktopHistoryPath
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~DesktopHistoryPathTests`
 Expected: 11 passed. If `Candidates_InvalidOverride_IsEmptyAndDoesNotThrow` fails because .NET accepted the path, change the invalid path in both tests to `"C:\\bad\0path.json"` with the literal NUL kept, which `Path.GetFullPath` and `FileInfo` reject with `ArgumentException`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/DesktopHistoryPath.cs tests/ClaudeUsageTray.Tests/DesktopHistoryPathTests.cs
@@ -477,7 +479,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
   - `DesktopUsageReader.TryRead(string path) : UsageSnapshot?`
   - `DesktopUsageReader.ReadFirst(IReadOnlyList<string> byFreshness) : DesktopHistoryResult`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -693,12 +695,12 @@ public class DesktopUsageReaderTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~DesktopUsageReaderTests`
 Expected: build error, `DesktopUsageReader` does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ClaudeUsageTray/Core/DesktopUsageReader.cs`:
 
@@ -802,12 +804,12 @@ public static class DesktopUsageReader
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~DesktopUsageReaderTests`
 Expected: 20 passed. `BadSamplesAreSkipped_ValidSiblingStillSelected` depends on `TryGetInt64` rejecting `99999999999999999999` and the range check rejecting `253402300800000`; both are skipped, so the sample at `t=400` wins.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/DesktopUsageReader.cs tests/ClaudeUsageTray.Tests/DesktopUsageReaderTests.cs
@@ -835,7 +837,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
   - `SourceSelection.FutureTolerance` (5 min)
   - Tasks 9 and 10 use `DisplayChoice`, `Choose` and `Age`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -954,12 +956,12 @@ public class SourceSelectionTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SourceSelectionTests`
 Expected: build error, `SourceSelection` does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ClaudeUsageTray/Core/SourceSelection.cs`:
 
@@ -1006,12 +1008,12 @@ public static class SourceSelection
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~SourceSelectionTests`
 Expected: 11 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/SourceSelection.cs tests/ClaudeUsageTray.Tests/SourceSelectionTests.cs
@@ -1040,7 +1042,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
   - `CredentialsReader.Status(string path, DateTimeOffset now) : CredentialStatus`
   - Tasks 7 and 10 use all four.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append inside `UsageCacheReaderTests`:
 
@@ -1095,12 +1097,12 @@ Append inside `CredentialsReaderTests`:
         => Assert.Equal(CredentialStatus.Unusable, CredentialsReader.Status(WriteFixture("{ nope"), Now));
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter "FullyQualifiedName~UsageCacheReaderTests|FullyQualifiedName~CredentialsReaderTests"`
 Expected: build error, `ConfigStatus` does not exist.
 
-- [ ] **Step 3: Add the enums**
+- [x] **Step 3: Add the enums**
 
 Create `src/ClaudeUsageTray/Core/NoDataReason.cs`:
 
@@ -1116,7 +1118,7 @@ public enum ConfigStatus { Missing, NoUsageKey, Unreadable }
 public enum CredentialStatus { Missing, Unusable, Valid }
 ```
 
-- [ ] **Step 4: Add `UsageCacheReader.Status`**
+- [x] **Step 4: Add `UsageCacheReader.Status`**
 
 In `UsageCacheReader`, after `TryRead`:
 
@@ -1144,7 +1146,7 @@ In `UsageCacheReader`, after `TryRead`:
     }
 ```
 
-- [ ] **Step 5: Add `CredentialsReader.Status`**
+- [x] **Step 5: Add `CredentialsReader.Status`**
 
 In `CredentialsReader`, after `TryReadAccessToken`:
 
@@ -1162,12 +1164,12 @@ In `CredentialsReader`, after `TryReadAccessToken`:
     }
 ```
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `dotnet test --filter "FullyQualifiedName~UsageCacheReaderTests|FullyQualifiedName~CredentialsReaderTests"`
 Expected: all passed, including the nine new ones.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/NoDataReason.cs src/ClaudeUsageTray/Core/UsageCacheReader.cs src/ClaudeUsageTray/Core/CredentialsReader.cs tests/ClaudeUsageTray.Tests/UsageCacheReaderTests.cs tests/ClaudeUsageTray.Tests/CredentialsReaderTests.cs
@@ -1190,7 +1192,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
 - Consumes: `ConfigStatus`, `CredentialStatus` (Task 6), `DesktopHistoryStatus` (Task 4).
 - Produces: `public sealed record NoDataFacts(ConfigStatus Config, CredentialStatus Credentials, DesktopHistoryStatus Desktop)`, `NoDataReason.Describe(NoDataFacts) : string`, `NoDataReason.Default : string` (the "open Claude Code or Claude Desktop" line). Tasks 9 and 10 use them.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -1258,12 +1260,12 @@ public class NoDataReasonTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~NoDataReasonTests`
 Expected: build error, `NoDataFacts` does not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Append to `src/ClaudeUsageTray/Core/NoDataReason.cs`:
 
@@ -1299,12 +1301,12 @@ public static class NoDataReason
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~NoDataReasonTests`
 Expected: 12 passed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/NoDataReason.cs tests/ClaudeUsageTray.Tests/NoDataReasonTests.cs
@@ -1327,7 +1329,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
 - Consumes: `Settings.DesktopStalenessHours`, `Settings.DesktopHistoryPathOverride`, `ThresholdRules.DefaultDesktopStalenessHours` (Task 2).
 - Produces: a `NumericUpDown` named `desktopStaleness` reachable via `Controls.Find`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append inside `SettingsDialogTests` (the class already has `Dialog(...)`, `Spinner(...)` and `Button(...)` helpers):
 
@@ -1369,12 +1371,12 @@ Append inside `SettingsDialogTests` (the class already has `Dialog(...)`, `Spinn
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogTests`
 Expected: the four new tests fail (`Controls.Find("desktopStaleness")` returns nothing → `Single()` throws).
 
-- [ ] **Step 3: Add the spinner**
+- [x] **Step 3: Add the spinner**
 
 In `SettingsDialog`, after the `_staleness` field:
 
@@ -1442,12 +1444,12 @@ In `Clone`, add both new fields:
         DesktopHistoryPathOverride = source.DesktopHistoryPathOverride,
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialog`
 Expected: all passed (both `SettingsDialogTests` and `SettingsDialogUpdateTests`).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs
@@ -1470,7 +1472,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
 - Consumes: `DisplayChoice` (Task 5), `UsageSource` (Task 1), `NoDataReason.Default` (Task 7).
 - Produces: `new UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now, PlatformStatus? platformStatus = null, string? lastFetchStatus = null, string? noDataText = null)`. Task 10 calls it with the real selection. Changing the signature breaks the one call in `TrayApp.ShowPopup`, so Step 3b makes the minimal one-line change there to keep the solution compiling; Task 10 replaces that line.
 
-- [ ] **Step 1: Update the existing width tests and write the new ones**
+- [x] **Step 1: Update the existing width tests and write the new ones**
 
 In `UsagePopupWidthTests`, change the three constructor calls so the snapshot is wrapped:
 
@@ -1591,12 +1593,12 @@ public class UsagePopupSourceTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopup`
 Expected: build error, no `UsagePopup` constructor takes a `DisplayChoice`.
 
-- [ ] **Step 3a: Change the constructor and the two branches**
+- [x] **Step 3a: Change the constructor and the two branches**
 
 In `UsagePopup.cs`, replace the constructor signature and the `snapshot is null` / `else` block:
 
@@ -1645,7 +1647,7 @@ In `UsagePopup.cs`, replace the constructor signature and the `snapshot is null`
 
 Remove the old `bool stale = now - snapshot.FetchedAt > ...` line; nothing else in the class referenced it.
 
-- [ ] **Step 3b: Keep `TrayApp` compiling**
+- [x] **Step 3b: Keep `TrayApp` compiling**
 
 In `TrayApp.ShowPopup()` replace the constructor call with the wrapped form for now (Task 10 replaces it again):
 
@@ -1653,12 +1655,12 @@ In `TrayApp.ShowPopup()` replace the constructor call with the wrapped form for 
         _popup = new UsagePopup(new DisplayChoice(_snapshot, false), _settings, DateTimeOffset.UtcNow, _status, _lastFetchStatus);
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopup`
 Expected: all passed (4 width tests, 8 source tests). If `DesktopSource_Stale_IsFlagged` fails on the age text, check `RelativeTime.Ago(Now.AddHours(-5), Now)` returns `"5h ago"` (it does: whole hours print without minutes).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs tests/ClaudeUsageTray.Tests/UsagePopupSourceTests.cs
@@ -1680,7 +1682,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
 - Consumes: everything produced by Tasks 1 through 9.
 - Produces: nothing new for later tasks. Behaviour is verified by the Core tests plus a manual run.
 
-- [ ] **Step 1: Rename the slot and add the new state**
+- [x] **Step 1: Rename the slot and add the new state**
 
 Replace the field `private UsageSnapshot? _snapshot;` with:
 
@@ -1699,7 +1701,7 @@ Replace the field `private UsageSnapshot? _snapshot;` with:
 
 Then replace every remaining `_snapshot` in the file with `_cliSnapshot` (in `Refresh()` and `OnApiFetchCompleted`; `Render`, `BuildTooltip` and `ShowPopup` are rewritten below). Build to find any stragglers: `dotnet build src/ClaudeUsageTray`.
 
-- [ ] **Step 2: Extend `Refresh()`**
+- [x] **Step 2: Extend `Refresh()`**
 
 Keep the existing cache block exactly as it is (with `_cliSnapshot`), and insert the desktop block plus the facts before the final `Render();`:
 
@@ -1734,7 +1736,7 @@ Keep the existing cache block exactly as it is (with `_cliSnapshot`), and insert
         Render();
 ```
 
-- [ ] **Step 3: Rewrite `Render()` and `Apply`**
+- [x] **Step 3: Rewrite `Render()` and `Apply`**
 
 ```csharp
     private void Render()
@@ -1816,7 +1818,7 @@ Keep the existing cache block exactly as it is (with `_cliSnapshot`), and insert
     }
 ```
 
-- [ ] **Step 4: The popup, the fetch status, the log lines, the settings save**
+- [x] **Step 4: The popup, the fetch status, the log lines, the settings save**
 
 `ShowPopup()`:
 
@@ -1879,16 +1881,16 @@ In the settings save block (the run of `_settings.X = edited.X;` lines), after `
         _settings.DesktopStalenessHours = edited.DesktopStalenessHours;
 ```
 
-- [ ] **Step 5: Build and run the whole suite**
+- [x] **Step 5: Build and run the whole suite**
 
 Run: `dotnet build src/ClaudeUsageTray` then `dotnet test`
 Expected: build clean with no new warnings; all tests pass. Any remaining `_snapshot` reference shows up as a build error here.
 
-- [ ] **Step 6: Manual check from source**
+- [x] **Step 6: Manual check from source**
 
 Run: `dotnet run --project src/ClaudeUsageTray`. Verify: the icons render; hovering shows the tooltip; left-click opens the popup; `%APPDATA%\ClaudeUsageTray\fetch.log` gained a `source: ...` line and, if a desktop file exists on this machine, a `desktop: adopted ...` line with no uuid in it. Quit the app from the menu. Do not leave it running from the tool shell (it would die with the shell and look like a crash).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/TrayApp.cs
@@ -1910,7 +1912,7 @@ Claude-Session: https://claude.ai/code/session_01GoQxf4Dj7bvrrejE9weHGL"
 - Modify: `README.md`
 - Modify: `CHANGELOG.md`
 
-- [ ] **Step 1: README icon table**
+- [x] **Step 1: README icon table**
 
 In the table under `### The icons`, change the last two rows:
 
@@ -1919,7 +1921,7 @@ In the table under `### The icons`, change the last two rows:
 | Grey `—` | No data yet — open Claude Code or Claude Desktop once |
 ```
 
-- [ ] **Step 2: README data sources**
+- [x] **Step 2: README data sources**
 
 Replace the `Two sources, newest wins:` list inside `<summary><b>Where the data comes from</b></summary>` with:
 
@@ -1951,7 +1953,7 @@ samples — instead of a blanket "run Claude Code". Note that installing Claude 
 Claude Code, so `.claude.json` usually exists even on a machine that never ran the CLI directly.
 ```
 
-- [ ] **Step 3: README settings**
+- [x] **Step 3: README settings**
 
 Change the first sentence under `## Settings`:
 
@@ -1970,7 +1972,7 @@ Add to the settings table after the `stalenessMinutes` row and after the `config
 | `desktopHistoryPathOverride` | explicit path to the desktop app's `plan-usage-history.json`; file-only, and re-read at launch | unset |
 ```
 
-- [ ] **Step 4: CHANGELOG**
+- [x] **Step 4: CHANGELOG**
 
 Insert before `## [0.7.2] - 2026-09-04`:
 
@@ -1999,7 +2001,7 @@ Insert before `## [0.7.2] - 2026-09-04`:
 
 The `[Unreleased]:` compare link at the bottom of the file already exists; leave it.
 
-- [ ] **Step 5: Final full run and commit**
+- [x] **Step 5: Final full run and commit**
 
 Run: `dotnet test --configuration Release`
 Expected: all passed (this is what CI runs).

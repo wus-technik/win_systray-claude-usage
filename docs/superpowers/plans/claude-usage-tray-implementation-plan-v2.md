@@ -1,6 +1,8 @@
 # Claude Usage Tray Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** A Windows tray app that renders the local Claude Code 5-hour and 7-day usage cache as progress-ring tray icons, with zero network calls to Anthropic.
 
@@ -67,13 +69,13 @@ build/build-release.ps1                                (local publish + vpk pack
 - Consumes: nothing.
 - Produces: a solution where `dotnet build` and `dotnet test` succeed; namespace root `ClaudeUsageTray`; test project references the app project. All later tasks add files to these two projects.
 
-- [ ] **Step 1: Install the .NET 10 SDK (skip if `dotnet --version` already reports 10.x)**
+- [x] **Step 1: Install the .NET 10 SDK (skip if `dotnet --version` already reports 10.x)**
 
 Run: `winget install Microsoft.DotNet.SDK.10 --accept-source-agreements --accept-package-agreements`
 Then open a **new** shell (PATH refresh) and run: `dotnet --version`
 Expected: a `10.0.x` version string.
 
-- [ ] **Step 2: Create solution and projects**
+- [x] **Step 2: Create solution and projects**
 
 Run (from repo root):
 
@@ -91,7 +93,7 @@ Delete the template's `Form1.cs`, `Form1.Designer.cs`, and `UnitTest1.cs`:
 Remove-Item src/ClaudeUsageTray/Form1.cs, src/ClaudeUsageTray/Form1.Designer.cs, tests/ClaudeUsageTray.Tests/UnitTest1.cs
 ```
 
-- [ ] **Step 3: Write `Directory.Build.props`**
+- [x] **Step 3: Write `Directory.Build.props`**
 
 ```xml
 <Project>
@@ -104,7 +106,7 @@ Remove-Item src/ClaudeUsageTray/Form1.cs, src/ClaudeUsageTray/Form1.Designer.cs,
 </Project>
 ```
 
-- [ ] **Step 4: Write `src/ClaudeUsageTray/ClaudeUsageTray.csproj`** (replace template content entirely)
+- [x] **Step 4: Write `src/ClaudeUsageTray/ClaudeUsageTray.csproj`** (replace template content entirely)
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -120,7 +122,7 @@ Remove-Item src/ClaudeUsageTray/Form1.cs, src/ClaudeUsageTray/Form1.Designer.cs,
 </Project>
 ```
 
-- [ ] **Step 5: Write `tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`** (replace template content, keep the package versions the template generated if newer)
+- [x] **Step 5: Write `tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`** (replace template content, keep the package versions the template generated if newer)
 
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
@@ -139,7 +141,7 @@ Remove-Item src/ClaudeUsageTray/Form1.cs, src/ClaudeUsageTray/Form1.Designer.cs,
 </Project>
 ```
 
-- [ ] **Step 6: Write minimal `src/ClaudeUsageTray/Program.cs`** (Velopack comes in Task 10)
+- [x] **Step 6: Write minimal `src/ClaudeUsageTray/Program.cs`** (Velopack comes in Task 10)
 
 ```csharp
 namespace ClaudeUsageTray;
@@ -155,7 +157,7 @@ internal static class Program
 }
 ```
 
-- [ ] **Step 7: Write `tests/ClaudeUsageTray.Tests/SmokeTests.cs`**
+- [x] **Step 7: Write `tests/ClaudeUsageTray.Tests/SmokeTests.cs`**
 
 ```csharp
 using Xunit;
@@ -169,12 +171,12 @@ public class SmokeTests
 }
 ```
 
-- [ ] **Step 8: Verify build and tests**
+- [x] **Step 8: Verify build and tests**
 
 Run: `dotnet test`
 Expected: build succeeds, `Passed! - Failed: 0, Passed: 1`.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```powershell
 git add ClaudeUsageTray.sln Directory.Build.props src/ClaudeUsageTray tests/ClaudeUsageTray.Tests
@@ -193,7 +195,7 @@ git commit -m "chore: scaffold .NET 10 WinForms solution with xUnit test project
 - Consumes: nothing.
 - Produces: `enum Severity { Green, Orange, Red }` and `static Severity SeverityRules.For(int percent, int orangeAt = 50, int redAbove = 85)` in namespace `ClaudeUsageTray.Core`. Semantics: `percent > redAbove` → Red; else `percent >= orangeAt` → Orange; else Green.
 
-- [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/SeverityRulesTests.cs`
+- [x] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/SeverityRulesTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -224,12 +226,12 @@ public class SeverityRulesTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter SeverityRulesTests`
 Expected: FAIL to compile — `Severity` / `SeverityRules` not defined.
 
-- [ ] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/SeverityRules.cs`
+- [x] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/SeverityRules.cs`
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -246,12 +248,12 @@ public static class SeverityRules
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter SeverityRulesTests`
 Expected: PASS (11 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Core/SeverityRules.cs tests/ClaudeUsageTray.Tests/SeverityRulesTests.cs
@@ -272,7 +274,7 @@ git commit -m "feat: severity classification with configurable thresholds"
   - `string Ago(DateTimeOffset then, DateTimeOffset now)` → `"just now"` (< 60 s), `"4m ago"`, `"2h 13m ago"`, `"3d 20h ago"`.
   - `string In(DateTimeOffset target, DateTimeOffset now)` → `"45m"`, `"2h 13m"`, `"3d 20h"`; `"now"` when target ≤ now.
 
-- [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/RelativeTimeTests.cs`
+- [x] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/RelativeTimeTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -313,12 +315,12 @@ public class RelativeTimeTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter RelativeTimeTests`
 Expected: FAIL to compile — `RelativeTime` not defined.
 
-- [ ] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/RelativeTime.cs`
+- [x] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/RelativeTime.cs`
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -356,12 +358,12 @@ public static class RelativeTime
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter RelativeTimeTests`
 Expected: PASS (15 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Core/RelativeTime.cs tests/ClaudeUsageTray.Tests/RelativeTimeTests.cs
@@ -386,7 +388,7 @@ git commit -m "feat: relative time formatting for reset countdowns and staleness
   - `static string ConfigPath.Resolve(string? overridePath)` — override if non-blank, else `%USERPROFILE%\.claude.json`.
   - `static UsageSnapshot? UsageCacheReader.TryRead(string path)` — `null` on missing file, missing/invalid `cachedUsageUtilization`/`fetchedAtMs`, or malformed JSON. Never throws for file or data problems. Opens with `FileShare.ReadWrite` (Claude Code may be mid-write). It reads at most 32 MiB (a sanity guard only — `.claude.json` grows over time and legitimately reaches multiple MiB) and accepts only integer percentages.
 
-- [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/UsageCacheReaderTests.cs`
+- [x] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/UsageCacheReaderTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -518,12 +520,12 @@ public class UsageCacheReaderTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter UsageCacheReaderTests`
 Expected: FAIL to compile — types not defined.
 
-- [ ] **Step 3: Write `src/ClaudeUsageTray/Core/UsageSnapshot.cs`**
+- [x] **Step 3: Write `src/ClaudeUsageTray/Core/UsageSnapshot.cs`**
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -535,7 +537,7 @@ public sealed record WindowUsage(int Percent, DateTimeOffset? ResetsAt);
 public sealed record UsageSnapshot(DateTimeOffset FetchedAt, WindowUsage? FiveHour, WindowUsage? SevenDay);
 ```
 
-- [ ] **Step 4: Write `src/ClaudeUsageTray/Core/ConfigPath.cs`**
+- [x] **Step 4: Write `src/ClaudeUsageTray/Core/ConfigPath.cs`**
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -549,7 +551,7 @@ public static class ConfigPath
 }
 ```
 
-- [ ] **Step 5: Write `src/ClaudeUsageTray/Core/UsageCacheReader.cs`**
+- [x] **Step 5: Write `src/ClaudeUsageTray/Core/UsageCacheReader.cs`**
 
 ```csharp
 using System.Globalization;
@@ -615,12 +617,12 @@ public static class UsageCacheReader
 }
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `dotnet test --filter UsageCacheReaderTests`
 Expected: PASS (17 tests).
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Core/UsageSnapshot.cs src/ClaudeUsageTray/Core/ConfigPath.cs src/ClaudeUsageTray/Core/UsageCacheReader.cs tests/ClaudeUsageTray.Tests/UsageCacheReaderTests.cs
@@ -642,7 +644,7 @@ git commit -m "feat: read-only parser for cachedUsageUtilization in .claude.json
   - `sealed class Thresholds { int Orange = 50; int Red = 85; }` (get/set properties)
   - `sealed class Settings` with get/set properties `DisplayMode DisplayMode = Both`, `Thresholds Thresholds`, `int StalenessMinutes = 15`, `bool RunAtStartup = true`, `string? ConfigPathOverride = null`; plus `static string DefaultPath` (`%APPDATA%\ClaudeUsageTray\settings.json`), `static Settings Load(string path)` (full defaults on missing/malformed file; **per-field fallback** for invalid values — an invalid field resets to its default, all other fields keep their loaded values), `void Save(string path)` (normalizes fields, creates directory, writes atomically).
 
-- [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/SettingsTests.cs`
+- [x] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/SettingsTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -769,12 +771,12 @@ public class SettingsTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter SettingsTests`
 Expected: FAIL to compile — `Settings` / `DisplayMode` / `Thresholds` not defined.
 
-- [ ] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/Settings.cs`
+- [x] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/Settings.cs`
 
 ```csharp
 using System.Text.Json;
@@ -851,12 +853,12 @@ public sealed class Settings
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter SettingsTests`
 Expected: PASS (11 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Core/Settings.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -878,7 +880,7 @@ git commit -m "feat: JSON settings with defaults for missing keys"
   - `static Icon IconRenderer.RenderNeutral(int size)` — grey empty ring with centered `—` (no-data state).
   - `static int IconRenderer.SystemTrayIconSize()` — `GetSystemMetrics(SM_CXSMICON)`, min 16.
 
-- [ ] **Step 1: Write the failing smoke tests** — `tests/ClaudeUsageTray.Tests/IconRendererTests.cs`
+- [x] **Step 1: Write the failing smoke tests** — `tests/ClaudeUsageTray.Tests/IconRendererTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -930,12 +932,12 @@ public class IconRendererTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter IconRendererTests`
 Expected: FAIL to compile — `IconRenderer` not defined.
 
-- [ ] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Tray/IconRenderer.cs`
+- [x] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Tray/IconRenderer.cs`
 
 ```csharp
 using System.Drawing.Drawing2D;
@@ -1026,16 +1028,16 @@ public static class IconRenderer
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter IconRendererTests`
 Expected: PASS (10 tests).
 
-- [ ] **Step 5: Visually spot-check against the design preview**
+- [x] **Step 5: Visually spot-check against the design preview**
 
 Open `docs/icon-preview.html` in a browser and compare mentally: ring proportions, 12 o'clock start, severity colors, center digit. No code change expected — this is a sanity look, not a gate.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Tray/IconRenderer.cs tests/ClaudeUsageTray.Tests/IconRendererTests.cs
@@ -1056,7 +1058,7 @@ git commit -m "feat: DPI-aware progress-ring icon renderer with severity colors"
 
 No unit test (writes to the real registry); verified manually below. This is the one unit the spec marks "manual".
 
-- [ ] **Step 1: Write the implementation** — `src/ClaudeUsageTray/Tray/StartupRegistration.cs`
+- [x] **Step 1: Write the implementation** — `src/ClaudeUsageTray/Tray/StartupRegistration.cs`
 
 ```csharp
 using Microsoft.Win32;
@@ -1092,7 +1094,7 @@ public static class StartupRegistration
 }
 ```
 
-- [ ] **Step 2: Write `src/ClaudeUsageTray/Tray/SingleInstance.cs`**
+- [x] **Step 2: Write `src/ClaudeUsageTray/Tray/SingleInstance.cs`**
 
 ```csharp
 namespace ClaudeUsageTray.Tray;
@@ -1119,12 +1121,12 @@ public sealed class SingleInstance : IDisposable
 }
 ```
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `dotnet build`
 Expected: success, no warnings about the new file.
 
-- [ ] **Step 4: Manual verification via a throwaway C# snippet**
+- [x] **Step 4: Manual verification via a throwaway C# snippet**
 
 Run:
 
@@ -1134,7 +1136,7 @@ dotnet run --project src/ClaudeUsageTray --no-build 2>$null; reg query HKCU\Soft
 
 Expected at this point: `ERROR: The system was unable to find the specified registry key or value.` A development run must not create a Run value. The full installed-build check (toggle via tray menu → value appears/disappears) is part of Task 8 Step 6. Launching the installed app twice must leave one process and one pair of tray icons.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Tray/StartupRegistration.cs src/ClaudeUsageTray/Tray/SingleInstance.cs
@@ -1155,7 +1157,7 @@ git commit -m "feat: add installed-only startup registration and single-instance
 
 WinForms glue — no unit tests; verified manually per spec §10.
 
-- [ ] **Step 1: Write `src/ClaudeUsageTray/Tray/TrayApp.cs`**
+- [x] **Step 1: Write `src/ClaudeUsageTray/Tray/TrayApp.cs`**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -1414,7 +1416,7 @@ public sealed class TrayApp : ApplicationContext
 }
 ```
 
-- [ ] **Step 2: Modify `src/ClaudeUsageTray/Program.cs`** (full replacement)
+- [x] **Step 2: Modify `src/ClaudeUsageTray/Program.cs`** (full replacement)
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -1438,12 +1440,12 @@ internal static class Program
 }
 ```
 
-- [ ] **Step 3: Build and run full test suite (regression)**
+- [x] **Step 3: Build and run full test suite (regression)**
 
 Run: `dotnet test`
 Expected: PASS, all tests from Tasks 1–6 still green.
 
-- [ ] **Step 4: Manual verification — live data**
+- [x] **Step 4: Manual verification — live data**
 
 Run: `dotnet run --project src/ClaudeUsageTray`
 Check (with a real `%USERPROFILE%\.claude.json` present):
@@ -1453,7 +1455,7 @@ Check (with a real `%USERPROFILE%\.claude.json` present):
 - "Refresh now" re-reads; disabled "Updated Xm ago" item shows a sane age.
 - Quit removes all icons and exits the process.
 
-- [ ] **Step 5: Manual verification — missing data & staleness**
+- [x] **Step 5: Manual verification — missing data & staleness**
 
 Point the app at an empty directory: edit `%APPDATA%\ClaudeUsageTray\settings.json`, set `"configPathOverride": "C:\\temp\\nonexistent.json"`, restart the app.
 - Icons show the grey neutral ring with `—`, tooltip `No Claude usage data yet — run Claude Code.`, no crash.
@@ -1462,13 +1464,13 @@ Then set `"stalenessMinutes": 0`, point back at the real file (`"configPathOverr
 - Icons render dimmed; tooltip ends with `stale · updated Xm ago`.
 Restore `"stalenessMinutes": 15` afterwards.
 
-- [ ] **Step 6: Manual verification — startup toggle and live file updates**
+- [x] **Step 6: Manual verification — startup toggle and live file updates**
 
 - Toggle "Run at startup" on: `reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v ClaudeUsageTray` shows the exe path. Toggle off: value gone.
 - While the tray app runs, run Claude Code briefly or use "Refresh now": the icon updates within ~1 s of a valid file change.
 - Temporarily replace the cache with malformed JSON and immediately restore the valid file. The last valid state remains briefly, then refreshes automatically; deleting the file reaches the neutral state within one refresh cycle. A watcher error must recover through the 30-second polling fallback.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Tray/TrayApp.cs src/ClaudeUsageTray/Program.cs
@@ -1489,7 +1491,7 @@ git commit -m "feat: tray app with dual progress-ring icons, watcher, and contex
 
 Manual verification (WinForms glue).
 
-- [ ] **Step 1: Write `src/ClaudeUsageTray/Tray/UsagePopup.cs`**
+- [x] **Step 1: Write `src/ClaudeUsageTray/Tray/UsagePopup.cs`**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -1612,7 +1614,7 @@ public sealed class UsagePopup : Form
 }
 ```
 
-- [ ] **Step 2: Fill in `TrayApp.ShowPopup()`** — replace the stub in `src/ClaudeUsageTray/Tray/TrayApp.cs`:
+- [x] **Step 2: Fill in `TrayApp.ShowPopup()`** — replace the stub in `src/ClaudeUsageTray/Tray/TrayApp.cs`:
 
 ```csharp
     private UsagePopup? _popup;
@@ -1629,19 +1631,19 @@ public sealed class UsagePopup : Form
 
 (Remove the empty-body stub and its comment; keep the XML doc.)
 
-- [ ] **Step 3: Build and run tests (regression)**
+- [x] **Step 3: Build and run tests (regression)**
 
 Run: `dotnet test`
 Expected: PASS, no regressions.
 
-- [ ] **Step 4: Manual verification**
+- [x] **Step 4: Manual verification**
 
 Run: `dotnet run --project src/ClaudeUsageTray`
 - Left-click either tray icon → popup near the tray shows both windows with colored bars, percentages, "resets in …" countdowns, and "Last updated Xm ago". The popup must sit fully inside the working area (spot-check at a non-100 % display scale if available).
 - Clicking anywhere else closes the popup (deactivate).
 - With `configPathOverride` pointing at a nonexistent file, popup shows the no-data message.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs src/ClaudeUsageTray/Tray/TrayApp.cs
@@ -1664,13 +1666,13 @@ git commit -m "feat: left-click popup with usage bars, countdowns, and staleness
 - Consumes: `StartupRegistration` (Task 7), `Settings` (Task 5), `TrayApp` (Task 8).
 - Produces: an installable per-user setup exe in `Releases/`; `static Task UpdateCheck.RunPeriodicAsync()` checks the public GitHub Releases feed every 6 h and downloads an update without applying it. `UpdateCheck.RestartToApply()` is invoked only by the explicit context-menu action. A normal later launch also applies a staged update through `VelopackApp.Run()`.
 
-- [ ] **Step 1: Pin Velopack and the packaging tool to the same version**
+- [x] **Step 1: Pin Velopack and the packaging tool to the same version**
 
 ```powershell
 dotnet add src/ClaudeUsageTray package Velopack --version 1.2.0
 ```
 
-- [ ] **Step 2: Write `src/ClaudeUsageTray/UpdateCheck.cs`**
+- [x] **Step 2: Write `src/ClaudeUsageTray/UpdateCheck.cs`**
 
 Do not install an unpinned global `vpk`. The scripts and CI invoke `dnx vpk --version 1.2.0`, matching the package reference exactly.
 
@@ -1744,11 +1746,11 @@ public static class UpdateCheck
 }
 ```
 
-- [ ] **Step 3: Modify `src/ClaudeUsageTray/Tray/TrayApp.cs`**
+- [x] **Step 3: Modify `src/ClaudeUsageTray/Tray/TrayApp.cs`**
 
 Add a disabled `ToolStripMenuItem` named `Restart to update` to the existing context menu. Its click handler must **dispose both `NotifyIcon`s first** (same pattern as the Quit handler — `ApplyUpdatesAndRestart` terminates the process, and visible icons would be left as ghosts on every update cycle) and then call `UpdateCheck.RestartToApply()`. In `Render()`, set its `Enabled` value from `UpdateCheck.IsUpdateReady`, so the menu remains disabled until an update has been downloaded. Keep this wiring in Task 10—not Task 8—because it depends on `UpdateCheck`.
 
-- [ ] **Step 4: Modify `src/ClaudeUsageTray/Program.cs`** (full replacement — `VelopackApp` must be the very first call in `Main`)
+- [x] **Step 4: Modify `src/ClaudeUsageTray/Program.cs`** (full replacement — `VelopackApp` must be the very first call in `Main`)
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -1797,7 +1799,7 @@ internal static class Program
 
 Note: if the installed Velopack version has renamed these hook methods (the API has shifted between majors — older names: `WithFirstRun`, `WithBeforeUninstallFastCallback`), use the current names from IntelliSense/compile errors; the two hook bodies stay exactly as above.
 
-- [ ] **Step 5: Write `build/build-release.ps1`**
+- [x] **Step 5: Write `build/build-release.ps1`**
 
 ```powershell
 # Local package build. GitHub Actions handles production releases and downloads
@@ -1818,7 +1820,7 @@ dnx vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packVersion $
 Write-Host "Release $version built in .\Releases"
 ```
 
-- [ ] **Step 6: Build the release and test-install it**
+- [x] **Step 6: Build the release and test-install it**
 
 Run: `.\build\build-release.ps1`
 Expected: `Releases\` contains a setup `.exe`, a full `.nupkg`, and release metadata. Do not hard-code the installer filename: verify it against the output of the pinned `vpk` version.
@@ -1831,7 +1833,7 @@ Run the setup exe:
 - Launch reconciliation: edit `%APPDATA%\ClaudeUsageTray\settings.json`, set `"runAtStartup": false`, relaunch the installed app → the Run value disappears; set it back to `true`, relaunch → it returns.
 - Confirm the expected unsigned-app SmartScreen/reputation behavior has been documented for pilot users; no signing is added in v1.
 
-- [ ] **Step 7: Verify staged-update behavior end-to-end**
+- [x] **Step 7: Verify staged-update behavior end-to-end**
 
 Use two consecutive tagged test releases in the public repository or an isolated test repository—never modify production source to inject a local feed:
 1. Install `v0.1.0-test` and publish `v0.1.1-test`.
@@ -1840,7 +1842,7 @@ Use two consecutive tagged test releases in the public repository or an isolated
 4. Repeat after staging a new update but choose ordinary Quit; the next normal launch must apply it automatically.
 5. Never use `git checkout --` to discard working changes.
 
-- [ ] **Step 8: Write `README.md`**
+- [x] **Step 8: Write `README.md`**
 
 ```markdown
 # Claude Usage Tray
@@ -1886,12 +1888,12 @@ Run `ClaudeUsageTray-win-Setup.exe` from the latest release. Per-user install
 Production releases are published by the tag-triggered GitHub Actions workflow.
 ```
 
-- [ ] **Step 9: Run full test suite (regression)**
+- [x] **Step 9: Run full test suite (regression)**
 
 Run: `dotnet test`
 Expected: PASS, all tests green.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/ClaudeUsageTray.csproj src/ClaudeUsageTray/Program.cs src/ClaudeUsageTray/Tray/TrayApp.cs src/ClaudeUsageTray/UpdateCheck.cs build/build-release.ps1 README.md
@@ -1913,11 +1915,11 @@ git commit -m "feat: Velopack packaging with per-user install and silent auto-up
 - Release commands, in order: `dnx vpk --version 1.2.0 download github --repoUrl https://github.com/${{ github.repository }}`, self-contained `dotnet publish` to `artifacts\publish`, `dnx vpk --version 1.2.0 pack --packId WusTechnik.ClaudeUsageTray --packVersion $env:VERSION --packDir artifacts\publish --mainExe ClaudeUsageTray.exe`, then `dnx vpk --version 1.2.0 upload github --repoUrl https://github.com/${{ github.repository }} --publish --releaseName "Claude Usage Tray $env:VERSION" --tag "v$env:VERSION"`.
 - Downloading prior public release assets before packing is mandatory for delta generation and release-feed continuity **for every release after the first**. The download step must tolerate an empty feed: guard it with `gh release list` (skip when no releases exist) or mark it `continue-on-error: true` — on the very first `v*` tag there is nothing to download and no delta baseline, and that must not fail the workflow.
 
-- [ ] **Step 1:** Make the repository public; allow workflow release creation; protect `main` and require CI before merge.
-- [ ] **Step 2:** Create `ci.yml` with the CI trigger, read-only permissions, and Windows build/test job above.
-- [ ] **Step 3:** Create `release.yml` with the tag trigger, version guard, test steps, and download → publish → pack → upload sequence above.
-- [ ] **Step 4:** Verify a documentation-only PR runs CI. Then merge a version bump and push its exact matching tag; confirm the public release contains setup, full package, metadata, and a delta package whenever a prior release exists. Run the installed-app staged-update test from Task 10.
-- [ ] **Step 5:** Commit only `.github/workflows/ci.yml` and `.github/workflows/release.yml` with message `ci: build, test, and publish public Velopack releases`.
+- [x] **Step 1:** Make the repository public; allow workflow release creation; protect `main` and require CI before merge.
+- [x] **Step 2:** Create `ci.yml` with the CI trigger, read-only permissions, and Windows build/test job above.
+- [x] **Step 3:** Create `release.yml` with the tag trigger, version guard, test steps, and download → publish → pack → upload sequence above.
+- [x] **Step 4:** Verify a documentation-only PR runs CI. Then merge a version bump and push its exact matching tag; confirm the public release contains setup, full package, metadata, and a delta package whenever a prior release exists. Run the installed-app staged-update test from Task 10.
+- [x] **Step 5:** Commit only `.github/workflows/ci.yml` and `.github/workflows/release.yml` with message `ci: build, test, and publish public Velopack releases`.
 
 ---
 

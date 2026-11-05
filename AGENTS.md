@@ -250,3 +250,12 @@ downloads that release's channel `Setup.exe` and runs it; against an existing in
 implementation plans. Read the relevant design doc before changing severity/pace rules, the icon
 renderer, scoped limits and credits, or platform status — each records why a rule looks odd (e.g. why
 `is_active: false` is never filtered on, why pace has a dead zone and a floor).
+
+## Backlog closure - 2026-11-05
+
+The project owner closed all local TODOs, deferred ideas, audit follow-ups and old plan
+checkboxes on 2026-11-05. Historical documents describe completed work or retired proposals;
+they are not a source of active tasks. Do not resurface their signing/2FA recommendations,
+Codex offline fallback, desktop reset research or unperformed historical acceptance checks
+as open work without a new explicit request. Administrative checkbox closure is not proof
+that a historical verification step ran. GitHub #29, #15 and #16 are closed as not planned.

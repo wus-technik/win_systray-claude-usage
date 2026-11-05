@@ -1,6 +1,8 @@
 # Codex Usage Prerequisites Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make the shared code a second usage provider can plug into, without adding any Codex code.
 
@@ -1216,7 +1218,7 @@ If a probe lands on antialiasing, move it within 3–4 or compare alpha with a t
 the assertion to `>= 0`, and do not change the corner radius to make a probe work — if you change
 the radius for the reason in Step 6, recompute this band first.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~IconRendererTests`
 Expected: FAIL — `BadgeShape` does not exist (CS0246).

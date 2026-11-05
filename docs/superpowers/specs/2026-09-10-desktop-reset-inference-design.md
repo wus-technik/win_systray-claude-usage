@@ -1,5 +1,7 @@
 # Desktop reset inference and the weekly anchor
 
+> Backlog disposition - 2026-11-05: All remaining suggestions, deferred ideas, open questions and acceptance follow-ups in this historical document are closed without further work by project-owner decision. This includes signing/2FA follow-ups, the Codex rollout-file fallback and desktop weekly-reset research, as applicable. Historical findings and technical limitations remain factual records, not active TODOs. Do not resurface these as open work without a new explicit request.
+
 Date: 2026-09-10 · Issue: [#5](https://github.com/wus-technik/win_systray-claude-usage/issues/5) ·
 Builds on: `2026-09-05-desktop-usage-history-design.md`, `2026-09-05-desktop-notifications-design.md`
 

@@ -80,6 +80,11 @@ public class DownloaderTests : IDisposable
         }
     }
 
+    private sealed class InlineProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
+    }
+
     private static readonly TimeSpan[] NoDelays = [TimeSpan.Zero, TimeSpan.Zero, TimeSpan.Zero];
 
     private static HttpResponseMessage Bytes(byte[] bytes)
@@ -90,7 +95,7 @@ public class DownloaderTests : IDisposable
     }
 
     [Fact]
-    public void DownloadsToTheDestinationAndReportsProgress()
+    public async Task DownloadsToTheDestinationAndReportsProgress()
     {
         var bytes = FakePe(200_000);
         var handler = new FakeHandler(_ => Bytes(bytes));
@@ -98,48 +103,46 @@ public class DownloaderTests : IDisposable
         var reported = new List<double>();
         var destination = Path.Combine(_dir, "setup.exe");
 
-        var ok = Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), destination, NoDelays,
-            new Progress<double>(reported.Add), CancellationToken.None).GetAwaiter().GetResult();
+        var ok = await Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), destination, NoDelays,
+            new InlineProgress(reported.Add), CancellationToken.None);
 
         Assert.True(ok);
         Assert.Equal(bytes, File.ReadAllBytes(destination));
-        // Progress<T> posts to the thread pool; give it a moment, then only check it ended at 1.
-        SpinWait.SpinUntil(() => reported.Contains(1.0), TimeSpan.FromSeconds(2));
         Assert.Contains(1.0, reported);
     }
 
     [Fact]
-    public void TransientFailureIsRetried()
+    public async Task TransientFailureIsRetried()
     {
         var bytes = FakePe(1024);
         var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable), _ => Bytes(bytes));
         using var http = new HttpClient(handler);
 
-        var ok = Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), Path.Combine(_dir, "s.exe"), NoDelays, null, CancellationToken.None).GetAwaiter().GetResult();
+        var ok = await Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), Path.Combine(_dir, "s.exe"), NoDelays, null, CancellationToken.None);
 
         Assert.True(ok);
         Assert.Equal(2, handler.Calls);
     }
 
     [Fact]
-    public void NotFoundIsNotRetriedAndFails()
+    public async Task NotFoundIsNotRetriedAndFails()
     {
         var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         using var http = new HttpClient(handler);
 
-        var ok = Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), Path.Combine(_dir, "s.exe"), NoDelays, null, CancellationToken.None).GetAwaiter().GetResult();
+        var ok = await Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), Path.Combine(_dir, "s.exe"), NoDelays, null, CancellationToken.None);
 
         Assert.False(ok);
         Assert.Equal(1, handler.Calls);
     }
 
     [Fact]
-    public void RequestCarriesAUserAgent()
+    public async Task RequestCarriesAUserAgent()
     {
         HttpRequestMessage? seen = null;
         var handler = new FakeHandler(r => { seen = r; return Bytes(FakePe(16)); });
         using var http = new HttpClient(handler);
-        Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), Path.Combine(_dir, "s.exe"), NoDelays, null, CancellationToken.None).GetAwaiter().GetResult();
+        await Downloader.DownloadAsync(http, new Uri("https://example.test/s.exe"), Path.Combine(_dir, "s.exe"), NoDelays, null, CancellationToken.None);
         Assert.StartsWith("ClaudeUsageTraySetup/", seen!.Headers.UserAgent.ToString());
     }
 }

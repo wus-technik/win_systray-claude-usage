@@ -28,20 +28,19 @@ public class UsageApiClientTests
           "extra_usage": {} }
         """;
 
-    private static (UsageFetchResult Result, FakeHandler Handler) Fetch(
+    private static async Task<(UsageFetchResult Result, FakeHandler Handler)> Fetch(
         Func<HttpRequestMessage, HttpResponseMessage> respond)
     {
         var handler = new FakeHandler(respond);
         using var http = new HttpClient(handler);
-        var result = UsageApiClient.FetchAsync(http, "dummy-token", Now, CancellationToken.None)
-            .GetAwaiter().GetResult();
+        var result = await UsageApiClient.FetchAsync(http, "dummy-token", Now, CancellationToken.None);
         return (result, handler);
     }
 
     [Fact]
-    public void Success_ParsesBothWindows_AndStampsNow()
+    public async Task Success_ParsesBothWindows_AndStampsNow()
     {
-        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, BothWindows));
+        var (r, _) = await Fetch(_ => Json(HttpStatusCode.OK, BothWindows));
         Assert.NotNull(r.Snapshot);
         Assert.Equal(Now, r.Snapshot!.FetchedAt);
         Assert.Equal(42, r.Snapshot.FiveHour!.Percent);
@@ -52,9 +51,9 @@ public class UsageApiClientTests
     }
 
     [Fact]
-    public void Request_HasExactUrlAndHeaders()
+    public async Task Request_HasExactUrlAndHeaders()
     {
-        var (_, h) = Fetch(_ => Json(HttpStatusCode.OK, BothWindows));
+        var (_, h) = await Fetch(_ => Json(HttpStatusCode.OK, BothWindows));
         Assert.Equal("https://api.anthropic.com/api/oauth/usage", h.LastRequest!.RequestUri!.ToString());
         Assert.Equal("Bearer", h.LastRequest.Headers.Authorization!.Scheme);
         Assert.Equal("dummy-token", h.LastRequest.Headers.Authorization.Parameter);
@@ -63,7 +62,7 @@ public class UsageApiClientTests
     }
 
     [Fact]
-    public void Success_ParsesDecimalUtilization_RoundedToInt()
+    public async Task Success_ParsesDecimalUtilization_RoundedToInt()
     {
         // The live endpoint returns utilization as a JSON decimal (e.g. 11.0 / 53.6), unlike the
         // .claude.json cache which stores integers. TryGetInt32 rejects fractional numbers, so this
@@ -72,15 +71,15 @@ public class UsageApiClientTests
             { "five_hour": { "utilization": 11.0, "resets_at": "2026-07-24T18:39:59Z" },
               "seven_day": { "utilization": 53.6, "resets_at": "2026-07-27T15:59:59Z" } }
             """;
-        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (r, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
         Assert.Equal(11, r.Snapshot!.FiveHour!.Percent);
         Assert.Equal(54, r.Snapshot.SevenDay!.Percent);
     }
 
     [Fact]
-    public void Success_MissingWindow_IsNull()
+    public async Task Success_MissingWindow_IsNull()
     {
-        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, """{ "five_hour": { "utilization": 7 } }"""));
+        var (r, _) = await Fetch(_ => Json(HttpStatusCode.OK, """{ "five_hour": { "utilization": 7 } }"""));
         Assert.Equal(7, r.Snapshot!.FiveHour!.Percent);
         Assert.Null(r.Snapshot.FiveHour.ResetsAt);
         Assert.Null(r.Snapshot.SevenDay);
@@ -89,9 +88,9 @@ public class UsageApiClientTests
     [Theory]
     [InlineData("{ not json")]
     [InlineData("[1]")]
-    public void MalformedBody_ReturnsFailure(string body)
+    public async Task MalformedBody_ReturnsFailure(string body)
     {
-        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (r, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
         Assert.Null(r.Snapshot);
         Assert.False(r.Unauthorized);
     }
@@ -99,17 +98,17 @@ public class UsageApiClientTests
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.Forbidden)]
-    public void AuthFailure_SetsUnauthorized(HttpStatusCode status)
+    public async Task AuthFailure_SetsUnauthorized(HttpStatusCode status)
     {
-        var (r, _) = Fetch(_ => new HttpResponseMessage(status));
+        var (r, _) = await Fetch(_ => new HttpResponseMessage(status));
         Assert.Null(r.Snapshot);
         Assert.True(r.Unauthorized);
     }
 
     [Fact]
-    public void TooManyRequests_CarriesRetryAfterDelta()
+    public async Task TooManyRequests_CarriesRetryAfterDelta()
     {
-        var (r, _) = Fetch(_ =>
+        var (r, _) = await Fetch(_ =>
         {
             var resp = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
             resp.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(1200));
@@ -122,9 +121,9 @@ public class UsageApiClientTests
     }
 
     [Fact]
-    public void TooManyRequests_WithHttpDateRetryAfter_ComputesDeltaAgainstNow()
+    public async Task TooManyRequests_WithHttpDateRetryAfter_ComputesDeltaAgainstNow()
     {
-        var (r, _) = Fetch(_ =>
+        var (r, _) = await Fetch(_ =>
         {
             var resp = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
             resp.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(Now.AddMinutes(30));
@@ -135,30 +134,29 @@ public class UsageApiClientTests
     }
 
     [Fact]
-    public void TooManyRequests_WithoutHeader_IsStillRateLimited()
+    public async Task TooManyRequests_WithoutHeader_IsStillRateLimited()
     {
-        var (r, _) = Fetch(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
+        var (r, _) = await Fetch(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests));
         Assert.Null(r.Snapshot);
         Assert.True(r.RateLimited);
         Assert.Null(r.RetryAfter);
     }
 
     [Fact]
-    public void ServerError_ReturnsFailure_NotRateLimited()
+    public async Task ServerError_ReturnsFailure_NotRateLimited()
     {
-        var (r, _) = Fetch(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var (r, _) = await Fetch(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
         Assert.Null(r.Snapshot);
         Assert.False(r.Unauthorized);
         Assert.False(r.RateLimited);
     }
 
     [Fact]
-    public void NetworkException_ReturnsFailure_NeverThrows()
+    public async Task NetworkException_ReturnsFailure_NeverThrows()
     {
         var handler = new FakeHandler(_ => throw new HttpRequestException("boom"));
         using var http = new HttpClient(handler);
-        var r = UsageApiClient.FetchAsync(http, "dummy-token", Now, CancellationToken.None)
-            .GetAwaiter().GetResult();
+        var r = await UsageApiClient.FetchAsync(http, "dummy-token", Now, CancellationToken.None);
         Assert.Null(r.Snapshot);
         Assert.False(r.Unauthorized);
     }
@@ -167,7 +165,7 @@ public class UsageApiClientTests
     /// "utilization" — this proves the shared reader works at both levels. Percent arrives as a
     /// decimal here, as the live API sends it.</summary>
     [Fact]
-    public void ScopedLimits_AreReadFromTheResponseRoot()
+    public async Task ScopedLimits_AreReadFromTheResponseRoot()
     {
         const string body = """
             { "five_hour": { "utilization": 11.0, "resets_at": "2026-07-24T16:00:00Z" },
@@ -178,7 +176,7 @@ public class UsageApiClientTests
               ] }
             """;
 
-        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (r, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
 
         var limit = Assert.Single(r.Snapshot!.ScopedLimits);
         Assert.Equal("Fable", limit.Label);
@@ -187,11 +185,11 @@ public class UsageApiClientTests
     }
 
     [Fact]
-    public void ScopedLimits_AbsentFromResponse_DegradeToEmpty()
-        => Assert.Empty(Fetch(_ => Json(HttpStatusCode.OK, BothWindows)).Result.Snapshot!.ScopedLimits);
+    public async Task ScopedLimits_AbsentFromResponse_DegradeToEmpty()
+        => Assert.Empty((await Fetch(_ => Json(HttpStatusCode.OK, BothWindows))).Result.Snapshot!.ScopedLimits);
 
     [Fact]
-    public void Credits_AreReadFromTheResponseRoot()
+    public async Task Credits_AreReadFromTheResponseRoot()
     {
         const string body = """
             { "spend": {
@@ -201,13 +199,13 @@ public class UsageApiClientTests
               } }
             """;
 
-        var (r, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (r, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
 
         Assert.Equal(4001, r.Snapshot!.Credits!.Used!.AmountMinor);
         Assert.True(r.Snapshot.Credits.State.LimitReached);
     }
 
     [Fact]
-    public void Credits_AbsentFromResponse_IsNull()
-        => Assert.Null(Fetch(_ => Json(HttpStatusCode.OK, BothWindows)).Result.Snapshot!.Credits);
+    public async Task Credits_AbsentFromResponse_IsNull()
+        => Assert.Null((await Fetch(_ => Json(HttpStatusCode.OK, BothWindows))).Result.Snapshot!.Credits);
 }

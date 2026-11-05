@@ -169,7 +169,7 @@ public class StatusMonitorTests
     /// <summary>An OpenAI outage still never marks a Claude icon, under any
     /// filter, for the unrelated reason that it says nothing about Claude usage headroom.</summary>
     [Fact]
-    public void OpenAiOutage_NeverBadges_UnderAnyFilter()
+    public void OpenAiOutage_NeverBadgesClaude()
     {
         var m = new StatusMonitor([(OpenAi, [])]);
         var down = new PlatformStatus("openai", T0, "major", "Major Outage", [],

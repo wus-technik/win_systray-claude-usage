@@ -1,6 +1,8 @@
 # Time-Elapsed Marker Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Draw a small vertical notch on each usage progress bar in the tray popup marking how far the clock has advanced through that limit's reset period, so a bar shows at a glance whether spend is ahead of or behind the clock.
 
@@ -46,7 +48,7 @@ Two tasks. Task 1 delivers the tested decision logic; Task 2 delivers the visibl
 - Consumes: nothing from earlier tasks.
 - Produces: `public static double? ClaudeUsageTray.Core.TimeMarker.ElapsedFraction(DateTimeOffset? resetsAt, TimeSpan period, DateTimeOffset now)`. Returns a value in `[0.0, 1.0]` inclusive, or `null` when no marker should be drawn. Task 2 calls this.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/TimeMarkerTests.cs`:
 
@@ -106,12 +108,12 @@ public class TimeMarkerTests
 
 `AssertFraction` exists because every assertion has to unwrap the `double?` and compare the result inexactly — `Assert.Equal(expected, actual, precision: 6)` compares both values rounded to 6 decimal places (it is decimal-place rounding, not an absolute tolerance), which is what makes the `5d / 7d` case pass. Doing both in one helper keeps the nine test bodies to one line each.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter TimeMarker`
 Expected: FAIL at compile time — `error CS0103: The name 'TimeMarker' does not exist in the current context` (or `CS0246`). A compile failure is the correct red state here.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/TimeMarker.cs`:
 
@@ -137,17 +139,17 @@ public static class TimeMarker
 
 `(reset - now) / period` is `TimeSpan`-over-`TimeSpan` division, which yields a `double` — no tick arithmetic needed. The `is >= 0 and <= 1` pattern also rejects `NaN`, so no separate guard is required.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter TimeMarker`
 Expected: PASS, 9 tests.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS, no regressions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/TimeMarker.cs tests/ClaudeUsageTray.Tests/TimeMarkerTests.cs
@@ -168,7 +170,7 @@ git commit -m "feat: derive elapsed-period fraction for usage bar markers"
 
 There is no unit test for this task. Drawing in `Tray/` is deliberately untested across this codebase (only `IconRenderer`, which returns a bitmap, has tests); the decision logic that *could* be wrong was tested in Task 1. Verification here is a build plus a visual check of the running app.
 
-- [ ] **Step 1: Add the period parameter to `AddWindowRow` and pass the fraction to `AddBar`**
+- [x] **Step 1: Add the period parameter to `AddWindowRow` and pass the fraction to `AddBar`**
 
 Replace the `AddWindowRow` method (currently lines 82–93) with:
 
@@ -188,7 +190,7 @@ Replace the `AddWindowRow` method (currently lines 82–93) with:
     }
 ```
 
-- [ ] **Step 2: Update the two `AddWindowRow` call sites**
+- [x] **Step 2: Update the two `AddWindowRow` call sites**
 
 The period is supplied here rather than carried on `WindowUsage` because the payload has no period field — the popup is what knows which window it is drawing. Replace lines 39–40:
 
@@ -197,7 +199,7 @@ The period is supplied here rather than carried on `WindowUsage` because the pay
             AddWindowRow(layout, "7-day window", snapshot.SevenDay, TimeSpan.FromDays(7), settings, now);
 ```
 
-- [ ] **Step 3: Pass the fraction from `AddScopedRow`**
+- [x] **Step 3: Pass the fraction from `AddScopedRow`**
 
 Every scoped limit is weekly — the caption already says "weekly" — so the period is fixed at 7 days. Replace the body of `AddScopedRow` (currently lines 100–104) with:
 
@@ -212,7 +214,7 @@ Every scoped limit is weekly — the caption already says "weekly" — so the pe
 
 Leave the existing `<summary>` doc comment above the method untouched.
 
-- [ ] **Step 4: Add the marker parameter and drawing to `AddBar`**
+- [x] **Step 4: Add the marker parameter and drawing to `AddBar`**
 
 `AddCreditRow` is deliberately not modified: `CreditUsage` has no reset time, so credits opt out simply by not passing a fraction, which the parameter default handles.
 
@@ -263,12 +265,12 @@ visible pixels per tick; that is intended, and why the lines span 3 pixels.
 fill `(224,68,68)`, where `ControlDarkDark` (`#696969`) manages only about 1.3:1 and would vanish
 on exactly the bars the user most needs to read.
 
-- [ ] **Step 5: Build and run the full suite**
+- [x] **Step 5: Build and run the full suite**
 
 Run: `dotnet build ClaudeUsageTray.sln` then `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: build succeeds with no warnings introduced; all tests pass, including `SmokeTests`.
 
-- [ ] **Step 6: Visual check**
+- [x] **Step 6: Visual check**
 
 Run: `dotnet run --project src/ClaudeUsageTray/ClaudeUsageTray.csproj`
 Then click the tray icon to open the popup and confirm:
@@ -280,7 +282,7 @@ Then click the tray icon to open the popup and confirm:
 
 If the tray already has a running instance, `SingleInstance` will refuse to start a second one — close the existing instance first.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs

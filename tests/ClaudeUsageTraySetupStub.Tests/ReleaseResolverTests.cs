@@ -31,18 +31,18 @@ public class ReleaseResolverTests
             "{ \"tag_name\": \"" + r.Tag + "\", \"draft\": false, \"prerelease\": true, \"assets\": [" +
             "{ \"name\": \"" + r.Asset + "\", \"browser_download_url\": \"https://github.com/o/r/releases/download/" + r.Tag + "/" + r.Asset + "\", \"digest\": \"sha256:ab\" }] }")) + "]";
 
-    private static (ResolveResult Result, FakeHandler Handler) Resolve(Ring ring, bool silent, string? token, params Func<HttpRequestMessage, HttpResponseMessage>[] responders)
+    private static async Task<(ResolveResult Result, FakeHandler Handler)> Resolve(Ring ring, bool silent, string? token, params Func<HttpRequestMessage, HttpResponseMessage>[] responders)
     {
         var handler = new FakeHandler(responders.Length == 0 ? [_ => Json(HttpStatusCode.OK, "[]")] : responders);
         using var http = new HttpClient(handler);
-        var result = ReleaseResolver.ResolveAsync(http, ring, token, silent, NoDelays, CancellationToken.None).GetAwaiter().GetResult();
+        var result = await ReleaseResolver.ResolveAsync(http, ring, token, silent, NoDelays, CancellationToken.None);
         return (result, handler);
     }
 
     [Fact]
-    public void StableNeverTouchesTheApi()
+    public async Task StableNeverTouchesTheApi()
     {
-        var (r, h) = Resolve(Ring.Stable, silent: true, token: null);
+        var (r, h) = await Resolve(Ring.Stable, silent: true, token: null);
         Assert.Empty(h.Requests);
         Assert.Equal(ResolveFailure.None, r.Failure);
         Assert.Equal(Rings.LatestAssetUrl("win"), r.Build!.Url);
@@ -50,18 +50,18 @@ public class ReleaseResolverTests
     }
 
     [Fact]
-    public void BetaSelectsFromTheApi()
+    public async Task BetaSelectsFromTheApi()
     {
-        var (r, h) = Resolve(Ring.Beta, false, null, _ => Json(HttpStatusCode.OK, Releases(("v0.7.3-beta.1", BetaAsset))));
+        var (r, h) = await Resolve(Ring.Beta, false, null, _ => Json(HttpStatusCode.OK, Releases(("v0.7.3-beta.1", BetaAsset))));
         Assert.Equal("0.7.3-beta.1", r.Build!.Version!.ToString());
         Assert.Equal(ResolvedVia.Api, r.Build.Via);
         Assert.Equal(ReleaseResolver.ReleasesApiUrl, h.Requests.Single().RequestUri!.ToString());
     }
 
     [Fact]
-    public void RequestCarriesTheGitHubHeaders()
+    public async Task RequestCarriesTheGitHubHeaders()
     {
-        var (_, h) = Resolve(Ring.Beta, false, "tok", _ => Json(HttpStatusCode.OK, "[]"));
+        var (_, h) = await Resolve(Ring.Beta, false, "tok", _ => Json(HttpStatusCode.OK, "[]"));
         var req = h.Requests.Single();
         Assert.Equal("application/vnd.github+json", req.Headers.Accept.Single().MediaType);
         Assert.Equal("2022-11-28", req.Headers.GetValues("X-GitHub-Api-Version").Single());
@@ -71,25 +71,25 @@ public class ReleaseResolverTests
     }
 
     [Fact]
-    public void NoTokenMeansNoAuthorizationHeader()
+    public async Task NoTokenMeansNoAuthorizationHeader()
     {
-        var (_, h) = Resolve(Ring.Beta, false, null, _ => Json(HttpStatusCode.OK, "[]"));
+        var (_, h) = await Resolve(Ring.Beta, false, null, _ => Json(HttpStatusCode.OK, "[]"));
         Assert.Null(h.Requests.Single().Headers.Authorization);
     }
 
     [Fact]
-    public void ApiFineButNoAssetIsAHardError()
+    public async Task ApiFineButNoAssetIsAHardError()
     {
         // Nothing to fall back to; installing the other ring's content would be wrong.
-        var (r, _) = Resolve(Ring.Beta, silent: false, null, _ => Json(HttpStatusCode.OK, Releases(("v0.7.2", StableAsset))));
+        var (r, _) = await Resolve(Ring.Beta, silent: false, null, _ => Json(HttpStatusCode.OK, Releases(("v0.7.2", StableAsset))));
         Assert.Null(r.Build);
         Assert.Equal(ResolveFailure.NoAssetInAnyRelease, r.Failure);
     }
 
     [Fact]
-    public void ApiUnavailableInteractiveFallsBackToTheLatestRedirect()
+    public async Task ApiUnavailableInteractiveFallsBackToTheLatestRedirect()
     {
-        var (r, _) = Resolve(Ring.Beta, silent: false, null, _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        var (r, _) = await Resolve(Ring.Beta, silent: false, null, _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         Assert.Equal(ResolveFailure.None, r.Failure);
         Assert.Equal(ResolvedVia.LatestRedirect, r.Build!.Via);
         Assert.Equal(Rings.LatestAssetUrl("win-beta"), r.Build.Url);
@@ -97,25 +97,25 @@ public class ReleaseResolverTests
     }
 
     [Fact]
-    public void ApiUnavailableSilentFailsClosed()
+    public async Task ApiUnavailableSilentFailsClosed()
     {
         // An operator asked for beta; silently installing stable content behind their back is the one thing not to do.
-        var (r, _) = Resolve(Ring.Beta, silent: true, null, _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+        var (r, _) = await Resolve(Ring.Beta, silent: true, null, _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         Assert.Null(r.Build);
         Assert.Equal(ResolveFailure.ApiUnavailable, r.Failure);
     }
 
     [Fact]
-    public void RateLimitedCountsAsUnavailableNotAsNoAsset()
+    public async Task RateLimitedCountsAsUnavailableNotAsNoAsset()
     {
-        var (r, _) = Resolve(Ring.Beta, silent: true, null, _ => new HttpResponseMessage(HttpStatusCode.Forbidden));
+        var (r, _) = await Resolve(Ring.Beta, silent: true, null, _ => new HttpResponseMessage(HttpStatusCode.Forbidden));
         Assert.Equal(ResolveFailure.ApiUnavailable, r.Failure);
     }
 
     [Fact]
-    public void TransientFailuresAreRetriedThreeTimes()
+    public async Task TransientFailuresAreRetriedThreeTimes()
     {
-        var (r, h) = Resolve(Ring.Beta, false, null,
+        var (r, h) = await Resolve(Ring.Beta, false, null,
             _ => new HttpResponseMessage(HttpStatusCode.BadGateway),
             _ => new HttpResponseMessage(HttpStatusCode.BadGateway),
             _ => Json(HttpStatusCode.OK, Releases(("v0.7.3-beta.1", BetaAsset))));
@@ -124,30 +124,30 @@ public class ReleaseResolverTests
     }
 
     [Fact]
-    public void GivesUpAfterTheConfiguredRetries()
+    public async Task GivesUpAfterTheConfiguredRetries()
     {
-        var (_, h) = Resolve(Ring.Beta, true, null, _ => new HttpResponseMessage(HttpStatusCode.BadGateway));
+        var (_, h) = await Resolve(Ring.Beta, true, null, _ => new HttpResponseMessage(HttpStatusCode.BadGateway));
         Assert.Equal(1 + NoDelays.Length, h.Requests.Count);
     }
 
     [Fact]
-    public void NetworkExceptionsCountAsUnavailable()
+    public async Task NetworkExceptionsCountAsUnavailable()
     {
-        var (r, _) = Resolve(Ring.Beta, true, null, _ => throw new HttpRequestException("dns"));
+        var (r, _) = await Resolve(Ring.Beta, true, null, _ => throw new HttpRequestException("dns"));
         Assert.Equal(ResolveFailure.ApiUnavailable, r.Failure);
     }
 
     [Fact]
-    public void MalformedJsonCountsAsUnavailable()
+    public async Task MalformedJsonCountsAsUnavailable()
     {
-        var (r, _) = Resolve(Ring.Beta, true, null, _ => Json(HttpStatusCode.OK, "{ not json"));
+        var (r, _) = await Resolve(Ring.Beta, true, null, _ => Json(HttpStatusCode.OK, "{ not json"));
         Assert.Equal(ResolveFailure.ApiUnavailable, r.Failure);
     }
 
     [Fact]
-    public void DetailNeverContainsTheToken()
+    public async Task DetailNeverContainsTheToken()
     {
-        var (r, _) = Resolve(Ring.Beta, true, "sekrit", _ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        var (r, _) = await Resolve(Ring.Beta, true, "sekrit", _ => new HttpResponseMessage(HttpStatusCode.Unauthorized));
         Assert.DoesNotContain("sekrit", r.Detail);
     }
 }

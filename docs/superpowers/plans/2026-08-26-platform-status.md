@@ -1,6 +1,8 @@
 # Platform Status and Taskbar Outage Indicator Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Poll the public Claude status page once a minute; while the page's own banner says anything other than "All Systems Operational", carry a warning badge on every visible tray icon (including the neutral no-data icon), name the disruption in the tooltip, and show a status/incident block at the top of the popup.
 
@@ -65,7 +67,7 @@ Six tasks. Tasks 1–2 deliver the tested pure logic; Task 3 the badge (with its
   - `internal static Task<PlatformStatus?> ClaudeUsageTray.Core.PlatformStatusApi.FetchAsync(HttpClient http, DateTimeOffset now, CancellationToken ct, string endpointUrl)` — test-only endpoint override; production calls stay pinned to `EndpointUrl`.
   Tasks 4 and 5 consume the records; Task 5 consumes `FetchAsync`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/PlatformStatusApiTests.cs`:
 
@@ -289,12 +291,12 @@ public class PlatformStatusApiTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter PlatformStatusApi`
 Expected: FAIL at compile time — `error CS0103: The name 'PlatformStatusApi' does not exist in the current context` (or `CS0246`). A compile failure is the correct red state here.
 
-- [ ] **Step 3: Write the records**
+- [x] **Step 3: Write the records**
 
 Create `src/ClaudeUsageTray/Core/PlatformStatus.cs`:
 
@@ -320,7 +322,7 @@ public sealed record PlatformStatus(
 }
 ```
 
-- [ ] **Step 4: Add test-only friend access**
+- [x] **Step 4: Add test-only friend access**
 
 Create `src/ClaudeUsageTray/Properties/AssemblyInfo.cs`:
 
@@ -330,7 +332,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("ClaudeUsageTray.Tests")]
 ```
 
-- [ ] **Step 5: Write the client**
+- [x] **Step 5: Write the client**
 
 Create `src/ClaudeUsageTray/Core/PlatformStatusApi.cs`:
 
@@ -445,17 +447,17 @@ public static class PlatformStatusApi
 
 `NonEmptyString` and `ReadTimestamp` are deliberately local rather than reusing `UsageJson`'s: the status payload is a different schema owned by a different service, and `PlatformStatusApi` stays self-contained the way `UsageApiClient` is.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter PlatformStatusApi`
 Expected: PASS, 19 test cases (14 facts + 3 non-object-root cases + 2 non-success cases).
 
-- [ ] **Step 7: Run the full suite**
+- [x] **Step 7: Run the full suite**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS, no regressions.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/PlatformStatus.cs src/ClaudeUsageTray/Core/PlatformStatusApi.cs src/ClaudeUsageTray/Properties/AssemblyInfo.cs tests/ClaudeUsageTray.Tests/PlatformStatusApiTests.cs
@@ -476,7 +478,7 @@ git commit -m "feat: parse Claude platform status from the public status page"
 
 `FetchScheduler` is deliberately **not** reused or subclassed: its rolling-hour cap (20/h) is tuned to the Anthropic per-token budget and would block a 60/h status poll, and its 429/`Retry-After` bookkeeping is irrelevant to a public endpoint with no per-client budget.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/StatusSchedulerTests.cs`:
 
@@ -532,12 +534,12 @@ public class StatusSchedulerTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter StatusScheduler`
 Expected: FAIL at compile time — `error CS0246: The type or namespace name 'StatusScheduler' could not be found`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/ClaudeUsageTray/Core/StatusScheduler.cs`:
 
@@ -573,17 +575,17 @@ public sealed class StatusScheduler
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter StatusScheduler`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS, no regressions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusScheduler.cs tests/ClaudeUsageTray.Tests/StatusSchedulerTests.cs
@@ -608,7 +610,7 @@ git commit -m "feat: add status poll scheduler with 30s floor and 1/5/15min back
 
 There is no unit test that asserts *what* the badge looks like — drawing in `Tray/` is deliberately untested across this codebase, and the smoke tests keep their existing convention (requested size, not blank). The real verification is the true-size 1:1 check below, per the standing lesson that magnified previews flatter small marks.
 
-- [ ] **Step 1: Add the `warning` parameter and the badge drawing**
+- [x] **Step 1: Add the `warning` parameter and the badge drawing**
 
 In `IconRenderer.cs`, replace the `Render` method (currently lines 18–33) with:
 
@@ -687,7 +689,7 @@ Finally, add this method after `Draw`:
 
 At the 16 px system size the badge is 7.2 px across: a ~1.6 px-wide stem 2.9 px tall and a ~1.6 px dot — the smallest form that still reads as an exclamation. The stem/dot sit slightly above the circle's centre of mass to leave room for the dot; the 1:1 check in Step 4 is the arbiter if the proportions feel off.
 
-- [ ] **Step 2: Extend the smoke tests**
+- [x] **Step 2: Extend the smoke tests**
 
 In `IconRendererTests.cs`, replace the `Render_ProducesIconOfRequestedSize` theory (lines 9–21) with:
 
@@ -741,7 +743,7 @@ and add this fact after `Render_IsNotBlank`:
     }
 ```
 
-- [ ] **Step 3: Add the true-size badge variants to `docs/icon-preview.html`**
+- [x] **Step 3: Add the true-size badge variants to `docs/icon-preview.html`**
 
 The preview's `badgeIcon` function is documented as a pixel-exact mirror of `IconRenderer.cs`; extend it so the same mirror draws the badge, and give it a real 16/20/24 px base size.
 
@@ -839,7 +841,7 @@ e) In the `render()` function, after the existing `if (dVal == null) { … }` bl
     }
 ```
 
-- [ ] **Step 4: Build, run the suite, and verify at 1:1**
+- [x] **Step 4: Build, run the suite, and verify at 1:1**
 
 Run: `dotnet build ClaudeUsageTray.sln` then `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: build succeeds with no warnings introduced; all tests pass, including the extended `IconRendererTests`.
@@ -851,7 +853,7 @@ Then open `docs/icon-preview.html` in a browser and inspect the "Platform status
 - The exclamation is legible at 16 px without magnification; if it is not, adjust the stem/dot offsets in **both** `DrawWarningBadge` and the HTML mirror (they must stay in lockstep) and re-check.
 - The ×2 enlarged row matches the C# proportions; if it does not, the JS mirror has drifted — fix it before committing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/IconRenderer.cs tests/ClaudeUsageTray.Tests/IconRendererTests.cs docs/icon-preview.html
@@ -871,7 +873,7 @@ git commit -m "feat: draw a warning badge on degraded tray icons"
 
 There is no unit test for this task: `UsagePopup` is drawing code and is deliberately untested across this codebase. Verification is a build plus a visual check of the running app (the popup shows the block in every state, including the no-data state).
 
-- [ ] **Step 1: Add the parameter and the status block**
+- [x] **Step 1: Add the parameter and the status block**
 
 In `UsagePopup.cs`, replace the constructor signature (line 9) with:
 
@@ -991,12 +993,12 @@ Add these members after `AddWindowRow` (the status block is the first thing draw
 
 and add `using System.Diagnostics;` to the file's top (only new namespace `OpenUrl` needs).
 
-- [ ] **Step 2: Build and run the full suite**
+- [x] **Step 2: Build and run the full suite**
 
 Run: `dotnet build ClaudeUsageTray.sln` then `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: build succeeds (the new parameter is defaulted, so no other call site breaks yet); all tests pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs
@@ -1016,7 +1018,7 @@ git commit -m "feat: show platform status and incidents in the popup"
 
 There is no unit test for the tray glue (timer wiring, single-flight, marshaling) — consistent with prior specs, which treat the usage-fetch glue the same way. Verification is a build, the full suite, and the manual run in Step 7.
 
-- [ ] **Step 1: Add the status fields**
+- [x] **Step 1: Add the status fields**
 
 After the `_lastFetchStatus` field (line 28), add:
 
@@ -1031,7 +1033,7 @@ After the `_lastFetchStatus` field (line 28), add:
     private PlatformStatus? _status;
 ```
 
-- [ ] **Step 2: Start the timer and the initial fetch in the constructor**
+- [x] **Step 2: Start the timer and the initial fetch in the constructor**
 
 After `_poll.Start();` (line 72), add:
 
@@ -1046,7 +1048,7 @@ and after `StartApiFetch();` (line 76, the constructor's last statement), add:
         StartStatusFetch();
 ```
 
-- [ ] **Step 3: Add the fetch methods**
+- [x] **Step 3: Add the fetch methods**
 
 After `OnApiFetchCompleted` (after line 178), add a new section:
 
@@ -1099,7 +1101,7 @@ After `OnApiFetchCompleted` (after line 178), add a new section:
     }
 ```
 
-- [ ] **Step 4: Thread `degraded`/`statusStale` through `Render` and `Apply`**
+- [x] **Step 4: Thread `degraded`/`statusStale` through `Render` and `Apply`**
 
 Replace the `Render` method (lines 182–200) with:
 
@@ -1175,7 +1177,7 @@ and add this helper after `TrimTooltip`:
     }
 ```
 
-- [ ] **Step 5: Wire the menu, the popup, and teardown**
+- [x] **Step 5: Wire the menu, the popup, and teardown**
 
 a) In `BuildMenu`, replace the "Refresh now" line (line 302):
 
@@ -1195,12 +1197,12 @@ c) In `Dispose`, after `_poll.Dispose();` (line 442), add:
             _statusPoll.Dispose();
 ```
 
-- [ ] **Step 6: Build and run the full suite**
+- [x] **Step 6: Build and run the full suite**
 
 Run: `dotnet build ClaudeUsageTray.sln` then `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: build succeeds with no warnings introduced; all tests pass.
 
-- [ ] **Step 7: Manual verification**
+- [x] **Step 7: Manual verification**
 
 Run: `dotnet run --project src/ClaudeUsageTray/ClaudeUsageTray.csproj`
 
@@ -1237,7 +1239,7 @@ Use `docs/icon-preview.html` for the 1:1 badge inspection and a popup smoke run 
 - The popup shows the coloured header (DarkOrange for `minor`, Firebrick for `major`), up to three incident rows with status/impact/components/age, a `+N more` line when the canned body has more than three incidents, and both the `status.claude.com` and the incident `Details` links open the browser.
 - The production `EndpointUrl` remains unchanged in `git diff`; the app clears the badge on the next successful `none` fetch.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/TrayApp.cs
@@ -1255,7 +1257,7 @@ git commit -m "feat: poll the Claude status page every 60s (#12)"
 **Interfaces:**
 - Consumes: nothing. Documentation of what Tasks 1–5 delivered.
 
-- [ ] **Step 1: Update the README**
+- [x] **Step 1: Update the README**
 
 a) In the *What you get* table, after the `🔄 **Live + offline**` row (line 47), add:
 
@@ -1277,16 +1279,16 @@ c) In the *Design docs* table, after the `2026-07-27-fable-and-credits-design.md
 | [`specs/2026-08-26-platform-status-design.md`](docs/superpowers/specs/2026-08-26-platform-status-design.md) | Platform status polling and the taskbar outage indicator |
 ```
 
-- [ ] **Step 2: Bump the version**
+- [x] **Step 2: Bump the version**
 
 In `src/ClaudeUsageTray/ClaudeUsageTray.csproj`, change `<Version>0.6.2</Version>` (line 8) to `<Version>0.7.0</Version>` — a new feature, minor bump.
 
-- [ ] **Step 3: Build and run the full suite one last time**
+- [x] **Step 3: Build and run the full suite one last time**
 
 Run: `dotnet build ClaudeUsageTray.sln` then `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: build succeeds; all tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md

@@ -1,6 +1,8 @@
 # Codex Usage Pipeline Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Show Codex's 5-hour, 7-day and spend-control limits next to Claude's, with their own tray badges and their own section in one shared popup.
 
@@ -291,7 +293,7 @@ public class CodexCredentialsReaderTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter "FullyQualifiedName~CodexPathTests|FullyQualifiedName~CodexCredentialsReaderTests"`
 Expected: FAIL — `CodexPath` does not exist (CS0246).
@@ -644,7 +646,7 @@ public class CodexUsageJsonTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexUsageJsonTests`
 Expected: FAIL — `CodexUsageJson` does not exist; `UsageSource.Codex` does not exist.
@@ -960,7 +962,7 @@ public class CodexUsageApiClientTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexUsageApiClientTests`
 Expected: FAIL — `CodexUsageApiClient` does not exist (CS0246).
@@ -1124,7 +1126,7 @@ public class CodexDisplayTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexDisplayTests`
 Expected: FAIL — `CodexDisplay` does not exist (CS0246).
@@ -1263,7 +1265,7 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: FAIL — `CodexDisplayMode` is not a member of `Settings`.
@@ -1493,7 +1495,7 @@ Add to `tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter "FullyQualifiedName~CodexAvailabilityTests|FullyQualifiedName~FetchSchedulerTests"`
 Expected: FAIL — `CodexAvailability` does not exist; `FetchScheduler` has no `floor` parameter.
@@ -1787,7 +1789,7 @@ public class CodexIconTests
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexIconTests`
 Expected: FAIL — `IconPresence` does not exist (CS0246).
@@ -2059,7 +2061,7 @@ public class UsagePopupCodexTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopupCodexTests`
 Expected: FAIL — the constructor has no Codex parameters (CS1501).
@@ -2287,7 +2289,7 @@ public class CodexNotificationTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~CodexNotificationTests`
 Expected: FAIL — `ForCodex` does not exist.
@@ -2477,7 +2479,7 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: FAIL — `EnabledSources` takes no arguments (CS1501).
@@ -2610,7 +2612,7 @@ and reuse its helper, adding the Codex state argument. The control name `"tabs"`
 what `SettingsDialog` names its `TabControl` and use the real name, or reach it the way the existing
 tests do.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogCodexTests`
 Expected: FAIL — the dialog constructor takes no Codex state, and there is no Codex page.

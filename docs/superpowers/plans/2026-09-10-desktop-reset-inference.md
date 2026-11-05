@@ -1,6 +1,8 @@
 # Desktop Reset Inference and the Weekly Anchor — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Give a Claude-Desktop-only machine real pacing — the elapsed marker, the `1.4× pace` gloss, `resets in …` and `PaceColors` — by inferring the 5-hour window boundary from the history series and letting the user state the weekly one, without an inferred value ever raising a toast and without a Claude Code user seeing any of it.
 
@@ -38,7 +40,7 @@
 **Interfaces:**
 - Produces: `enum ClaudeUsageTray.Core.ResetOrigin { Reported, Inferred, Stated }`; `WindowUsage.Origin` (`ResetOrigin`, `init`, default `ResetOrigin.Reported`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/ClaudeUsageTray.Tests/UsageSnapshotTests.cs`:
 
@@ -68,12 +70,12 @@ Append to `tests/ClaudeUsageTray.Tests/UsageSnapshotTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~UsageSnapshotTests`
 Expected: FAIL — compile error, `ResetOrigin` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Core/UsageSnapshot.cs`, replace the `WindowUsage` declaration:
 
@@ -96,12 +98,12 @@ public sealed record WindowUsage(int Percent, DateTimeOffset? ResetsAt)
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test`
 Expected: all pass (`Bestanden!`). Nothing else in the tree changes — that is the point of the init property.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageSnapshot.cs tests/ClaudeUsageTray.Tests/UsageSnapshotTests.cs
@@ -130,7 +132,7 @@ Refs #5"
 The `org` parameter is the newest eligible sample's org, passed in by the reader; the function does
 not re-derive it, so the reader and the inference cannot disagree about which sample is newest.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/DesktopResetInferenceTests.cs`:
 
@@ -298,12 +300,12 @@ public class DesktopResetInferenceTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~DesktopResetInferenceTests`
 Expected: FAIL — compile error, `DesktopSample` and `DesktopResetInference` do not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/DesktopSample.cs`:
 
@@ -401,12 +403,12 @@ public static class DesktopResetInference
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~DesktopResetInferenceTests`
 Expected: PASS, 17 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/DesktopSample.cs src/ClaudeUsageTray/Core/DesktopResetInference.cs tests/ClaudeUsageTray.Tests/DesktopResetInferenceTests.cs
@@ -430,7 +432,7 @@ Refs #5"
   - `string Format()` (instance) — canonical `"Thu 03:00"`
   - `static DateTimeOffset NextReset(WeeklyAnchor anchor, DateTimeOffset now, TimeZoneInfo zone)`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/WeeklyAnchorTests.cs`:
 
@@ -537,12 +539,12 @@ public class WeeklyAnchorTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~WeeklyAnchorTests`
 Expected: FAIL — compile error, `WeeklyAnchor` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/WeeklyAnchor.cs`:
 
@@ -648,7 +650,7 @@ public sealed record WeeklyAnchor(DayOfWeek Day, TimeOnly TimeOfDay)
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~WeeklyAnchorTests`
 Expected: PASS.
@@ -657,7 +659,7 @@ If `TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin")` throws on this Windows
 test constant to `"W. Europe Standard Time"` — the same zone under its Windows id — and update the
 comment. Do **not** weaken the two DST assertions to make them pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/WeeklyAnchor.cs tests/ClaudeUsageTray.Tests/WeeklyAnchorTests.cs
@@ -678,7 +680,7 @@ Refs #5"
 - Consumes: `WeeklyAnchor.TryParse`, `WeeklyAnchor.Format` (Task 3).
 - Produces: `Settings.WeeklyResetAnchor` (`string?`, JSON `weeklyResetAnchor`, default null, canonicalised or nulled by `NormalizeFields`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`. The file already has a temp-path/write
 helper — use it rather than inventing one; the names below (`WriteSettings`, `SettingsPath`) stand in
@@ -717,12 +719,12 @@ for whatever it is actually called:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: FAIL — compile error, `Settings.WeeklyResetAnchor` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Core/Settings.cs`, add next to `DesktopHistoryPathOverride`:
 
@@ -744,12 +746,12 @@ In `NormalizeFields`, immediately after the `DesktopStalenessHours` line:
         WeeklyResetAnchor = WeeklyAnchor.TryParse(WeeklyResetAnchor)?.Format();
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -779,7 +781,7 @@ Task 9. Plumbing the anchor into `ReadFirst` as well as `Read` is load-bearing: 
 production entry point (`TrayApp.cs:142`), so an anchor wired only into `Read` would pass its unit
 tests and be silently absent in the running tray.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add this helper beside the existing `Write` helper in `tests/ClaudeUsageTray.Tests/DesktopUsageReaderTests.cs`:
 
@@ -883,12 +885,12 @@ Then append:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~DesktopUsageReaderTests`
 Expected: FAIL — compile error on the four-argument `Read` and on the `ResetOrigin` assertions.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Core/DesktopUsageReader.cs`:
 
@@ -981,13 +983,13 @@ Finally `ReadFirst`:
     }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test`
 Expected: all pass. Every existing `DesktopUsageReaderTests` fixture keeps `ResetsAt == null` — the
 two-sample fixture rises (63 → 64) and forms no bracket.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/DesktopUsageReader.cs tests/ClaudeUsageTray.Tests/DesktopUsageReaderTests.cs
@@ -1011,7 +1013,7 @@ Refs #5"
 `WindowSeverity` keeps its existing signature and meaning (the drawing verdict), so `UsagePopup`,
 `TrayApp` and `IconRenderer` are untouched.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/ClaudeUsageTray.Tests/UsageValuesTests.cs`:
 
@@ -1078,12 +1080,12 @@ Append to `tests/ClaudeUsageTray.Tests/UsageValuesTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~UsageValuesTests`
 Expected: FAIL — compile error, `UsageValue.NotifySeverity` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Core/UsageValues.cs`, replace the record:
 
@@ -1144,12 +1146,12 @@ In `Enumerate`, use it for the two windows and pass the single severity twice fo
         }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test`
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageValues.cs tests/ClaudeUsageTray.Tests/UsageValuesTests.cs
@@ -1170,7 +1172,7 @@ Refs #5"
 - Consumes: `UsageValue.NotifySeverity` (Task 6), `Settings.WeeklyResetAnchor` (Task 4).
 - Produces: no public surface change. `Fingerprint` gains a seventh member, `string? WeeklyResetAnchor`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs`. If the file has no armed-rules
 helper, add this one first:
@@ -1286,13 +1288,13 @@ helper, add this one first:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRulesUsageTests`
 Expected: FAIL — `InferredPacedRed_RaisesNoRedToast` emits a notification, and
 `WeeklyResetAnchor_IsPartOfTheFingerprint` finds no fingerprint line.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Core/NotificationRules.cs`, extend the fingerprint:
 
@@ -1338,7 +1340,7 @@ and inside `Compose`:
 
 `Compose` is `static`, so `Verdict` is `static` too.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test`
 Expected: all pass. Then confirm nothing was missed:
@@ -1349,7 +1351,7 @@ grep -n "value\.Severity\|v\.Severity" src/ClaudeUsageTray/Core/NotificationRule
 
 Expected: no matches.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/NotificationRules.cs tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs
@@ -1379,7 +1381,7 @@ Exact fragments, appended after the percentage, so the tests and the implementat
 | `ResetsAt` null, desktop source | ` · no reset time` |
 | `ResetsAt` null, Claude Code source | `""` (unchanged) |
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/ClaudeUsageTray.Tests/UsagePopupSourceTests.cs`:
 
@@ -1419,12 +1421,12 @@ Append to `tests/ClaudeUsageTray.Tests/UsagePopupSourceTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopupSourceTests`
 Expected: FAIL — the first three assertions find no such text.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, hoist the source test and pass it at both call sites:
 
@@ -1461,12 +1463,12 @@ Then `AddWindowRow`:
     }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test`
 Expected: all pass, `UsagePopupSourceTests` included.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs tests/ClaudeUsageTray.Tests/UsagePopupSourceTests.cs
@@ -1489,7 +1491,7 @@ straight-line wiring over logic already tested in `Core`. Verify by running the 
 **Interfaces:**
 - Consumes: `DesktopUsageReader.ReadFirst(byFreshness, now, anchor, zone)` (Task 5), `WeeklyAnchor.TryParse` (Task 3), `WindowUsage.Origin` (Task 1).
 
-- [ ] **Step 1: Plumb the anchor into the desktop read**
+- [x] **Step 1: Plumb the anchor into the desktop read**
 
 Replace the `ReadFirst` call at `TrayApp.cs:142`:
 
@@ -1505,7 +1507,7 @@ Replace the `ReadFirst` call at `TrayApp.cs:142`:
             TimeZoneInfo.Local);
 ```
 
-- [ ] **Step 2: Add the two tooltip branches**
+- [x] **Step 2: Add the two tooltip branches**
 
 The spec's presentation table gives the tooltip a line for `Inferred` *and* one for a desktop
 snapshot with no reset at all — the popup row's `no reset time` fragment has no room to say why.
@@ -1525,12 +1527,12 @@ both branches are gated on the source twice over — deliberately. The `else` ma
 are mutually exclusive (an inferred origin always has a reset), and chaining them makes that
 explicit rather than relying on it.
 
-- [ ] **Step 3: Build and run the full suite**
+- [x] **Step 3: Build and run the full suite**
 
 Run: `dotnet test`
 Expected: all pass. No behavioural test changes here; this is the compile-and-regression gate.
 
-- [ ] **Step 4: Verify in the running app**
+- [x] **Step 4: Verify in the running app**
 
 Run: `dotnet run --project src/ClaudeUsageTray`
 
@@ -1543,7 +1545,7 @@ data the tooltip must be unchanged.
 **Do not probe the live usage endpoint to force a state** — it is a shared per-token budget and even
 ~15 quick probes cause minutes of 429s for the user's real Claude Code sessions.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/TrayApp.cs
@@ -1572,7 +1574,7 @@ worse than one that is briefly out of date. The cost is accepted deliberately: a
 today who will fall back to desktop data tomorrow cannot set the anchor in advance, and the field
 reappears the next time the dialog is opened while desktop data is the active source.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`, give the file's existing `Dialog(...)` helper
 a `bool desktopSource = false` parameter defaulting to today's behaviour and forward it to the
@@ -1639,12 +1641,12 @@ constructor, so every existing call is untouched. Then append:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogTests`
 Expected: FAIL — compile error on the `desktopSource` argument.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Tray/SettingsDialog.cs`, add the fields beside `_desktopStaleness`:
 
@@ -1761,7 +1763,7 @@ Finally, in `src/ClaudeUsageTray/Tray/TrayApp.cs`, pass the gate:
 
 With no snapshot at all, `Snapshot` is null and the group is hidden — the specified behaviour.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test`
 Expected: all pass.
@@ -1772,7 +1774,7 @@ renders, the error label appears only for junk, and Save round-trips `Thu 03:00`
 
 Run: `dotnet run --project src/ClaudeUsageTray`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs
@@ -1794,7 +1796,7 @@ Refs #5"
 **Interfaces:**
 - Consumes: everything above. Produces nothing new.
 
-- [ ] **Step 1: Write the staleness-direction test**
+- [x] **Step 1: Write the staleness-direction test**
 
 The spec's "considered and left alone" section claims a stale desktop snapshot paced against a live
 `now` *understates* the ratio. Pin the direction, since it is the argument for accepting the risk.
@@ -1831,13 +1833,13 @@ Append to `tests/ClaudeUsageTray.Tests/UsageValuesTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests**
+- [x] **Step 2: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~UsageValuesTests`
 Expected: PASS. The first assertion pins the *direction*, not a particular colour, so it holds
 whatever the exact ratios work out to.
 
-- [ ] **Step 3: Update the README**
+- [x] **Step 3: Update the README**
 
 In the section that describes the Claude Desktop history source, add:
 
@@ -1859,7 +1861,7 @@ Add `weeklyResetAnchor` to the README's settings-key table in the neighbouring k
 the weekly limit resets, as a weekday plus HH:mm in local time, e.g. `Thu 03:00`. Claude Desktop
 history source only; unset or unparseable means the 7-day row shows no reset time."*
 
-- [ ] **Step 4: Add the changelog entry**
+- [x] **Step 4: Add the changelog entry**
 
 Add to `CHANGELOG.md`, in the open unreleased section (create one following the file's own
 convention if none is open):
@@ -1877,7 +1879,7 @@ convention if none is open):
   silent blank where the reset would be.
 ```
 
-- [ ] **Step 5: Record the implementation deviations in the spec**
+- [x] **Step 5: Record the implementation deviations in the spec**
 
 Append to `docs/superpowers/specs/2026-09-10-desktop-reset-inference-design.md`, so the next reader
 is not surprised by three additive choices the plan made:
@@ -1916,12 +1918,12 @@ it never throws; and adding `DaylightDelta` to the *requested* time (rather than
 lands that far past the transition, which is not "the first instant after the gap".
 ```
 
-- [ ] **Step 6: Full verification**
+- [x] **Step 6: Full verification**
 
 Run: `dotnet test --configuration Release`
 Expected: all pass — this is what CI runs.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tests/ClaudeUsageTray.Tests/UsageValuesTests.cs README.md CHANGELOG.md docs/superpowers/specs/2026-09-10-desktop-reset-inference-design.md

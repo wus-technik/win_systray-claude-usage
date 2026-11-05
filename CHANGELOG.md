@@ -10,6 +10,13 @@ written for the person deciding whether to install it — not for the person who
 
 ## [Unreleased]
 
+## [0.8.1-beta.1] - 2026-11-05
+
+### Fixed
+
+- Status-page group headings no longer appear as disrupted components in the popup.
+- API and setup-download tests await asynchronous operations; download progress assertions no longer race background callbacks.
+
 ## [0.8.0] - 2026-11-03
 
 Everything since 0.7.3, gathered for anyone updating from it. The two beta sections that follow are

@@ -1,6 +1,8 @@
 # Download Stats Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Snapshot GitHub's public per-asset release download counters into a CSV on an orphan `stats` branch once a day, so install and update fetch rates per release and ring become visible without any telemetry.
 
@@ -33,7 +35,7 @@
 - Consumes: `gh` on PATH, authenticated (locally via `gh auth login`, in CI via `GH_TOKEN`).
 - Produces: `build/download-stats.ps1 [-Repo <owner/name>] [-OutFile <path>] [-Date yyyy-MM-dd]`. Exit 0 and a merged CSV at `-OutFile` on success, non-zero with no partial file on failure. Task 2 calls it with `-Repo $env:GITHUB_REPOSITORY -OutFile stats/downloads.csv` and optionally `-Date`.
 
-- [ ] **Step 1: Write the script**
+- [x] **Step 1: Write the script**
 
 ```powershell
 # Snapshots GitHub's public per-asset release download counters into a CSV, one row per asset
@@ -120,7 +122,7 @@ Move-Item -LiteralPath $tmp -Destination $OutFile -Force
 Write-Host "Snapshot $Date for $Repo: $(@($rows).Count) asset rows across $(@($rows | Select-Object -ExpandProperty tag -Unique).Count) releases -> $OutFile ($(@($all).Count) rows total)"
 ```
 
-- [ ] **Step 2: Run it against the real API into the scratchpad**
+- [x] **Step 2: Run it against the real API into the scratchpad**
 
 Run (from the worktree root, replacing `<scratch>` with the session scratchpad directory):
 
@@ -131,7 +133,7 @@ Get-Content <scratch>\downloads.csv | Select-Object -First 8
 
 Expected: exit 0, a summary line, and a header `"date","tag","prerelease","ring","kind","asset","asset_id","download_count"` or the unquoted equivalent, followed by rows like `2026-09-05,v0.7.2,False,win-beta,delta,WusTechnik.ClaudeUsageTray-0.7.2-win-beta-delta.nupkg,<id>,1`. No row with tag `setup-stub`. `ClaudeUsageTraySetup.exe` rows have `kind=stub` and `ring=none`. `RELEASES` has `kind=releases-legacy`, `ring=none`.
 
-- [ ] **Step 3: Verify idempotence and backfill**
+- [x] **Step 3: Verify idempotence and backfill**
 
 ```powershell
 $n1 = (Import-Csv <scratch>\downloads.csv).Count
@@ -144,7 +146,7 @@ $n3 = (Import-Csv <scratch>\downloads.csv).Count
 
 Expected: `n1 == n2` and `n3 == 2 * n1`; two dates listed. Also confirm LF endings: `(Get-Content -Raw <scratch>\downloads.csv) -match "`r"` prints `False`.
 
-- [ ] **Step 4: Verify the failure path leaves no partial file**
+- [x] **Step 4: Verify the failure path leaves no partial file**
 
 ```powershell
 pwsh -NoProfile -File .\build\download-stats.ps1 -Repo wus-technik/does-not-exist -OutFile <scratch>\nope.csv; $LASTEXITCODE
@@ -153,7 +155,7 @@ Test-Path <scratch>\nope.csv
 
 Expected: a thrown error, non-zero exit code, `False`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add build/download-stats.ps1
@@ -171,7 +173,7 @@ git commit -m "feat: add the download-stats collector script" -m "Reads public r
 - Consumes: `build/download-stats.ps1` from Task 1 with `-Repo`, `-OutFile`, `-Date`.
 - Produces: branch `stats` on origin containing `downloads.csv`, one commit per day the file changed.
 
-- [ ] **Step 1: Write the workflow**
+- [x] **Step 1: Write the workflow**
 
 ```yaml
 name: Download stats
@@ -245,7 +247,7 @@ jobs:
           git push origin HEAD:refs/heads/stats
 ```
 
-- [ ] **Step 2: Check the workflow parses and the action is on node24**
+- [x] **Step 2: Check the workflow parses and the action is on node24**
 
 ```bash
 gh api "repos/actions/checkout/contents/action.yml?ref=v7" --jq .content | base64 -d | grep "using:"
@@ -254,7 +256,7 @@ pwsh -NoProfile -Command "Get-Content .github/workflows/download-stats.yml | Sel
 
 Expected: `using: node24`, and the only `uses:` line is `actions/checkout@v7`. YAML validity is confirmed by GitHub when the branch is pushed: `gh workflow list` on the PR branch must list "Download stats" without a parse error (workflows with `workflow_dispatch` register from non-default branches once pushed).
 
-- [ ] **Step 3: Dry-run the branch bootstrap locally**
+- [x] **Step 3: Dry-run the branch bootstrap locally**
 
 The orphan-worktree step is the one piece that cannot be tested by reading. Reproduce it in a throwaway clone in the scratchpad:
 
@@ -267,7 +269,7 @@ cd stats && git status --short --branch && ls -A
 
 Expected: `## No commits yet on stats` and an empty listing (only `.git` file). Delete `wt-test` afterwards.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .github/workflows/download-stats.yml
@@ -286,7 +288,7 @@ git commit -m "ci: snapshot release download counters daily into the stats branc
 - Consumes: column and value names from Task 1, the branch name and dispatch input from Task 2.
 - Produces: nothing programmatic.
 
-- [ ] **Step 1: Write `docs/download-stats.md`**
+- [x] **Step 1: Write `docs/download-stats.md`**
 
 ```markdown
 # Download and update statistics
@@ -348,7 +350,7 @@ little above the true number of installs that moved.
 counted there) and draft releases.
 ```
 
-- [ ] **Step 2: Add the README section**
+- [x] **Step 2: Add the README section**
 
 Insert before `## Development`:
 
@@ -364,7 +366,7 @@ history of aggregate public numbers and nothing about any user or machine. See
 `docs/download-stats.md` for what the numbers mean.
 ```
 
-- [ ] **Step 3: Check both files render sanely**
+- [x] **Step 3: Check both files render sanely**
 
 ```bash
 grep -n "^## " README.md
@@ -373,7 +375,7 @@ grep -c "|" docs/download-stats.md
 
 Expected: `## Privacy` listed directly before `## Development`; the table lines are present.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/download-stats.md README.md
@@ -384,7 +386,7 @@ git commit -m "docs: explain the download statistics and state the privacy posit
 
 ### Task 4: Finish the branch
 
-- [ ] **Step 1: Run the test suite to prove nothing under `src/` moved**
+- [x] **Step 1: Run the test suite to prove nothing under `src/` moved**
 
 ```bash
 git diff --stat origin/main -- src
@@ -393,6 +395,6 @@ dotnet test --nologo -v q
 
 Expected: empty diff for `src/`; all tests pass.
 
-- [ ] **Step 2: Hand over**
+- [x] **Step 2: Hand over**
 
 Use superpowers:finishing-a-development-branch. The PR body must mention that after merge the workflow needs one manual `gh workflow run download-stats.yml` to create the `stats` branch, and end with `Closes #22` plus the required generated-with footer.
