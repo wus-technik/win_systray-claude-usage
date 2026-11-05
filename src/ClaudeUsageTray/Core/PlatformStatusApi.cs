@@ -114,6 +114,7 @@ public static class PlatformStatusApi
         foreach (var entry in list.EnumerateArray())
         {
             if (entry.ValueKind != JsonValueKind.Object) continue;
+            if (entry.TryGetProperty("group", out var group) && group.ValueKind == JsonValueKind.True) continue;
             if (NonEmptyString(entry, "name") is not { } name) continue;
             if (NonEmptyString(entry, "status") is not { } status) continue;
             if (status == "operational") continue;

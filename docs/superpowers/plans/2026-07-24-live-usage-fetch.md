@@ -1,6 +1,8 @@
 # v0.3 Live Usage Fetch Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** The tray shows live usage by polling `https://api.anthropic.com/api/oauth/usage` with Claude Code's existing OAuth token, read-only, under a strict budget — fixing the permanently-stale cache problem (spec: `docs/superpowers/specs/2026-07-24-live-usage-fetch-design.md`).
 
@@ -48,7 +50,7 @@ src/ClaudeUsageTray/ClaudeUsageTray.csproj         (Task 4: docs + 0.3.0)
 - Consumes: nothing.
 - Produces: `static string CredentialsReader.DefaultPath` and `static string? CredentialsReader.TryReadAccessToken(string path, DateTimeOffset now)` in `ClaudeUsageTray.Core`. Null on missing file/key, expired or near-expiry (< 5 min) token, malformed JSON, non-object root, or IO error. Never throws.
 
-- [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/CredentialsReaderTests.cs`
+- [x] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/CredentialsReaderTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -125,12 +127,12 @@ public class CredentialsReaderTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter CredentialsReaderTests`
 Expected: FAIL to compile — `CredentialsReader` not defined.
 
-- [ ] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/CredentialsReader.cs`
+- [x] **Step 3: Write the implementation** — `src/ClaudeUsageTray/Core/CredentialsReader.cs`
 
 ```csharp
 using System.Text.Json;
@@ -182,12 +184,12 @@ public static class CredentialsReader
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter CredentialsReaderTests`
 Expected: PASS (11 tests).
 
-- [ ] **Step 5: Run the full suite, then commit**
+- [x] **Step 5: Run the full suite, then commit**
 
 Run: `dotnet test` — expected PASS (84 total).
 
@@ -213,7 +215,7 @@ git commit -m "feat: read-only OAuth access token extraction from Claude Code cr
   - `sealed record UsageFetchResult(UsageSnapshot? Snapshot, bool Unauthorized, bool RateLimited, TimeSpan? RetryAfter)` — `RateLimited` is true for ANY 429 regardless of header form; `RetryAfter` is the delta form, or the HTTP-date form computed against `now`, else null.
   - `static Task<UsageFetchResult> UsageApiClient.FetchAsync(HttpClient http, string accessToken, DateTimeOffset now, CancellationToken ct)` and `const string UsageApiClient.EndpointUrl`. Never throws.
 
-- [ ] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/UsageApiClientTests.cs`
+- [x] **Step 1: Write the failing tests** — `tests/ClaudeUsageTray.Tests/UsageApiClientTests.cs`
 
 ```csharp
 using System.Net;
@@ -368,12 +370,12 @@ public class UsageApiClientTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter UsageApiClientTests`
 Expected: FAIL to compile — types not defined.
 
-- [ ] **Step 3: Write `src/ClaudeUsageTray/Core/UsageJson.cs`**
+- [x] **Step 3: Write `src/ClaudeUsageTray/Core/UsageJson.cs`**
 
 ```csharp
 using System.Globalization;
@@ -403,9 +405,9 @@ internal static class UsageJson
 }
 ```
 
-- [ ] **Step 4: Modify `src/ClaudeUsageTray/Core/UsageCacheReader.cs`** — delete its private `ReadWindow` method and replace the two call sites `ReadWindow(u, "five_hour")` / `ReadWindow(u, "seven_day")` with `UsageJson.ReadWindow(u, "five_hour")` / `UsageJson.ReadWindow(u, "seven_day")`. Remove the now-unused `using System.Globalization;` if nothing else needs it. No behavior change — `UsageCacheReaderTests` must pass unmodified.
+- [x] **Step 4: Modify `src/ClaudeUsageTray/Core/UsageCacheReader.cs`** — delete its private `ReadWindow` method and replace the two call sites `ReadWindow(u, "five_hour")` / `ReadWindow(u, "seven_day")` with `UsageJson.ReadWindow(u, "five_hour")` / `UsageJson.ReadWindow(u, "seven_day")`. Remove the now-unused `using System.Globalization;` if nothing else needs it. No behavior change — `UsageCacheReaderTests` must pass unmodified.
 
-- [ ] **Step 5: Write `src/ClaudeUsageTray/Core/UsageApiClient.cs`**
+- [x] **Step 5: Write `src/ClaudeUsageTray/Core/UsageApiClient.cs`**
 
 ```csharp
 using System.Net;
@@ -467,12 +469,12 @@ public static class UsageApiClient
 }
 ```
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [x] **Step 6: Run tests to verify they pass**
 
 Run: `dotnet test --filter UsageApiClientTests` — expected PASS (13 tests).
 Then: `dotnet test --filter UsageCacheReaderTests` — expected PASS (21 tests, file unmodified).
 
-- [ ] **Step 7: Run the full suite, then commit**
+- [x] **Step 7: Run the full suite, then commit**
 
 Run: `dotnet test` — expected PASS (97 total).
 
@@ -499,7 +501,7 @@ git commit -m "feat: usage-API client with budget-aware result contract and shar
   - `static bool SnapshotPrecedence.IsNewer(UsageSnapshot? candidate, UsageSnapshot? current)` — true iff `candidate` is non-null AND (`current` is null OR `candidate.FetchedAt > current.FetchedAt`).
   - TrayApp polls the API per the budget rules, consulting the scheduler before every fetch.
 
-- [ ] **Step 1a: Write the failing scheduler tests** — `tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs`
+- [x] **Step 1a: Write the failing scheduler tests** — `tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -604,7 +606,7 @@ public class FetchSchedulerTests
 }
 ```
 
-- [ ] **Step 1b: Write the failing precedence tests** — `tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs`
+- [x] **Step 1b: Write the failing precedence tests** — `tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs`
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -625,12 +627,12 @@ public class SnapshotPrecedenceTests
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `dotnet test --filter "FetchSchedulerTests|SnapshotPrecedenceTests"`
 Expected: FAIL to compile — `FetchScheduler` / `SnapshotPrecedence` not defined.
 
-- [ ] **Step 3a: Write `src/ClaudeUsageTray/Core/FetchScheduler.cs`**
+- [x] **Step 3a: Write `src/ClaudeUsageTray/Core/FetchScheduler.cs`**
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -682,7 +684,7 @@ public sealed class FetchScheduler
 }
 ```
 
-- [ ] **Step 3b: Write `src/ClaudeUsageTray/Core/SnapshotPrecedence.cs`**
+- [x] **Step 3b: Write `src/ClaudeUsageTray/Core/SnapshotPrecedence.cs`**
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -696,11 +698,11 @@ public static class SnapshotPrecedence
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `dotnet test --filter "FetchSchedulerTests|SnapshotPrecedenceTests"` — expected PASS (15 tests: 9 scheduler + 6 precedence).
 
-- [ ] **Step 5: Modify `src/ClaudeUsageTray/Tray/TrayApp.cs`** — read the current file first; it contains patterns (e.g. `_settingsSaveFailed`, `DisposeNotifyIcon`, `TryIsStartupEnabled`) that must be preserved. Make exactly these changes:
+- [x] **Step 5: Modify `src/ClaudeUsageTray/Tray/TrayApp.cs`** — read the current file first; it contains patterns (e.g. `_settingsSaveFailed`, `DisposeNotifyIcon`, `TryIsStartupEnabled`) that must be preserved. Make exactly these changes:
 
 a) Add fields next to the existing timers:
 
@@ -815,15 +817,15 @@ e) The "Refresh now" menu handler currently calls `Refresh()`; extend it to also
 
 f) In `Dispose(bool disposing)`, dispose `_poll` alongside the other timers.
 
-- [ ] **Step 6: Build and run the full suite (regression)**
+- [x] **Step 6: Build and run the full suite (regression)**
 
 Run: `dotnet test` — expected PASS (112 total), build warning-free.
 
-- [ ] **Step 7: Manual verification — live data (deferred to human where noted)**
+- [x] **Step 7: Manual verification — live data (deferred to human where noted)**
 
 Run: `dotnet run --project src/ClaudeUsageTray` (human): within seconds of startup the icons should show CURRENT usage (matching claude.ai), not the stale cache; the tooltip's "Updated just now" confirms an API fetch. "Refresh now" repeated quickly must not fire more than one API request per 30 s. With `%USERPROFILE%\.claude\.credentials.json` renamed away (restore afterwards!), behavior must degrade to v0.2 cache-fallback with no crash.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Core/FetchScheduler.cs src/ClaudeUsageTray/Core/SnapshotPrecedence.cs tests/ClaudeUsageTray.Tests/FetchSchedulerTests.cs tests/ClaudeUsageTray.Tests/SnapshotPrecedenceTests.cs src/ClaudeUsageTray/Tray/TrayApp.cs
@@ -841,7 +843,7 @@ git commit -m "feat: live usage polling with budget scheduler and freshness prec
 
 **Interfaces:** none (docs only).
 
-- [ ] **Step 1: Update README**
+- [x] **Step 1: Update README**
 
 a) Replace the opening-paragraph claim
 
@@ -867,7 +869,7 @@ b) In the Usage section, after the "- **Right-click** …" bullet, add:
   local cache when no valid token is available.
 ```
 
-- [ ] **Step 2: Extend the v0.1 spec amendment note**
+- [x] **Step 2: Extend the v0.1 spec amendment note**
 
 In `docs/superpowers/spec/claude-usage-tray.md`, the blockquote note near the top (added for v0.2) gets one more sentence appended inside the same blockquote:
 
@@ -877,11 +879,11 @@ In `docs/superpowers/spec/claude-usage-tray.md`, the blockquote note near the to
 
 (as a second blockquote paragraph directly below the v0.2 note).
 
-- [ ] **Step 3: Bump the version**
+- [x] **Step 3: Bump the version**
 
 In `src/ClaudeUsageTray/ClaudeUsageTray.csproj`: `<Version>0.2.0</Version>` → `<Version>0.3.0</Version>`.
 
-- [ ] **Step 4: Full suite, then commit**
+- [x] **Step 4: Full suite, then commit**
 
 Run: `dotnet test` — expected PASS (112 total).
 

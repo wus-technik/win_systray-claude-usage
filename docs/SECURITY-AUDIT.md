@@ -1,5 +1,7 @@
 # Security audit — Claude Usage Tray
 
+> Backlog disposition - 2026-11-05: All remaining suggestions, deferred ideas, open questions and acceptance follow-ups in this historical document are closed without further work by project-owner decision. This includes signing/2FA follow-ups, the Codex rollout-file fallback and desktop weekly-reset research, as applicable. Historical findings and technical limitations remain factual records, not active TODOs. Do not resurface these as open work without a new explicit request.
+
 - **Scope:** `main` @ `590937f` (v0.7.3-beta.4), audited in worktree `win_systray-claude-usage-security-audit` (branch `audit/security`)
 - **Date:** 2026-09-11
 - **Method:** full source review of both executables (tray app + setup stub), all GitHub Actions workflows, build scripts; secret-pattern sweep across the repo; GitHub Advisory Database check for dependencies; repository protection check via `gh api`; full Release test suite run in the worktree (**859/859 pass**: 715 app + 144 stub)

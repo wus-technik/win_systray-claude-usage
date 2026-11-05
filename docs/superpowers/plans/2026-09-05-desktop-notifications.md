@@ -1,6 +1,8 @@
 # Desktop Notifications Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Raise exactly one Windows toast when a usage limit crosses into red (or orange, if configured) and one each way when a watched status page changes state, from the data the tray already computes, without a single false toast at startup, on a settings edit, or from clock flapping.
 
@@ -43,7 +45,7 @@
 **Interfaces:**
 - Produces: `AppInfo.PackId` (`const string`, `"WusTechnik.ClaudeUsageTray"`), `AppInfo.Aumid` (`const string`, `"velopack.WusTechnik.ClaudeUsageTray"`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/AppInfoTests.cs` inside the class:
 
@@ -73,12 +75,12 @@ Append to `tests/ClaudeUsageTray.Tests/AppInfoTests.cs` inside the class:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~AppInfoTests`
 Expected: build error `'AppInfo' does not contain a definition for 'Aumid'` / `'PackId'`.
 
-- [ ] **Step 3: Add the constants**
+- [x] **Step 3: Add the constants**
 
 In `src/ClaudeUsageTray/Core/AppInfo.cs`, after `ProjectUrl`:
 
@@ -93,7 +95,7 @@ In `src/ClaudeUsageTray/Core/AppInfo.cs`, after `ProjectUrl`:
     public const string Aumid = "velopack." + PackId;
 ```
 
-- [ ] **Step 4: Bump the two TFMs**
+- [x] **Step 4: Bump the two TFMs**
 
 `src/ClaudeUsageTray/ClaudeUsageTray.csproj`, first `<PropertyGroup>`, add as the first child:
 
@@ -113,14 +115,14 @@ In `src/ClaudeUsageTray/Core/AppInfo.cs`, after `ProjectUrl`:
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
 ```
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Run: `dotnet test`
 Expected: restore pulls `Microsoft.Windows.SDK.NET.Ref`; all tests pass, including the two new ones. If restore fails offline, run `dotnet restore` once online — the projection is a NuGet package.
 
 Also confirm the stub is untouched: `dotnet build src/ClaudeUsageTraySetupStub` still reports `net10.0-windows` in its output path.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/ClaudeUsageTray.csproj tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj src/ClaudeUsageTray/Core/AppInfo.cs tests/ClaudeUsageTray.Tests/AppInfoTests.cs
@@ -138,7 +140,7 @@ git commit -m "build: target the Windows 10.0.19041 SDK for toasts; pin the pack
 **Interfaces:**
 - Produces: `enum NotifyLevel { Orange, Red }`; `sealed class UsageNotificationSettings { bool Enabled = true; NotifyLevel Level = NotifyLevel.Red; }`; `Settings.UsageNotifications` (non-null after `Load`/`NormalizeFields`); `StatusSourceSettings.Notify` (`bool`, default `true`); `Settings.NotifyFor(string sourceId)` → `bool`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsTests.cs` inside the class:
 
@@ -220,12 +222,12 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsTests.cs` inside the class:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: build errors for `NotifyLevel`, `UsageNotifications`, `Notify`, `NotifyFor`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `src/ClaudeUsageTray/Core/Settings.cs`:
 
@@ -316,12 +318,12 @@ After `EnabledSources()` add:
            && (!StatusSources.TryGetValue(sourceId, out var entry) || entry is not { Notify: false });
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: all pass. The malformed-`notify` case works because the whole entry fails to deserialize (existing tolerant converter), arrives null, and is rebuilt with the default.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -350,7 +352,7 @@ git commit -m "feat: notification settings — usageNotifications {enabled, leve
   - `UsageValues.CreditSeverity(CreditUsage credits, Settings settings)` → `Severity`.
   - `UsageValues.Enumerate(UsageSnapshot snapshot, Settings settings, DateTimeOffset now)` → `IReadOnlyList<UsageValue>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/UsageValuesTests.cs`:
 
@@ -443,12 +445,12 @@ public class UsageValuesTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~UsageValuesTests`
 Expected: build errors — `UsageValues`, `SeverityRules.FromPayload` missing.
 
-- [ ] **Step 3: Add `SeverityRules.FromPayload`**
+- [x] **Step 3: Add `SeverityRules.FromPayload`**
 
 In `src/ClaudeUsageTray/Core/SeverityRules.cs`, after `ForSettings`:
 
@@ -467,7 +469,7 @@ In `src/ClaudeUsageTray/Core/SeverityRules.cs`, after `ForSettings`:
 
 (`Red`, `Orange`, `Green` need `Severity.` prefixes — write `Severity.Red` etc.)
 
-- [ ] **Step 4: Create `UsageValues`**
+- [x] **Step 4: Create `UsageValues`**
 
 Create `src/ClaudeUsageTray/Core/UsageValues.cs`:
 
@@ -529,12 +531,12 @@ public static class UsageValues
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~UsageValuesTests`
 Expected: all pass.
 
-- [ ] **Step 6: Rewire `UsagePopup`**
+- [x] **Step 6: Rewire `UsagePopup`**
 
 In `src/ClaudeUsageTray/Tray/UsagePopup.cs`:
 
@@ -551,7 +553,7 @@ In `src/ClaudeUsageTray/Tray/UsagePopup.cs`:
 - `AddCreditRow` (204-205): the `AddBar` call becomes `AddBar(layout, credits.Percent, UsageValues.CreditSeverity(credits, settings));` and the three-line comment above it is replaced by `// Severity computed by UsageValues so the toast and this bar cannot disagree; see its doc comment.`
 - Delete `SeverityFor` (222-223) and `ParseSeverity` (235-241).
 
-- [ ] **Step 7: Rewire `TrayApp.Apply`**
+- [x] **Step 7: Rewire `TrayApp.Apply`**
 
 In `src/ClaudeUsageTray/Tray/TrayApp.cs` lines 327-330 replace with:
 
@@ -562,12 +564,12 @@ In `src/ClaudeUsageTray/Tray/TrayApp.cs` lines 327-330 replace with:
 
 and in `Render()` (lines 292, 295) pass `UsageValues.FiveHourPeriod` / `UsageValues.SevenDayPeriod` in place of the `TimeSpan.From…` literals.
 
-- [ ] **Step 8: Run the whole suite**
+- [x] **Step 8: Run the whole suite**
 
 Run: `dotnet test`
 Expected: all pass — `UsageBarTests`, `IconRendererTests`, the `UsagePopup*Tests` and `SmokeTests` cover the rewired surfaces.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageValues.cs src/ClaudeUsageTray/Core/SeverityRules.cs src/ClaudeUsageTray/Tray/UsagePopup.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/UsageValuesTests.cs
@@ -595,7 +597,7 @@ git commit -m "refactor: UsageValues computes every value's severity once; popup
 
 **Logging contract** (the `Log` list): one line per *event*, never per tick. Lines are prefixed `notify[usage]:` and name the reason with the spec's words — `armed`, `unarmed baseline`, `stale`, `fingerprint change`, `source switch`, `hysteresis`, `switched off`, `emitted`. Scoped-limit keys appear in the log **only as a count** (`scoped=2`); the fixed keys `5h`, `7d`, `credits` may be named.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs`:
 
@@ -986,12 +988,12 @@ public class NotificationRulesUsageTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRulesUsageTests`
 Expected: build errors — `NotificationRules`, `LiveOutcome`, `Notification`, `NotificationOutcome` missing.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Create `src/ClaudeUsageTray/Core/NotificationRules.cs`:
 
@@ -1213,12 +1215,12 @@ public sealed partial class NotificationRules
 }
 ```
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRulesUsageTests`
 Expected: all pass. If `ClockOnlyCrossing…` fails, check the arithmetic against `SeverityRules`: dead zone `0.10`, floor `20`, `RedRatio 1.75`; at `now = T0` with reset `T0+4.5h` the elapsed fraction is exactly `0.10` and `ratio = 30 / 10 = 3.0`. Adjust `now` by a minute rather than changing the rules.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/NotificationRules.cs tests/ClaudeUsageTray.Tests/NotificationRulesUsageTests.cs
@@ -1241,7 +1243,7 @@ git commit -m "feat: NotificationRules — usage crossings with arming, hysteres
   - `NotificationRules.StatusTag(string sourceId)` → `"status:" + sourceId`.
   - `NotificationRules.OnStatus(IReadOnlyList<SourceView> views, Settings settings)` → `IReadOnlyList<NotificationOutcome>` — at most one per view, in view order; an outcome with a null `Notification` and an empty `Log` is omitted. Sources absent from `views` drop their state.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/ClaudeUsageTray.Tests/NotificationRulesStatusTests.cs`:
 
@@ -1432,12 +1434,12 @@ public class NotificationRulesStatusTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRulesStatusTests`
 Expected: build errors — `OnStatus`, `StatusDetail.Summary` missing.
 
-- [ ] **Step 3: Add `StatusDetail.Summary`**
+- [x] **Step 3: Add `StatusDetail.Summary`**
 
 In `src/ClaudeUsageTray/Core/StatusDetailRows.cs`, after `HiddenCount`:
 
@@ -1456,7 +1458,7 @@ In `src/ClaudeUsageTray/Core/StatusDetailRows.cs`, after `HiddenCount`:
     }
 ```
 
-- [ ] **Step 4: Implement the status half**
+- [x] **Step 4: Implement the status half**
 
 Create `src/ClaudeUsageTray/Core/NotificationRules.Status.cs`:
 
@@ -1559,12 +1561,12 @@ public sealed partial class NotificationRules
 }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRules`
 Expected: both test classes pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/NotificationRules.Status.cs src/ClaudeUsageTray/Core/StatusDetailRows.cs tests/ClaudeUsageTray.Tests/NotificationRulesStatusTests.cs
@@ -1584,7 +1586,7 @@ No unit test: this type decides nothing, and WinRT is not available to the test 
 - Consumes: `Notification`, `AppInfo.Aumid`, a WinForms `Control` for marshalling.
 - Produces: `ToastPresenter(string aumid, Control sync, Action onActivated, Action<string> log)`; `void Show(Notification notification)`; `void Remove(string tag)`; `void Dispose()`.
 
-- [ ] **Step 1: Create the presenter**
+- [x] **Step 1: Create the presenter**
 
 Create `src/ClaudeUsageTray/Tray/ToastPresenter.cs`:
 
@@ -1730,14 +1732,14 @@ public sealed class ToastPresenter : IDisposable
 }
 ```
 
-- [ ] **Step 2: Build and run from source**
+- [x] **Step 2: Build and run from source**
 
 Run: `dotnet build src/ClaudeUsageTray`
 Expected: no errors, no warnings about `Windows.UI.Notifications`. If `XmlDocument` is ambiguous, keep the `Windows.Data.Xml.Dom` using and do not add `System.Xml`.
 
 Then `dotnet run --project src/ClaudeUsageTray` for ~10 s and quit via the tray menu. Nothing is wired yet, so the only observable is the absence of an exception dialog. (The constructor is exercised in Task 7.)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/ToastPresenter.cs
@@ -1754,7 +1756,7 @@ git commit -m "feat: ToastPresenter shows WinRT toasts under the Velopack AUMID 
 **Interfaces:**
 - Consumes: `NotificationRules` (`OnUsage`, `OnStatus`, `NoteLiveOutcome`), `ToastPresenter`, `LiveOutcome`, `NotificationRules.UsageTag`.
 
-- [ ] **Step 1: Add the fields**
+- [x] **Step 1: Add the fields**
 
 After the `_statusMonitor` field (line 35):
 
@@ -1774,7 +1776,7 @@ In the constructor, after `_statusMonitor = new StatusMonitor(...)`:
             message => _log.Write(DateTimeOffset.UtcNow, message));
 ```
 
-- [ ] **Step 2: Relay the arming outcomes**
+- [x] **Step 2: Relay the arming outcomes**
 
 In `StartApiFetch`, inside `if (token is null) { ... }` before `return;`:
 
@@ -1803,7 +1805,7 @@ and add the helper after `OnApiFetchCompleted`:
 
 (The `_rejectedToken` skip in `StartApiFetch` needs no relay: it is only set by `OnApiFetchCompleted`, which has by then already armed.)
 
-- [ ] **Step 3: Evaluate in `Render()`**
+- [x] **Step 3: Evaluate in `Render()`**
 
 In `Render()`, immediately after `LogSourceChange(choice, now);`:
 
@@ -1834,7 +1836,7 @@ and add the method after `Render()`:
     }
 ```
 
-- [ ] **Step 4: Copy the new settings in `ApplySettings`**
+- [x] **Step 4: Copy the new settings in `ApplySettings`**
 
 After `_settings.StatusSources = edited.StatusSources;` (line 547):
 
@@ -1844,11 +1846,11 @@ After `_settings.StatusSources = edited.StatusSources;` (line 547):
 
 (`StatusSources` is copied whole, so each entry's `Notify` travels with it; the dialog's `Draft()` is what has to preserve it — Task 8.)
 
-- [ ] **Step 5: Dispose**
+- [x] **Step 5: Dispose**
 
 In `Dispose(bool disposing)`, before `_sync.Dispose();`: `_toasts.Dispose();`
 
-- [ ] **Step 6: Build, test, run**
+- [x] **Step 6: Build, test, run**
 
 Run: `dotnet test`
 Expected: all pass.
@@ -1861,7 +1863,7 @@ Get-Content "$env:APPDATA\ClaudeUsageTray\fetch.log" -Tail 30
 
 Expected: a `toast: notifier unavailable (...)` **or** no toast line at all (the two measured failure modes of an unregistered AUMID), a `notify[usage]: unarmed baseline …` line if a cache exists, and after the first fetch outcome an `armed on …` line. No exception, no toast.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/TrayApp.cs
@@ -1880,7 +1882,7 @@ git commit -m "feat: evaluate notifications on every Render and relay live-fetch
 - Consumes: `Settings.UsageNotifications`, `NotifyLevel`, `StatusSourceSettings.Notify`.
 - Produces: controls named `notifyUsage` (CheckBox), `notifyLevel` (ComboBox, items `"Red only"`, `"Orange and red"`), `notifyClaude` (CheckBox), `notifyOpenAi` (CheckBox).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append inside `SettingsDialogTests`:
 
@@ -1961,12 +1963,12 @@ Append inside `SettingsDialogTests`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogTests`
 Expected: the five new tests fail with `Sequence contains no elements` (controls not found) or missing-member build errors.
 
-- [ ] **Step 3: Add the controls**
+- [x] **Step 3: Add the controls**
 
 After the `_openAiComponentsCaption` field:
 
@@ -1986,7 +1988,7 @@ After the `_openAiComponentsCaption` field:
 
 Note `LevelLabels` is indexed by `NotifyLevel` **as displayed**, not by enum value: index 0 is `Red`, index 1 is `Orange`. Use the two helpers below rather than a cast.
 
-- [ ] **Step 4: Lay them out**
+- [x] **Step 4: Lay them out**
 
 In `BuildLayout`, after `layout.Controls.Add(Indent(_previewCaption));` and before the `Refresh` heading:
 
@@ -2005,7 +2007,7 @@ In `BuildLayout`, after `layout.Controls.Add(Indent(_previewCaption));` and befo
 
 In `BuildButtons`, extend the tab-order array: after `_openAiComponents,` insert `_notifyUsage, _notifyLevel, _notifyClaude, _notifyOpenAi,`.
 
-- [ ] **Step 5: Load, sync, draft, clone**
+- [x] **Step 5: Load, sync, draft, clone**
 
 In `LoadFrom`, after `_openAiComponents.Enabled = _watchOpenAi.Checked;`:
 
@@ -2074,14 +2076,14 @@ In `Clone`, add after `DesktopHistoryPathOverride = ...`:
 
 and inside the `StatusSources` clone's `new StatusSourceSettings { ... }`, add `Notify = e.Value.Notify,`.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialog`
 Expected: all pass, including the pre-existing `ClaudeFilter_SurvivesTheRoundTrip` (the new claude rebuild must carry `Components` through).
 
 Then `dotnet test` for everything.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs
@@ -2098,7 +2100,7 @@ git commit -m "feat: Notifications group in Settings — usage level, Claude and
 - Modify: `CLAUDE.md` (Architecture → Core list; a new invariant; TFM note)
 - Modify: `docs/superpowers/specs/2026-09-05-desktop-notifications-design.md` (record the two additive record fields)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 In the Settings paragraph (line ~204), after "the **Watch OpenAI status** checkbox with its comma-separated component field" insert: ", and a **Notifications** group — whether a limit turning red (or orange) raises a Windows toast, and whether a Claude or OpenAI status change does".
 
@@ -2144,7 +2146,7 @@ the colours on screen. Every emitted or suppressed toast is one line in `fetch.l
 Toasts need the Start Menu shortcut the installer creates; a `dotnet run` from source shows none.
 ```
 
-- [ ] **Step 2: CHANGELOG**
+- [x] **Step 2: CHANGELOG**
 
 Above `## [0.7.3-beta.2] - 2026-09-05` add:
 
@@ -2169,7 +2171,7 @@ Above `## [0.7.3-beta.2] - 2026-09-05` add:
 
 The release commit renames `[Unreleased]` to the version being shipped; `changelog-section.ps1` needs the exact version heading.
 
-- [ ] **Step 3: CLAUDE.md**
+- [x] **Step 3: CLAUDE.md**
 
 In *Architecture* → the `Core/` bullet, extend the list of pulled-out state machines: `… \`TimeMarker\`, \`SnapshotPrecedence\`, \`UsageValues\`, and \`NotificationRules\` exist as separate state machines …`.
 
@@ -2192,13 +2194,13 @@ Under *Non-negotiable invariants* add:
   stays on `net10.0-windows` — pulling the Windows SDK projection into a NativeAOT build buys nothing.
 ```
 
-- [ ] **Step 4: Spec deviations**
+- [x] **Step 4: Spec deviations**
 
 In the spec, under *`Core/UsageValues.cs`* replace the record line with `public sealed record UsageValue(string Key, string Label, int Percent, Severity Severity, DateTimeOffset? ResetsAt);` and add one sentence: "`ResetsAt` travels with the value so the toast expiry (*Usage toasts expire*) is a pure function of the crossing rather than a second lookup in the presenter."
 
 Under *`Core/NotificationRules.cs`* replace the record line with `public sealed record Notification(string Title, string Body, string Argument, string Tag, DateTimeOffset? ExpiresAt);` and add: "`Tag` and `ExpiresAt` are decided here, not in `ToastPresenter`, which must decide nothing. `OnUsage` returns them inside a `NotificationOutcome(Notification?, Log, RemoveUsageToast)` so the log lines and the toast retraction on leaving red are also decisions made in `Core`."
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md CHANGELOG.md CLAUDE.md docs/superpowers/specs/2026-09-05-desktop-notifications-design.md
@@ -2213,7 +2215,7 @@ git commit -m "docs: desktop notifications — README, changelog, CLAUDE.md, spe
 
 `ToastPresenter` is not unit-testable, and everything it does depends on the Velopack shortcut's AUMID. Follow *Testing a build in the real installed app* in CLAUDE.md exactly, then work through this list. Do **not** hammer the usage endpoint to force a crossing — edit `thresholds` in `settings.json` and *then* watch a natural poll, or lower `thresholds.red` below the current 5-hour percent, save, and wait for the next tick (the save itself must **not** toast — that is check 6).
 
-- [ ] **Step 1: Build and install**
+- [x] **Step 1: Build and install**
 
 ```powershell
 dotnet publish src/ClaudeUsageTray -c Release -r win-x64 --self-contained -o artifacts\publish
@@ -2225,7 +2227,7 @@ Stop-Process -Name ClaudeUsageTray -Force
 
 Use `--channel win-beta` only if the installed app is on the beta ring (check `useBetaReleases` in settings.json); otherwise drop the flag. Confirm the publish output is roughly 143 MB and contains `Microsoft.Windows.SDK.NET.dll`.
 
-- [ ] **Step 2: Work through the checks and record each result**
+- [x] **Step 2: Work through the checks and record each result**
 
 1. `fetch.log` shows no `toast: notifier unavailable` line and no `disabled on the Windows side` line.
 2. Lower `thresholds.red` in `settings.json` below the current 5-hour percent while the app runs, save, wait for the 30 s tick: **no toast**, and `fetch.log` has `fingerprint change … rebaselining`.
@@ -2238,11 +2240,11 @@ Use `--channel win-beta` only if the installed app is on the beta ring (check `u
 9. Status: temporarily set `"claude": { "enabled": true, "notify": true, "components": ["nonexistent-component-xyz"] }` — this narrows relevance to nothing — then remove the filter again while the page is healthy: no toast either way (filter change re-baselines). A real page transition cannot be forced; verify the degraded text once against a recorded outage in `fetch.log` if one occurs during the beta, otherwise rely on `NotificationRulesStatusTests`.
 10. `dotnet run --project src/ClaudeUsageTray` from the worktree: no toast, no exception, log line for the unavailable notifier or none.
 
-- [ ] **Step 3: Paste the completed list into the PR description**
+- [x] **Step 3: Paste the completed list into the PR description**
 
 Anything that failed gets a fix commit on this branch (`fix: …`, `Refs #14`) and the check re-run before the PR is marked ready.
 
-- [ ] **Step 4: Final commit if the checks required no code change**
+- [x] **Step 4: Final commit if the checks required no code change**
 
 If steps 2–3 turned up nothing, there is nothing to commit here; the PR closes the issue. If a follow-up was needed, its last commit body uses `Closes #14` instead of `Refs #14`.
 

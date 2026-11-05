@@ -51,20 +51,19 @@ public class PlatformStatusApiTests
         }
         """;
 
-    private static (PlatformStatus? Status, FakeHandler Handler) Fetch(
+    private static async Task<(PlatformStatus? Status, FakeHandler Handler)> Fetch(
         Func<HttpRequestMessage, HttpResponseMessage> respond, StatusSource? source = null)
     {
         var handler = new FakeHandler(respond);
         using var http = new HttpClient(handler);
-        var result = PlatformStatusApi.FetchAsync(http, source ?? TestSource(), Now, CancellationToken.None)
-            .GetAwaiter().GetResult();
+        var result = await PlatformStatusApi.FetchAsync(http, source ?? TestSource(), Now, CancellationToken.None);
         return (result, handler);
     }
 
     [Fact]
-    public void OpenAiShape_HasNoIncidentsKey_AndStillParses()
+    public async Task OpenAiShape_HasNoIncidentsKey_AndStillParses()
     {
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
         Assert.NotNull(s);
         Assert.Equal("openai", s!.SourceId);
         Assert.Equal("minor", s.Indicator);
@@ -73,15 +72,15 @@ public class PlatformStatusApiTests
     }
 
     [Fact]
-    public void Components_KeepOnlyTheNonOperational()
+    public async Task Components_KeepOnlyTheNonOperational()
     {
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
         Assert.Equal(["Responses", "Codex API"], s!.Components.Select(c => c.Name));
         Assert.Equal(["degraded_performance", "partial_outage"], s.Components.Select(c => c.Status));
     }
 
     [Fact]
-    public void Components_SurviveMalformedEntries()
+    public async Task Components_SurviveMalformedEntries()
     {
         const string ragged = """
             {
@@ -94,21 +93,21 @@ public class PlatformStatusApiTests
               ]
             }
             """;
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, ragged));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, ragged));
         Assert.Equal(["Codex API"], s!.Components.Select(c => c.Name));
     }
 
     [Fact]
-    public void Request_GoesToTheSourcesOwnUrl()
+    public async Task Request_GoesToTheSourcesOwnUrl()
     {
-        var (_, h) = Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
+        var (_, h) = await Fetch(_ => Json(HttpStatusCode.OK, OpenAiShape), TestSource("openai", raisesBadge: false));
         Assert.Equal("https://status.openai.test/api/v2/summary.json", h.LastRequest!.RequestUri!.ToString());
     }
 
     [Fact]
-    public void AllOperational_Parses_AndIsNotDegraded()
+    public async Task AllOperational_Parses_AndIsNotDegraded()
     {
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, AllOperational));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, AllOperational));
         Assert.NotNull(s);
         Assert.Equal(Now, s!.FetchedAt);
         Assert.Equal("none", s.Indicator);
@@ -118,16 +117,16 @@ public class PlatformStatusApiTests
     }
 
     [Fact]
-    public void Request_HasExactUrlAndUserAgent_NoAuthorization()
+    public async Task Request_HasExactUrlAndUserAgent_NoAuthorization()
     {
-        var (_, h) = Fetch(_ => Json(HttpStatusCode.OK, AllOperational));
+        var (_, h) = await Fetch(_ => Json(HttpStatusCode.OK, AllOperational));
         Assert.Equal("https://status.claude.test/api/v2/summary.json", h.LastRequest!.RequestUri!.ToString());
         Assert.StartsWith("ClaudeUsageTray/", h.LastRequest.Headers.UserAgent.ToString());
         Assert.Null(h.LastRequest.Headers.Authorization);
     }
 
     [Fact]
-    public void Degraded_ParsesIncidents_WithAndWithoutComponents()
+    public async Task Degraded_ParsesIncidents_WithAndWithoutComponents()
     {
         const string body = """
             {
@@ -141,7 +140,7 @@ public class PlatformStatusApiTests
               ]
             }
             """;
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
         Assert.NotNull(s);
         Assert.True(s!.Degraded);
         Assert.Equal("Major outage", s.Description);
@@ -164,7 +163,7 @@ public class PlatformStatusApiTests
     }
 
     [Fact]
-    public void Incident_MissingName_IsSkipped_OthersKept()
+    public async Task Incident_MissingName_IsSkipped_OthersKept()
     {
         const string body = """
             { "status": { "indicator": "minor", "description": "Minor outage" },
@@ -172,55 +171,55 @@ public class PlatformStatusApiTests
                 { "status": "monitoring", "impact": "minor" },
                 { "name": "Slow responses", "status": "monitoring" } ] }
             """;
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
         var incident = Assert.Single(s!.Incidents);
         Assert.Equal("Slow responses", incident.Name);
     }
 
     [Fact]
-    public void Incident_MissingStatus_FallsBackToUnknown()
+    public async Task Incident_MissingStatus_FallsBackToUnknown()
     {
         const string body = """
             { "status": { "indicator": "minor", "description": "Minor outage" },
               "incidents": [ { "name": "Something is off" } ] }
             """;
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
         Assert.Equal("unknown", Assert.Single(s!.Incidents).Status);
     }
 
     [Fact]
-    public void Incident_MalformedUpdatedAt_IsKeptWithNullTimestamp()
+    public async Task Incident_MalformedUpdatedAt_IsKeptWithNullTimestamp()
     {
         const string body = """
             { "status": { "indicator": "minor", "description": "Minor outage" },
               "incidents": [ { "name": "Something is off", "status": "monitoring",
                                 "updated_at": "yesterday" } ] }
             """;
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
         var incident = Assert.Single(s!.Incidents);
         Assert.Equal("Something is off", incident.Name);
         Assert.Null(incident.UpdatedAt);
     }
 
     [Fact]
-    public void MissingStatusObject_ReturnsNull()
-        => Assert.Null(Fetch(_ => Json(HttpStatusCode.OK, """{ "incidents": [] }""")).Status);
+    public async Task MissingStatusObject_ReturnsNull()
+        => Assert.Null((await Fetch(_ => Json(HttpStatusCode.OK, """{ "incidents": [] }"""))).Status);
 
     [Fact]
-    public void MissingIndicator_ReturnsNull()
-        => Assert.Null(Fetch(_ => Json(HttpStatusCode.OK,
-            """{ "status": { "description": "All Systems Operational" } }""")).Status);
+    public async Task MissingIndicator_ReturnsNull()
+        => Assert.Null((await Fetch(_ => Json(HttpStatusCode.OK,
+            """{ "status": { "description": "All Systems Operational" } }"""))).Status);
 
     [Theory]
     [InlineData("[1]")]
     [InlineData("42")]
     [InlineData("\"text\"")]
-    public void NonObjectRoot_ReturnsNull(string body)
-        => Assert.Null(Fetch(_ => Json(HttpStatusCode.OK, body)).Status);
+    public async Task NonObjectRoot_ReturnsNull(string body)
+        => Assert.Null((await Fetch(_ => Json(HttpStatusCode.OK, body))).Status);
 
     [Fact]
-    public void MalformedBody_ReturnsNull()
-        => Assert.Null(Fetch(_ => Json(HttpStatusCode.OK, "{ not json")).Status);
+    public async Task MalformedBody_ReturnsNull()
+        => Assert.Null((await Fetch(_ => Json(HttpStatusCode.OK, "{ not json"))).Status);
 
     private const string ClaudeSixComponents = """
         {
@@ -239,10 +238,40 @@ public class PlatformStatusApiTests
         }
         """;
 
-    [Fact]
-    public void ComponentNames_CarryEveryComponent_InArrayOrder()
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    [InlineData("1", false)]
+    [InlineData("\"true\"", false)]
+    [InlineData("null", false)]
+    public async Task Components_OnlyBooleanTrueMarksAGroup(string group, bool excluded)
     {
-        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
+        var body = "{\"status\":{\"indicator\":\"major\"},\"components\":[" +
+            "{\"name\":\"Products\",\"status\":\"major_outage\",\"group\":" + group + "}," +
+            "{\"name\":\"Claude Code\",\"status\":\"major_outage\"}]}";
+        var (status, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
+        var expected = excluded ? new[] { "Claude Code" } : ["Products", "Claude Code"];
+        Assert.Equal(expected, status!.ComponentNames);
+        Assert.Equal(expected, status.Components.Select(c => c.Name));
+    }
+
+    [Fact]
+    public async Task Components_UnnamedGroupIsIgnored()
+    {
+        const string body = """
+            { "status": { "indicator": "major" }, "components": [
+              { "group": true, "status": "major_outage" },
+              { "name": "Claude Code", "status": "major_outage" } ] }
+            """;
+        var (status, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
+        Assert.Equal(["Claude Code"], status!.ComponentNames);
+        Assert.Equal(["Claude Code"], status.Components.Select(c => c.Name));
+    }
+
+    [Fact]
+    public async Task ComponentNames_CarryEveryComponent_InArrayOrder()
+    {
+        var (status, _) = await Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
         Assert.Equal(
             ["claude.ai", "Claude Console (platform.claude.com)", "Claude API (api.anthropic.com)",
              "Claude Code", "Claude Cowork", "Claude for Government"],
@@ -253,35 +282,35 @@ public class PlatformStatusApiTests
     /// incident's component list, so offering its name as a filter token would hand the user a token
     /// that matches nothing.</summary>
     [Fact]
-    public void ComponentNames_ExcludeGroups()
+    public async Task ComponentNames_ExcludeGroups()
     {
-        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
+        var (status, _) = await Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
         Assert.DoesNotContain("Products", status!.ComponentNames);
     }
 
     /// <summary>Components keeps its "no caller can render a wall of healthy components" guarantee.</summary>
     [Fact]
-    public void Components_StillCarryOnlyTheNonOperationalEntry()
+    public async Task Components_StillCarryOnlyTheNonOperationalEntry()
     {
-        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
+        var (status, _) = await Fetch(_ => Json(HttpStatusCode.OK, ClaudeSixComponents));
         Assert.Equal(["Claude Cowork"], status!.Components.Select(c => c.Name));
     }
 
     [Fact]
-    public void PayloadWithNoComponentsKey_YieldsBothEmpty()
+    public async Task PayloadWithNoComponentsKey_YieldsBothEmpty()
     {
         const string body = """
             { "status": { "indicator": "none", "description": "All Systems Operational" }, "incidents": [] }
             """;
-        var (status, _) = Fetch(_ => Json(HttpStatusCode.OK, body));
+        var (status, _) = await Fetch(_ => Json(HttpStatusCode.OK, body));
         Assert.Empty(status!.ComponentNames);
         Assert.Empty(status.Components);
     }
 
     [Fact]
-    public void UnknownIndicator_IsDegraded()
+    public async Task UnknownIndicator_IsDegraded()
     {
-        var (s, _) = Fetch(_ => Json(HttpStatusCode.OK,
+        var (s, _) = await Fetch(_ => Json(HttpStatusCode.OK,
             """{ "status": { "indicator": "weird-new-value", "description": "Whatever" } }"""));
         Assert.NotNull(s);
         Assert.True(s!.Degraded);
@@ -291,34 +320,34 @@ public class PlatformStatusApiTests
     [Theory]
     [InlineData(HttpStatusCode.NotFound)]
     [InlineData(HttpStatusCode.ServiceUnavailable)]
-    public void NonSuccess_ReturnsNull(HttpStatusCode status)
-        => Assert.Null(Fetch(_ => Json(status, AllOperational)).Status);
+    public async Task NonSuccess_ReturnsNull(HttpStatusCode status)
+        => Assert.Null((await Fetch(_ => Json(status, AllOperational))).Status);
 
     [Fact]
-    public void Timeout_ReturnsNull_NeverThrows()
+    public async Task Timeout_ReturnsNull_NeverThrows()
     {
         // HttpClient surfaces a timeout as a TaskCanceledException.
         var handler = new FakeHandler(_ => throw new TaskCanceledException());
         using var http = new HttpClient(handler);
-        var r = PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None).GetAwaiter().GetResult();
+        var r = await PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None);
         Assert.Null(r);
     }
 
     [Fact]
-    public void NetworkException_ReturnsNull_NeverThrows()
+    public async Task NetworkException_ReturnsNull_NeverThrows()
     {
         var handler = new FakeHandler(_ => throw new HttpRequestException("boom"));
         using var http = new HttpClient(handler);
-        var r = PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None).GetAwaiter().GetResult();
+        var r = await PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None);
         Assert.Null(r);
     }
 
     [Fact]
-    public void IOException_ReturnsNull_NeverThrows()
+    public async Task IOException_ReturnsNull_NeverThrows()
     {
         var handler = new FakeHandler(_ => throw new IOException("stream died"));
         using var http = new HttpClient(handler);
-        var r = PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None).GetAwaiter().GetResult();
+        var r = await PlatformStatusApi.FetchAsync(http, TestSource(), Now, CancellationToken.None);
         Assert.Null(r);
     }
 }

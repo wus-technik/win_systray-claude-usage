@@ -1,6 +1,8 @@
 # Setup Stub Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Ship `ClaudeUsageTraySetup.exe`, a ~2 MB NativeAOT launcher at one permanent GitHub URL that installs Claude Usage Tray on the stable or beta ring, switches the ring of an existing install, and is scriptable for unattended deployment via `--ring` / `--silent`.
 
@@ -83,7 +85,7 @@ Fifteen tasks. Tasks 1–10 are the pure units, each with its own tests; 11–12
   - `public static class Rings` — `string Channel(Ring)`, `Ring FromChannel(string?)`, `string SetupAssetName(string channel)`, `Uri LatestAssetUrl(string channel)`, `const string Repository = "wus-technik/win_systray-claude-usage"`, `const string ProductName = "Claude Usage Tray"`.
   - `public static class ExitCode` — `Converged = 0`, `BadArguments = 3001`, `ResolutionFailed = 3002`, `DownloadFailed = 3003`, `AmbiguousRequest = 3004`, `AppControlFailed = 3005`, `Cancelled = 3006`.
 
-- [ ] **Step 1: Create the stub project**
+- [x] **Step 1: Create the stub project**
 
 `src/ClaudeUsageTraySetupStub/ClaudeUsageTraySetupStub.csproj`:
 
@@ -164,7 +166,7 @@ internal static class Program
 }
 ```
 
-- [ ] **Step 2: Create the test project and add both to the solution**
+- [x] **Step 2: Create the test project and add both to the solution**
 
 `tests/ClaudeUsageTraySetupStub.Tests/ClaudeUsageTraySetupStub.Tests.csproj`:
 
@@ -194,7 +196,7 @@ dotnet build ClaudeUsageTray.sln
 
 Expected: build succeeds (the stub is an empty WinExe; the test project has no tests yet). If the sln tool nests the test project under a `tests` solution folder, that is fine.
 
-- [ ] **Step 3: Write the failing tests**
+- [x] **Step 3: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/RingsTests.cs`:
 
@@ -250,12 +252,12 @@ public class RingsTests
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they fail**
+- [x] **Step 4: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~RingsTests`
 Expected: build FAILS with `CS0246: The type or namespace name 'Rings' could not be found` (and `ExitCode`).
 
-- [ ] **Step 5: Implement `ExitCode` and `Rings`**
+- [x] **Step 5: Implement `ExitCode` and `Rings`**
 
 `src/ClaudeUsageTraySetupStub/ExitCode.cs`:
 
@@ -317,12 +319,12 @@ public static class Rings
 }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~RingsTests`
 Expected: PASS, 9 tests.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add ClaudeUsageTray.sln src/ClaudeUsageTraySetupStub tests/ClaudeUsageTraySetupStub.Tests
@@ -349,7 +351,7 @@ Refs #21"
   - `public sealed record ParseResult(StubOptions? Options, string? Error)` — exactly one is non-null.
   - `public static class CliArgs` — `ParseResult Parse(string[] args, string? environmentToken)`, `const string Usage`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/CliArgsTests.cs`:
 
@@ -454,12 +456,12 @@ public class CliArgsTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~CliArgsTests`
 Expected: build FAILS with `CS0246 ... 'CliArgs'`.
 
-- [ ] **Step 3: Implement `CliArgs`**
+- [x] **Step 3: Implement `CliArgs`**
 
 `src/ClaudeUsageTraySetupStub/CliArgs.cs`:
 
@@ -549,12 +551,12 @@ public static class CliArgs
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~CliArgsTests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/CliArgs.cs tests/ClaudeUsageTraySetupStub.Tests/CliArgsTests.cs
@@ -574,7 +576,7 @@ Refs #21"
 **Interfaces:**
 - Produces: `public sealed class SemVer : IComparable<SemVer>` with `int Major, Minor, Patch`, `IReadOnlyList<string> Prerelease`, `bool IsPrerelease`, `static SemVer? TryParse(string? text)` (accepts a leading `v`, strips `+build`, returns null for anything else), `int CompareTo(SemVer?)`, `ToString()` (`0.7.2-beta.1`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/SemVerTests.cs`:
 
@@ -638,12 +640,12 @@ public class SemVerTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~SemVerTests`
 Expected: build FAILS with `CS0246 ... 'SemVer'`.
 
-- [ ] **Step 3: Implement `SemVer`**
+- [x] **Step 3: Implement `SemVer`**
 
 `src/ClaudeUsageTraySetupStub/SemVer.cs`:
 
@@ -719,12 +721,12 @@ public sealed partial class SemVer : IComparable<SemVer>
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~SemVerTests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/SemVer.cs tests/ClaudeUsageTraySetupStub.Tests/SemVerTests.cs
@@ -751,7 +753,7 @@ Refs #21"
   - `public sealed record ResolvedBuild(Ring Ring, string Channel, SemVer? Version, Uri Url, string? Digest, ResolvedVia Via)` with `static ResolvedBuild LatestOnChannel(Ring ring)` (redirect URL, no version, no digest).
   - `public static class ReleaseSelection` — `ResolvedBuild? Select(IEnumerable<GitHubRelease> releases, Ring ring)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/ReleaseSelectionTests.cs`:
 
@@ -857,12 +859,12 @@ public class ReleaseSelectionTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~ReleaseSelectionTests`
 Expected: build FAILS (`GitHubRelease`, `ReleaseSelection`, `ResolvedBuild` unknown).
 
-- [ ] **Step 3: Implement the DTOs, JSON context, record and selection**
+- [x] **Step 3: Implement the DTOs, JSON context, record and selection**
 
 `src/ClaudeUsageTraySetupStub/GitHubReleases.cs`:
 
@@ -944,12 +946,12 @@ public sealed record ResolvedBuild(Ring Ring, string Channel, SemVer? Version, U
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~ReleaseSelectionTests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/GitHubReleases.cs src/ClaudeUsageTraySetupStub/ResolvedBuild.cs tests/ClaudeUsageTraySetupStub.Tests/ReleaseSelectionTests.cs
@@ -972,7 +974,7 @@ Refs #21"
 **Interfaces:**
 - Produces: `string ResolvedBuild.Describe()`; `public static class Wording` — `string SwitchStaged(Ring target)`, `string Installed(ResolvedBuild build)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/WordingTests.cs`:
 
@@ -1045,12 +1047,12 @@ public class WordingTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~WordingTests`
 Expected: build FAILS (`Describe`, `Wording` unknown).
 
-- [ ] **Step 3: Add `Describe` and `Wording`**
+- [x] **Step 3: Add `Describe` and `Wording`**
 
 Append to the `ResolvedBuild` record body in `src/ClaudeUsageTraySetupStub/ResolvedBuild.cs`:
 
@@ -1097,12 +1099,12 @@ public static class Wording
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~WordingTests`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/ResolvedBuild.cs tests/ClaudeUsageTraySetupStub.Tests/WordingTests.cs
@@ -1131,7 +1133,7 @@ Refs #21"
   - `public sealed record ResolveResult(ResolvedBuild? Build, ResolveFailure Failure, string Detail)`
   - `public static class ReleaseResolver` — `const string ReleasesApiUrl`, `Task<ResolveResult> ResolveAsync(HttpClient http, Ring ring, string? token, bool silent, IReadOnlyList<TimeSpan> retryDelays, CancellationToken ct)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/ReleaseResolverTests.cs`:
 
@@ -1291,12 +1293,12 @@ public class ReleaseResolverTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~ReleaseResolverTests`
 Expected: build FAILS (`ReleaseResolver`, `ResolveFailure` unknown).
 
-- [ ] **Step 3: Implement `HttpRetry` and `ReleaseResolver`**
+- [x] **Step 3: Implement `HttpRetry` and `ReleaseResolver`**
 
 `src/ClaudeUsageTraySetupStub/HttpRetry.cs`:
 
@@ -1419,12 +1421,12 @@ public static class ReleaseResolver
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~ReleaseResolverTests`
 Expected: PASS, 13 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/HttpRetry.cs src/ClaudeUsageTraySetupStub/ReleaseResolver.cs tests/ClaudeUsageTraySetupStub.Tests/ReleaseResolverTests.cs
@@ -1452,7 +1454,7 @@ Refs #21"
   - `public enum VerifyOutcome { Ok, Empty, NotExecutable, DigestMismatch }`
   - `public static class DownloadVerification` — `VerifyOutcome Verify(string path, string? expectedDigest)`, `bool DigestMatches(string expected, string actualSha256Hex)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/DownloaderTests.cs`:
 
@@ -1604,12 +1606,12 @@ public class DownloaderTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~DownloaderTests`
 Expected: build FAILS (`Downloader`, `DownloadVerification` unknown).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ClaudeUsageTraySetupStub/Downloader.cs`:
 
@@ -1697,12 +1699,12 @@ public static class DownloadVerification
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~DownloaderTests`
 Expected: PASS, 11 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/Downloader.cs tests/ClaudeUsageTraySetupStub.Tests/DownloaderTests.cs
@@ -1731,7 +1733,7 @@ Refs #21"
   - `public static class InstallDetection` — `InstallInfo? Detect(string root, Func<string?> uninstallKeyVersion)`, `string? ReadUninstallKeyVersion()` (HKCU registry; the production `Func`).
   - `public static class CurrentRing` — `Ring Resolve(bool? useBetaReleases, string? manifestChannel)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/InstallStateTests.cs`:
 
@@ -1831,12 +1833,12 @@ public class InstallStateTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~InstallStateTests`
 Expected: build FAILS.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ClaudeUsageTraySetupStub/InstallState.cs`:
 
@@ -1948,12 +1950,12 @@ public static class CurrentRing
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~InstallStateTests`
 Expected: PASS, 16 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/InstallState.cs tests/ClaudeUsageTraySetupStub.Tests/InstallStateTests.cs
@@ -1983,7 +1985,7 @@ Refs #21"
   - `public enum SettingsWriteStatus { Written, Malformed, WrongType, IoError, ReadBackMismatch }`
   - `public static class SettingsFile` — `string DefaultPath` (`%APPDATA%\ClaudeUsageTray\settings.json`), `SettingsReadResult Read(string path)`, `SettingsWriteStatus Write(string path, bool useBetaReleases)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/SettingsEditTests.cs`:
 
@@ -2152,12 +2154,12 @@ public class SettingsEditTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~SettingsEditTests`
 Expected: build FAILS.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ClaudeUsageTraySetupStub/SettingsEdit.cs`:
 
@@ -2290,12 +2292,12 @@ public static class SettingsFile
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~SettingsEditTests`
 Expected: PASS, 24 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/SettingsEdit.cs tests/ClaudeUsageTraySetupStub.Tests/SettingsEditTests.cs
@@ -2322,7 +2324,7 @@ Refs #21"
   - `public sealed record Decision(Step Step, Ring Ring)` — for `AskRing`, `Ring` is the radio button to preselect; for `Ambiguous` it is the current ring (for the message).
   - `public static class Flow` — `Decision Decide(StubOptions options, InstallInfo? installed, Ring? currentRing)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/ClaudeUsageTraySetupStub.Tests/DecisionTests.cs`:
 
@@ -2377,12 +2379,12 @@ public class DecisionTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~DecisionTests`
 Expected: build FAILS.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `src/ClaudeUsageTraySetupStub/Decision.cs`:
 
@@ -2423,17 +2425,17 @@ public static class Flow
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~DecisionTests`
 Expected: PASS.
 
-- [ ] **Step 5: Run the whole stub test project**
+- [x] **Step 5: Run the whole stub test project**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests`
 Expected: PASS, all green. Also `dotnet test` at the solution root must still pass the app's tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/Decision.cs tests/ClaudeUsageTraySetupStub.Tests/DecisionTests.cs
@@ -2464,7 +2466,7 @@ The shell around the pure functions. Only the two pure helpers on `ProcessContro
   - `internal static class NativeProcess` — `StartedProcess? Start(string exe, string arguments, bool tryBreakaway)`.
   - `public static class ProcessControl` — pure: `bool MustRefuseContext(bool isLocalSystem, int sessionId)`, `bool IsInsideRoot(string? path, string root)`; shell: `bool IsRefusedContext()`, `bool IsTrayMutexHeld()`, `(List<Process> Installed, List<Process> Other) FindTray(string root)`, `bool IsUpdateApplying(string root)`, `bool StopTray(IReadOnlyList<Process> processes, TimeSpan timeout)`, `bool RelaunchTray(string root)`.
 
-- [ ] **Step 1: Write the failing tests for the pure helpers**
+- [x] **Step 1: Write the failing tests for the pure helpers**
 
 `tests/ClaudeUsageTraySetupStub.Tests/ProcessControlTests.cs`:
 
@@ -2495,12 +2497,12 @@ public class ProcessControlTests
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~ProcessControlTests`
 Expected: build FAILS.
 
-- [ ] **Step 3: Implement the four files**
+- [x] **Step 3: Implement the four files**
 
 `src/ClaudeUsageTraySetupStub/SetupLog.cs`:
 
@@ -2768,12 +2770,12 @@ public static class ProcessControl
 }
 ```
 
-- [ ] **Step 4: Run the tests and build**
+- [x] **Step 4: Run the tests and build**
 
 Run: `dotnet test tests/ClaudeUsageTraySetupStub.Tests --filter FullyQualifiedName~ProcessControlTests`
 Expected: PASS, 9 tests, and the stub project compiles with no AOT analyzer warnings (`IL3050`/`IL2026`). If `Process.MainModule` produces an `IL` warning, it is informational for this Windows-only path; do not suppress it globally.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/SetupLog.cs src/ClaudeUsageTraySetupStub/ConsoleOutput.cs src/ClaudeUsageTraySetupStub/NativeProcess.cs src/ClaudeUsageTraySetupStub/ProcessControl.cs tests/ClaudeUsageTraySetupStub.Tests/ProcessControlTests.cs
@@ -2798,7 +2800,7 @@ No decisions live here — the strings come from `ResolvedBuild.Describe`, `Word
 - Consumes: `Ring`, `InstallInfo`, `Rings.ProductName`.
 - Produces: `internal static class Wizard` — `const string Title = "Claude Usage Tray Setup"`, `Ring? ChooseRing(Ring preselected, InstallInfo? installed, Ring? currentRing)` (null = cancelled), `bool? RunWithProgress(string instruction, string content, Func<IProgress<double>, CancellationToken, Task<bool>> work)` (null = cancelled), `void Info(string instruction, string content)`, `void Warning(string instruction, string content)`, `void Error(string instruction, string content)`.
 
-- [ ] **Step 1: Implement**
+- [x] **Step 1: Implement**
 
 `src/ClaudeUsageTraySetupStub/Wizard.cs`:
 
@@ -3033,12 +3035,12 @@ internal static unsafe class Wizard
 }
 ```
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run: `dotnet build src/ClaudeUsageTraySetupStub`
 Expected: succeeds. `sizeof(TaskDialogConfig)` is a compile-time constant in unsafe context; if the compiler rejects `sizeof` on the struct, mark the struct fields blittable-only (they already are: `uint`, `int`, `IntPtr`).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/Wizard.cs
@@ -3064,7 +3066,7 @@ The orchestration. Every branch below calls a function tested in Tasks 1–10; t
 - Consumes: everything above.
 - Produces: `internal sealed class SetupRun(StubOptions options, SetupLog log, HttpClient http)` — `Task<int> RunAsync()`; `Program.Main` returns the exit code.
 
-- [ ] **Step 1: Implement `SetupRun`**
+- [x] **Step 1: Implement `SetupRun`**
 
 `src/ClaudeUsageTraySetupStub/SetupRun.cs`:
 
@@ -3253,7 +3255,7 @@ internal sealed class SetupRun(StubOptions options, SetupLog log, HttpClient htt
 }
 ```
 
-- [ ] **Step 2: Replace `Program.cs`**
+- [x] **Step 2: Replace `Program.cs`**
 
 `src/ClaudeUsageTraySetupStub/Program.cs`:
 
@@ -3322,7 +3324,7 @@ internal static class Program
 }
 ```
 
-- [ ] **Step 3: Build and smoke-test from source**
+- [x] **Step 3: Build and smoke-test from source**
 
 ```powershell
 dotnet build ClaudeUsageTray.sln
@@ -3344,7 +3346,7 @@ Expected: `3004`, and a `state: installed 0.7.2 channel=win ...` line followed b
 
 Interactive check: `dotnet run --project src/ClaudeUsageTraySetupStub` must show the ring page with **Stable** preselected and the installed version in the text; Cancel must exit `3006`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ClaudeUsageTraySetupStub/SetupRun.cs src/ClaudeUsageTraySetupStub/Program.cs
@@ -3364,7 +3366,7 @@ Refs #21"
 **Interfaces:**
 - Produces the canonical URL `https://github.com/wus-technik/win_systray-claude-usage/releases/download/setup-stub/ClaudeUsageTraySetup.exe` and a copy of the same bytes on every `v*` release.
 
-- [ ] **Step 1: Create the stub workflow**
+- [x] **Step 1: Create the stub workflow**
 
 `.github/workflows/setup-stub.yml`:
 
@@ -3460,7 +3462,7 @@ jobs:
           Write-Host "/releases/latest -> $latest"
 ```
 
-- [ ] **Step 2: Modify `release.yml`**
+- [x] **Step 2: Modify `release.yml`**
 
 Add this step directly after the existing `Test` step:
 
@@ -3498,7 +3500,7 @@ Add this step at the very end of the job, after `Upload and publish release`:
           if ($LASTEXITCODE -ne 0) { throw "could not attach ClaudeUsageTraySetup.exe to v$env:VERSION" }
 ```
 
-- [ ] **Step 3: Validate the YAML locally and check the action majors**
+- [x] **Step 3: Validate the YAML locally and check the action majors**
 
 ```powershell
 # Both workflows use the same action majors the repo already pins (checkout@v7, setup-dotnet@v6);
@@ -3509,7 +3511,7 @@ gh api repos/actions/setup-dotnet/contents/action.yml?ref=v6 --jq .content | % {
 
 Expected: both print `using: 'node24'`. If either does not, pin the major that does.
 
-- [ ] **Step 4: Commit and push to a branch; run the workflow once by hand**
+- [x] **Step 4: Commit and push to a branch; run the workflow once by hand**
 
 ```bash
 git add .github/workflows/setup-stub.yml .github/workflows/release.yml
@@ -3540,7 +3542,7 @@ Expected: `isLatest: false`, one asset `ClaudeUsageTraySetup.exe`, and `/release
 - Modify: `README.md` (Install section, design-doc table)
 - Modify: `CLAUDE.md` (new section on the stub)
 
-- [ ] **Step 1: Rewrite the README install section**
+- [x] **Step 1: Rewrite the README install section**
 
 Replace the current `## Install` block (from `## Install` up to but excluding `## ` of the next section) with:
 
@@ -3609,7 +3611,7 @@ Also add a row to the design-docs table at the end of the README:
 | [`specs/2026-09-04-setup-stub-design.md`](docs/superpowers/specs/2026-09-04-setup-stub-design.md) | The version-independent setup launcher and ring switching |
 ```
 
-- [ ] **Step 2: Add the stub section to `CLAUDE.md`**
+- [x] **Step 2: Add the stub section to `CLAUDE.md`**
 
 Insert after the `## Releasing` section (before `## Design docs`):
 
@@ -3641,7 +3643,7 @@ downloads that release's channel `Setup.exe` and runs it; against an existing in
   `--silent` alone against any install must exit `3004`.
 ````
 
-- [ ] **Step 3: Check rendering and links**
+- [x] **Step 3: Check rendering and links**
 
 ```powershell
 git diff --stat
@@ -3650,7 +3652,7 @@ Select-String -Path README.md -Pattern 'setup-stub/ClaudeUsageTraySetup.exe'
 
 Expected: one canonical link in the README, the table row present, and the CLAUDE.md section between "Releasing" and "Design docs".
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md CLAUDE.md

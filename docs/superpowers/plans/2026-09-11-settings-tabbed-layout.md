@@ -1,6 +1,8 @@
 # Tabbed settings layout — implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the single vertical stack of sections in `SettingsDialog` with a four-page
 `TabControl`, so the window is as tall as its tallest section group rather than the sum of all of
@@ -59,7 +61,7 @@ exists and sizes the control to the largest — fixed, so switching tabs never r
   `static TabPage Page(string name, string text, Control content)`. Task 2 reads `_tabs` and each
   page's `Controls[0]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs` (inside the class, above the private
 helpers at the bottom). Add `using System.Linq;` and `using System.Windows.Forms;` only if the file
@@ -146,14 +148,14 @@ And these two private helpers next to the existing `Spinner` / `Button` helpers:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests"`
 Expected: `Fehler:` — `TheSettingsAreSplitAcrossFourTabs` and `EverySettingSitsOnItsOwnTab` fail
 because no control is named `tabs` (`Single()` throws on the empty match) and `PageOf` returns null
 for every control.
 
-- [ ] **Step 3: Add the tab control field**
+- [x] **Step 3: Add the tab control field**
 
 In `SettingsDialog.cs`, next to the other control fields (after `_notifyOpenAi`, before the
 `LevelLabels` array):
@@ -162,7 +164,7 @@ In `SettingsDialog.cs`, next to the other control fields (after `_notifyOpenAi`,
     private readonly TabControl _tabs = new() { Name = "tabs", Margin = new Padding(0, 0, 0, 4) };
 ```
 
-- [ ] **Step 4: Replace BuildLayout with the tab shell**
+- [x] **Step 4: Replace BuildLayout with the tab shell**
 
 Replace the whole existing `BuildLayout()` body with this, and add the `BuildTabs` / `Page` helpers
 directly below it:
@@ -221,7 +223,7 @@ directly below it:
     };
 ```
 
-- [ ] **Step 5: Move the sections into the four page builders**
+- [x] **Step 5: Move the sections into the four page builders**
 
 Add these below `PagePanel()`. Every line of section code is the old `BuildLayout()` body, moved —
 do not reword a caption or drop a heading.
@@ -338,7 +340,7 @@ do not reword a caption or drop a heading.
     }
 ```
 
-- [ ] **Step 6: Let the update tests reach the buttons they click**
+- [x] **Step 6: Let the update tests reach the buttons they click**
 
 `SettingsDialogUpdateTests` drives `checkUpdates` and `updateNow` with `PerformClick()`, which does
 nothing while those buttons sit on a hidden page. Add one line to its `Dialog()` helper
@@ -355,14 +357,14 @@ nothing while those buttons sit on a hidden page. Add one line to its `Dialog()`
 Nothing else in that file changes: every other call there reads a property or sets one, and neither
 is affected by the page being hidden.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsDialog"`
 Expected: `Bestanden!` — both `SettingsDialogTests` and `SettingsDialogUpdateTests`. If an *assertion*
 in an old test fails, a control lost its `Name` or was dropped in the move; fix the move, not the
 test. The only legitimate test edit is the one in Step 6.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs tests/ClaudeUsageTray.Tests/SettingsDialogUpdateTests.cs
@@ -395,7 +397,7 @@ Why `OnHandleCreated` and not the constructor: `TabControl.DisplayRectangle` —
 strip and borders cost — is only meaningful once the handle exists. Both test helpers call `Show()`,
 and `TrayApp` shows the dialog, so the hook always runs.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 
@@ -455,7 +457,7 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests.EveryPageFits|FullyQualifiedName~SettingsDialogTests.TheTabStrip"`
 Expected: `Fehler:` — the `TabControl` is still its default 200×100, so every page overflows it and
@@ -464,7 +466,7 @@ the four headers are wider than the control.
 `TheTabsAreShorterThanTheSectionsStacked` and `SwitchingTabsDoesNotResizeTheWindow` **pass already**
 at the default size; they are regression guards for what Step 3 must not break, not red tests.
 
-- [ ] **Step 3: Implement the sizing**
+- [x] **Step 3: Implement the sizing**
 
 Add to `SettingsDialog.cs`, below `BuildTabs()`:
 
@@ -521,7 +523,7 @@ identical before and after `Show()`), and the form re-lays out within the same c
 already at its final size. `OnLoad` would look safer and is wrong: it never fires for
 `CreateControl()`, which is exactly how the `CLAUDE.md` offscreen probe builds the dialog.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests"`
 Expected: `Bestanden!`
@@ -530,7 +532,7 @@ If `EveryPageFitsWithoutScrolling` is short by a few pixels, the frame is being 
 widen it in `FitTabsToLargestPage` by reading `_tabs.DisplayRectangle` *after* the assignment and
 adding the shortfall once; do not paper over it by relaxing the assertion.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs
@@ -564,7 +566,7 @@ run across the whole form no longer describes the tree. Each page gets its own a
 reading order; controls nested in a `Spinners` grid or the notify `FlowLayoutPanel` still ascend
 relative to each other, which is all the traversal needs.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 
@@ -612,7 +614,7 @@ Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 `(object)` on each `InlineData` array is load-bearing: without it the compiler treats the array as
 the `params object[]` itself and the test project fails to build with CS0182.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsDialogTests.FocusRuns"`
 Expected: `Fehler:` on the Status case — after Task 1 the flat run still gives `notifyUsage` and
@@ -622,7 +624,7 @@ walk therefore reaches the two status checkboxes **before** the usage row that i
 (The other three cases may already pass; the task is done when all four do, plus
 `TheButtonsAreReachedInOrder`.)
 
-- [ ] **Step 3: Replace the flat run with per-page runs**
+- [x] **Step 3: Replace the flat run with per-page runs**
 
 In `BuildButtons()`, delete the whole trailing block:
 
@@ -691,12 +693,12 @@ harmless and keeps the call free of a conditional.
 Leave the outer layout panel alone — `_tabs`, `_error` and the button row take ascending indices from
 `Controls.Add` in the order `BuildLayout` adds them, which is already the order they must be reached.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test --filter "FullyQualifiedName~SettingsDialog"`
 Expected: `Bestanden!`
 
-- [ ] **Step 5: Walk the dialog with the keyboard, offscreen**
+- [x] **Step 5: Walk the dialog with the keyboard, offscreen**
 
 Confirm the pages look right, per `CLAUDE.md` → "Verifying UI drawing without a human". Create
 `tests/ClaudeUsageTray.Tests/PageProbe.cs` as a **throwaway**:
@@ -748,7 +750,7 @@ Run: `dotnet test --filter "FullyQualifiedName~PageProbe"`, then look at the fou
 Check: no clipped captions, the preview bar is fully visible, the component hint labels wrap inside
 the page, and no page is wildly emptier than the tab control it sits in.
 
-- [ ] **Step 6: Delete the probe**
+- [x] **Step 6: Delete the probe**
 
 ```bash
 rm tests/ClaudeUsageTray.Tests/PageProbe.cs
@@ -756,12 +758,12 @@ rm tests/ClaudeUsageTray.Tests/PageProbe.cs
 
 It is a verification artifact, not a test. It must not be committed.
 
-- [ ] **Step 7: Run the whole suite**
+- [x] **Step 7: Run the whole suite**
 
 Run: `dotnet test --configuration Release`
 Expected: `Bestanden!` — this is what CI runs.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs

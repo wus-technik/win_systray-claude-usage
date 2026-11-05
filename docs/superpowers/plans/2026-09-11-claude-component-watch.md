@@ -1,6 +1,8 @@
 # Claude Component Watch Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Let the user pick which Claude status-page components they watch, in the settings dialog,
 and make the tray badge honour that choice.
@@ -58,7 +60,7 @@ the shape of anything a display path reads.
 - Produces: `PlatformStatus.ComponentNames` — `IReadOnlyList<string>`, an `init` property defaulting
   to `[]`. Read by Task 4 only.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/ClaudeUsageTray.Tests/PlatformStatusApiTests.cs`. The payload is modelled on the live
 `status.claude.com` summary of 2026-09-11, including the group entry StatusPage puts in the same
@@ -122,12 +124,12 @@ public void PayloadWithNoComponentsKey_YieldsBothEmpty()
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~PlatformStatusApiTests`
 Expected: compile error — `PlatformStatus` does not contain a definition for `ComponentNames`.
 
-- [ ] **Step 3: Add the member**
+- [x] **Step 3: Add the member**
 
 In `src/ClaudeUsageTray/Core/PlatformStatus.cs`, extend the record with an `init` property. It is a
 property rather than a seventh positional parameter so the eight existing construction sites (one
@@ -148,7 +150,7 @@ public sealed record PlatformStatus(
 }
 ```
 
-- [ ] **Step 4: Fill it in the same pass that builds `Components`**
+- [x] **Step 4: Fill it in the same pass that builds `Components`**
 
 In `src/ClaudeUsageTray/Core/PlatformStatusApi.cs`, change the return in `FetchAsync` from
 
@@ -188,17 +190,17 @@ and add, next to `ReadComponents`:
     }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~PlatformStatusApiTests`
 Expected: all pass (`Bestanden!`).
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 Run: `dotnet test`
 Expected: all pass. Nothing else reads `ComponentNames` yet, so nothing else can have moved.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/PlatformStatus.cs src/ClaudeUsageTray/Core/PlatformStatusApi.cs tests/ClaudeUsageTray.Tests/PlatformStatusApiTests.cs
@@ -229,7 +231,7 @@ attributed to a component the user excluded by name.
   (existing, unchanged).
 - Produces: `StatusMonitor.BadgeDegraded() -> bool` — same signature, filtered semantics.
 
-- [ ] **Step 1: Delete the test that locks in the old rule**
+- [x] **Step 1: Delete the test that locks in the old rule**
 
 `tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs:136-147` holds
 `BadgeDegraded_IgnoresAClaudeFilterThatExcludesTheAffectedComponent`, whose doc comment states the
@@ -242,7 +244,7 @@ While there, rename `BadgeDegraded_IgnoresNonBadgeSourcesAndTheFilter` (line 123
 `BadgeDegraded_IgnoresNonBadgeSources`. It still passes — its Claude filter is `[]` via `Both()` — but
 "AndTheFilter" now names the opposite of the rule.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs`. Note the existing file-level helpers
 (`T0`, `Claude`, `OpenAi`, `Both`, `Ok`) — these tests add their own, since they need a filtered
@@ -353,14 +355,14 @@ monitor and a Cowork-shaped payload:
     }
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusMonitorTests`
 Expected: FAIL — `CoworkDegraded_DoesNotBadgeAClaudeCodeWatcher` and
 `WideningTheFilterLightsTheBadgeWithoutARefetch` report `True` where `False` was expected (the badge
 still ignores the filter). The rest already pass.
 
-- [ ] **Step 4: Route the badge through `IsRelevant`**
+- [x] **Step 4: Route the badge through `IsRelevant`**
 
 In `src/ClaudeUsageTray/Core/StatusMonitor.cs`, replace `BadgeDegraded` and its doc comment:
 
@@ -378,12 +380,12 @@ In `src/ClaudeUsageTray/Core/StatusMonitor.cs`, replace `BadgeDegraded` and its 
                              && e.Status is { } s && StatusDetail.IsRelevant(s, e.Filter));
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusMonitorTests`
 Expected: all pass, the deleted test included — nothing in the file still asserts the old rule.
 
-- [ ] **Step 6: Add the badge/toast divergence pair**
+- [x] **Step 6: Add the badge/toast divergence pair**
 
 The two components of the divergence live in different classes, so the pair is asserted in one test
 per side. Append to `tests/ClaudeUsageTray.Tests/NotificationRulesStatusTests.cs`:
@@ -426,19 +428,19 @@ per side. Append to `tests/ClaudeUsageTray.Tests/NotificationRulesStatusTests.cs
     }
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~NotificationRulesStatusTests`
 Expected: all pass. Both are divergence guards placed after the implementation rather than red-phase
 tests; `WideningTheFilterRebaselinesInsteadOfToasting` is the one that pins the new behaviour.
 
-- [ ] **Step 8: Run the full suite**
+- [x] **Step 8: Run the full suite**
 
 Run: `dotnet test`
 Expected: all pass. If `StatusDetailRelevanceTests` or the popup tests moved, stop — the badge change
 is not supposed to touch any other display path.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusMonitor.cs tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs tests/ClaudeUsageTray.Tests/NotificationRulesStatusTests.cs
@@ -470,7 +472,7 @@ asymmetry than it creates. `_preview` and `_previewCaption` stay under **Colour 
   via `Controls.Find(name, searchAllChildren: true)`. `Draft()` writes all three fields of
   `StatusSources["claude"]`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`, next to the OpenAI ones. Reuse the
 file's existing `Dialog`, `Find<T>`, `Check` and `Button` helpers:
@@ -574,13 +576,13 @@ Delete the now-obsolete `ClaudeFilter_SurvivesTheRoundTrip` test in the same fil
 asserts the filter is "an advanced JSON-only key with no control here", which this task makes false,
 and `HandWrittenClaudeFilter_SurvivesAnUntouchedRoundTrip` covers the behaviour it protected.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogTests`
 Expected: FAIL — `Find<CheckBox>(d, "watchClaude")` returns null, so the helpers throw
 `NullReferenceException`.
 
-- [ ] **Step 3: Add the two controls**
+- [x] **Step 3: Add the two controls**
 
 In `src/ClaudeUsageTray/Tray/SettingsDialog.cs`, next to the OpenAI field declarations:
 
@@ -592,7 +594,7 @@ In `src/ClaudeUsageTray/Tray/SettingsDialog.cs`, next to the OpenAI field declar
         { Text = "Components (comma-separated, blank = all)", AutoSize = true };
 ```
 
-- [ ] **Step 4: Build the group in `BuildLayout`**
+- [x] **Step 4: Build the group in `BuildLayout`**
 
 Remove these three lines from the **Colour thresholds** block:
 
@@ -620,7 +622,7 @@ and insert a new group between the **Colour thresholds** block (which now ends w
 Note `_watchOpenAi` gains an `Indent(...)` it did not have before — it was a group heading in all but
 name; under a real heading it is a member like the rest.
 
-- [ ] **Step 5: Put the new controls in tab order**
+- [x] **Step 5: Put the new controls in tab order**
 
 In `BuildButtons`, insert the Claude pair before the OpenAI pair in the hand-written array so Tab
 reaches them in visual order:
@@ -634,7 +636,7 @@ reaches them in visual order:
             control.TabIndex = order++;
 ```
 
-- [ ] **Step 6: Load, wire and save the Claude entry**
+- [x] **Step 6: Load, wire and save the Claude entry**
 
 In `LoadFrom`, replace the single `_notifyClaude.Checked = …` line with the full block, placed just
 above the OpenAI lines it mirrors:
@@ -672,12 +674,12 @@ In `Draft()`, replace the "Claude has no enabled/components controls" block with
         };
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogTests`
 Expected: all pass.
 
-- [ ] **Step 8: Run the full suite**
+- [x] **Step 8: Run the full suite**
 
 Run: `dotnet test`
 Expected: all pass. `SettingsTests` in particular: a `claude` entry with `enabled: false` and a
@@ -715,7 +717,7 @@ the static `LoadJson(json)` (line 205) — so they are drop-in:
     }
 ```
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -751,7 +753,7 @@ on and narrow it, the moment the names are most wanted.
   `IReadOnlyDictionary<string, IReadOnlyList<string>> componentNames`, keyed by
   `StatusSource.Id`; new named labels `claudeComponentsHint` and `openAiComponentsHint`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 
@@ -816,12 +818,12 @@ Extend the file's `Dialog` helper with the new parameter:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogTests`
 Expected: compile error — `SettingsDialog` has no constructor taking seven arguments.
 
-- [ ] **Step 3: Add the hint labels and the constructor parameter**
+- [x] **Step 3: Add the hint labels and the constructor parameter**
 
 In `src/ClaudeUsageTray/Tray/SettingsDialog.cs`, next to the components boxes. `MaximumSize` with
 `AutoSize` makes the label wrap instead of stretching the auto-sized dialog to the width of six long
@@ -877,7 +879,7 @@ Add the helper next to the other static helpers:
             : "Page lists: not fetched yet";
 ```
 
-- [ ] **Step 4: Put the captions in the layout**
+- [x] **Step 4: Put the captions in the layout**
 
 In `BuildLayout`, extend the **Platform status** group so each hint sits under its own box:
 
@@ -895,7 +897,7 @@ In `BuildLayout`, extend the **Platform status** group so each hint sits under i
 
 The hints are labels and take no tab stop, so the `BuildButtons` array is unchanged.
 
-- [ ] **Step 5: Cache the names in `TrayApp` and pass them in**
+- [x] **Step 5: Cache the names in `TrayApp` and pass them in**
 
 In `src/ClaudeUsageTray/Tray/TrayApp.cs`, add the field next to `_statusMonitor`:
 
@@ -943,7 +945,7 @@ In `ShowSettings`, pass the cache:
             _componentNames);
 ```
 
-- [ ] **Step 6: Update the third construction site**
+- [x] **Step 6: Update the third construction site**
 
 There are exactly three `new SettingsDialog(` sites: `Tray/TrayApp.cs:503` (Step 5),
 `SettingsDialogTests.cs:22` (Step 1), and `SettingsDialogUpdateTests.cs:26`, which builds its own
@@ -956,17 +958,17 @@ with CS7036, so no filtered test run can pass. Change it to:
             new Dictionary<string, IReadOnlyList<string>>());
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialog`
 Expected: all pass — the filter covers both `SettingsDialogTests` and `SettingsDialogUpdateTests`.
 
-- [ ] **Step 8: Run the full suite**
+- [x] **Step 8: Run the full suite**
 
 Run: `dotnet test`
 Expected: all pass.
 
-- [ ] **Step 9: Verify the dialog draws**
+- [x] **Step 9: Verify the dialog draws**
 
 The layout changed, so check it renders rather than assuming. Write a throwaway probe under
 `tests/ClaudeUsageTray.Tests/`, capture with `Control.DrawToBitmap`, and **call `CreateControl()`,
@@ -1011,7 +1013,7 @@ over a couple of lines; the OpenAI four below it; the dialog no wider than befor
 320 px hint column. **Delete `SettingsDialogProbe.cs` afterwards** — it is a verification artifact,
 not a test.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs src/ClaudeUsageTray/Tray/TrayApp.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs tests/ClaudeUsageTray.Tests/SettingsDialogUpdateTests.cs
@@ -1036,7 +1038,7 @@ person deciding whether to install it.
 
 **Interfaces:** none — documentation only.
 
-- [ ] **Step 1: Update the README `statusSources` bullets**
+- [x] **Step 1: Update the README `statusSources` bullets**
 
 In the `### statusSources` section, replace the `enabled` bullet so it names both toggles:
 
@@ -1045,7 +1047,7 @@ In the `### statusSources` section, replace the `enabled` bullet so it names bot
   lists are in **Settings → Platform status**.
 ```
 
-- [ ] **Step 2: Rewrite the badge paragraph**
+- [x] **Step 2: Rewrite the badge paragraph**
 
 Replace the paragraph beginning **"Only Claude's status can mark the tray icon."** with:
 
@@ -1064,7 +1066,7 @@ changing the filter re-decides the badge on the spot with no refetch — silentl
 is not news worth a toast.
 ```
 
-- [ ] **Step 3: Fix the Notifications section's OpenAI-only claim**
+- [x] **Step 3: Fix the Notifications section's OpenAI-only claim**
 
 `README.md:315` still reads *"For OpenAI only the watched components count, so a Sora outage stays
 quiet while a Codex one does not."* After Task 2 that is true for Claude as well, and "For OpenAI
@@ -1078,7 +1080,7 @@ only" now reads as an explicit denial of the new behaviour. Replace that sentenc
 The `statusSources` table row at `README.md:269` is deliberately left as it is — "which of their
 components matter" is still an accurate summary of the key.
 
-- [ ] **Step 4: Update the superseded spec bullet**
+- [x] **Step 4: Update the superseded spec bullet**
 
 In `docs/superpowers/specs/2026-08-26-platform-status-design.md`, replace the bullet beginning
 `- A "minor" incident on any component on the page`:
@@ -1095,7 +1097,7 @@ In `docs/superpowers/specs/2026-08-26-platform-status-design.md`, replace the bu
   only which disruptions count.
 ```
 
-- [ ] **Step 5: Add the changelog entry**
+- [x] **Step 5: Add the changelog entry**
 
 Add an `## [Unreleased]` section above `## [0.7.3-beta.4]` in `CHANGELOG.md` (or extend it if one
 already exists):
@@ -1115,7 +1117,7 @@ already exists):
   nothing changes unless you narrow the list yourself.
 ```
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run: `dotnet test`
 Expected: all pass (documentation only, but the branch must be green before it is called done).
@@ -1124,7 +1126,7 @@ Re-read the three edited passages against
 `docs/superpowers/specs/2026-09-11-claude-component-watch-design.md` §2 and §4. The README must not
 promise anywhere that the badge ignores the filter.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add README.md CHANGELOG.md docs/superpowers/specs/2026-08-26-platform-status-design.md

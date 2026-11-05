@@ -1,6 +1,8 @@
 # v0.2 Filled-Badge Icons Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the too-fine progress-ring tray icons with filled-badge icons that are legible at 16 px on dark and light taskbars (spec: `docs/superpowers/specs/2026-07-24-icon-readability-design.md`, fixes issue #2).
 
@@ -38,12 +40,12 @@ docs/icon-preview.html                        (Task 2: badge preview geometry)
 - Consumes: `Severity` from `ClaudeUsageTray.Core` (unchanged).
 - Produces: same three public members as before with identical signatures; only rendering output differs. `TrayApp` needs no changes.
 
-- [ ] **Step 1: Run the existing icon tests to confirm the green baseline**
+- [x] **Step 1: Run the existing icon tests to confirm the green baseline**
 
 Run: `dotnet test --filter IconRendererTests`
 Expected: PASS (10 tests). These same tests are the regression net for the rewrite; they are geometry-agnostic (size, non-blankness, clamp-no-throw, min-16 metric).
 
-- [ ] **Step 2: Replace `src/ClaudeUsageTray/Tray/IconRenderer.cs` entirely**
+- [x] **Step 2: Replace `src/ClaudeUsageTray/Tray/IconRenderer.cs` entirely**
 
 ```csharp
 using System.Drawing.Drawing2D;
@@ -144,17 +146,17 @@ public static class IconRenderer
 }
 ```
 
-- [ ] **Step 3: Run the icon tests again — they must pass unmodified**
+- [x] **Step 3: Run the icon tests again — they must pass unmodified**
 
 Run: `dotnet test --filter IconRendererTests`
 Expected: PASS (10 tests), zero edits to the test file.
 
-- [ ] **Step 4: Run the full suite (regression)**
+- [x] **Step 4: Run the full suite (regression)**
 
 Run: `dotnet test`
 Expected: PASS (73 tests), build warning-free.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/ClaudeUsageTray/Tray/IconRenderer.cs
@@ -174,7 +176,7 @@ git commit -m "feat: filled-badge tray icons readable at 16px on dark and light 
 - Consumes: the badge design from Task 1 (visual parity only — no code dependency).
 - Produces: docs consistent with the shipped renderer; version ready for the `v0.2.0` tag.
 
-- [ ] **Step 1: Update the README icon wording (both occurrences)**
+- [x] **Step 1: Update the README icon wording (both occurrences)**
 
 In `README.md`:
 
@@ -204,7 +206,7 @@ with
 
 c) Verify no ring wording remains: `grep -in "ring" README.md` must return no icon-design matches (the grey `—` no-data line is already correct — the em-dash glyph is unchanged from v0.1).
 
-- [ ] **Step 2: Update `docs/icon-preview.html` to the badge design**
+- [x] **Step 2: Update `docs/icon-preview.html` to the badge design**
 
 a) Replace the `arcIcon` function (the whole `function arcIcon(letter, pct, dir, scale, opts) { ... }` block) with:
 
@@ -269,7 +271,7 @@ c) Wording updates:
 
 d) Open the file in a browser (or re-render mentally) — badges must show: translucent disc + solid wedge + white halo'd digit. This is a sanity look, not a gate; the binding visual check happens against the production renderer.
 
-- [ ] **Step 3: Bump the version**
+- [x] **Step 3: Bump the version**
 
 In `src/ClaudeUsageTray/ClaudeUsageTray.csproj`, change:
 
@@ -283,12 +285,12 @@ to
     <Version>0.2.0</Version>
 ```
 
-- [ ] **Step 4: Build and full test suite (regression)**
+- [x] **Step 4: Build and full test suite (regression)**
 
 Run: `dotnet test`
 Expected: PASS (73 tests), build warning-free.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add README.md docs/icon-preview.html src/ClaudeUsageTray/ClaudeUsageTray.csproj

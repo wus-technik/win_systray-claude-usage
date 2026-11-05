@@ -1,6 +1,8 @@
 # Scoped Limits and Credit Usage Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Show per-model/per-surface weekly usage limits and extra-usage credit spend in the tray's left-click popup, parsed from the `limits[]` and `spend` blocks of the Claude usage payload.
 
@@ -35,12 +37,12 @@ Pure refactor. `ReadWindow` currently inlines double-rounding and ISO date parsi
 - Consumes: nothing.
 - Produces: `internal static int? UsageJson.ReadRoundedPercent(JsonElement parent, string name)` and `internal static DateTimeOffset? UsageJson.ReadResetsAt(JsonElement element)`.
 
-- [ ] **Step 1: Confirm the existing suite is green before touching anything**
+- [x] **Step 1: Confirm the existing suite is green before touching anything**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS. This is a refactor with no new test; the existing window tests are what prove it behavior-preserving.
 
-- [ ] **Step 2: Replace the body of `UsageJson.cs`**
+- [x] **Step 2: Replace the body of `UsageJson.cs`**
 
 ```csharp
 using System.Globalization;
@@ -92,12 +94,12 @@ internal static class UsageJson
 }
 ```
 
-- [ ] **Step 3: Verify the suite is still green**
+- [x] **Step 3: Verify the suite is still green**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS, same test count as Step 1. A failure here means the refactor changed behavior.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageJson.cs
@@ -121,7 +123,7 @@ git commit -m "refactor: extract shared percent and resets_at parsing in UsageJs
   - `UsageSnapshot.ScopedLimits` → `IReadOnlyList<ScopedLimit>`, never null
   - `internal static IReadOnlyList<ScopedLimit> UsageJson.ReadScopedLimits(JsonElement parent)`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `UsageCacheReaderTests.cs`. `Wrap` builds a `.claude.json` around a `utilization` body so each fixture stays readable.
 
@@ -265,12 +267,12 @@ Append to `UsageCacheReaderTests.cs`. `Wrap` builds a `.claude.json` around a `u
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter ScopedLimit`
 Expected: FAIL to **compile** — `ScopedLimit` and `UsageSnapshot.ScopedLimits` do not exist yet. A compile failure is the correct red for a missing type; do not proceed until the error names those two symbols.
 
-- [ ] **Step 3: Add the record and the snapshot member**
+- [x] **Step 3: Add the record and the snapshot member**
 
 Replace `src/ClaudeUsageTray/Core/UsageSnapshot.cs`:
 
@@ -304,7 +306,7 @@ how closely the two must agree for the generated `Deconstruct`), rename the para
 `scopedLimits` and keep a separate `ScopedLimits` property rather than making the public surface
 nullable.
 
-- [ ] **Step 4: Add `ReadScopedLimits` to `UsageJson.cs`**
+- [x] **Step 4: Add `ReadScopedLimits` to `UsageJson.cs`**
 
 Insert before the closing brace:
 
@@ -376,7 +378,7 @@ Insert before the closing brace:
     }
 ```
 
-- [ ] **Step 5: Read the limits in `UsageCacheReader.cs`**
+- [x] **Step 5: Read the limits in `UsageCacheReader.cs`**
 
 Replace the window-reading block (currently lines 31-37):
 
@@ -393,12 +395,12 @@ Replace the window-reading block (currently lines 31-37):
             return new UsageSnapshot(fetchedAt, five, seven, scoped);
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS, including every pre-existing test. Output must be free of warnings.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageSnapshot.cs src/ClaudeUsageTray/Core/UsageJson.cs \
@@ -420,7 +422,7 @@ Same reader, different nesting — the API returns these fields at the response 
 - Consumes: `UsageJson.ReadScopedLimits` (Task 2).
 - Produces: nothing new.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `UsageApiClientTests.cs`. Match the existing file's helper for stubbing a response — read the top of the file first and reuse it rather than adding a second stub.
 
@@ -448,12 +450,12 @@ Append to `UsageApiClientTests.cs`. Match the existing file's helper for stubbin
     }
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter ScopedLimits_AreReadFromTheResponseRoot`
 Expected: FAIL — `Assert.Single` gets an empty collection, because the client does not read `limits` yet. If it instead fails to compile on `FetchAsync`, adapt the call to the helper the file already has.
 
-- [ ] **Step 3: Read the limits in `UsageApiClient.cs`**
+- [x] **Step 3: Read the limits in `UsageApiClient.cs`**
 
 Replace the two window reads and the construction:
 
@@ -464,12 +466,12 @@ Replace the two window reads and the construction:
             return new UsageFetchResult(new UsageSnapshot(now, five, seven, scoped), false, false, null);
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/UsageApiClient.cs tests/ClaudeUsageTray.Tests/UsageApiClientTests.cs
@@ -498,7 +500,7 @@ git commit -m "feat: parse scoped weekly limits from the usage API response"
   - `UsageSnapshot.Credits` → `CreditUsage?`
   - `internal static CreditUsage? UsageJson.ReadCredits(JsonElement parent)`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `UsageCacheReaderTests.cs`:
 
@@ -586,12 +588,12 @@ Append to `UsageCacheReaderTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter Credits_`
 Expected: FAIL to compile — `Money`, `CreditState`, `CreditUsage`, and `UsageSnapshot.Credits` do not exist.
 
-- [ ] **Step 3: Add the records to `UsageSnapshot.cs`**
+- [x] **Step 3: Add the records to `UsageSnapshot.cs`**
 
 Insert after `ScopedLimit` and extend the snapshot:
 
@@ -625,7 +627,7 @@ public sealed record UsageSnapshot(
 }
 ```
 
-- [ ] **Step 4: Add the credit readers to `UsageJson.cs`**
+- [x] **Step 4: Add the credit readers to `UsageJson.cs`**
 
 ```csharp
     /// <summary>Credits from the authoritative money-typed `spend` block, falling back to the
@@ -682,7 +684,7 @@ public sealed record UsageSnapshot(
             : whenAbsent;
 ```
 
-- [ ] **Step 5: Wire both readers**
+- [x] **Step 5: Wire both readers**
 
 In `UsageCacheReader.cs`, add `credits` alongside `scoped` inside the `utilization` block and pass it:
 
@@ -708,12 +710,12 @@ In `UsageApiClient.cs`:
                 new UsageSnapshot(now, five, seven, scoped, credits), false, false, null);
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS. Note the pre-existing `ValidJson` fixture contains `"extra_usage": {}, "spend": 0` — both unusable shapes, so `Credits` must come out null there. If `Credits_Absent_IsNull` fails, a reader is accepting a non-object.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core src/ClaudeUsageTray/Core/UsageJson.cs tests/ClaudeUsageTray.Tests/UsageCacheReaderTests.cs
@@ -733,7 +735,7 @@ git commit -m "feat: parse credit usage from spend with an extra_usage fallback"
 - Produces: `public static string CreditFormat.Describe(CreditUsage c)` and
   `public static string? CreditFormat.DescribeState(CreditState s)` (null when there is nothing worth saying).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -785,12 +787,12 @@ public class CreditFormatTests
 }
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter CreditFormat`
 Expected: FAIL to compile — `CreditFormat` does not exist.
 
-- [ ] **Step 3: Write `CreditFormat.cs`**
+- [x] **Step 3: Write `CreditFormat.cs`**
 
 ```csharp
 using System.Globalization;
@@ -831,12 +833,12 @@ public static class CreditFormat
 }
 ```
 
-- [ ] **Step 4: Run them to verify they pass**
+- [x] **Step 4: Run them to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/CreditFormat.cs tests/ClaudeUsageTray.Tests/CreditFormatTests.cs
@@ -860,7 +862,7 @@ Row selection is logic, so it lives in Core where it can be tested; `UsagePopup`
   - `public static ScopedRows PopupRows.ForScopedLimits(IReadOnlyList<ScopedLimit> limits)`
   - `public const int PopupRows.Cap = 4`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 using ClaudeUsageTray.Core;
@@ -930,12 +932,12 @@ public class PopupRowsTests
 }
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj --filter PopupRows`
 Expected: FAIL to compile — `PopupRows` does not exist.
 
-- [ ] **Step 3: Write `PopupRows.cs`**
+- [x] **Step 3: Write `PopupRows.cs`**
 
 ```csharp
 namespace ClaudeUsageTray.Core;
@@ -967,12 +969,12 @@ public static class PopupRows
 }
 ```
 
-- [ ] **Step 4: Run them to verify they pass**
+- [x] **Step 4: Run them to verify they pass**
 
 Run: `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/PopupRows.cs tests/ClaudeUsageTray.Tests/PopupRowsTests.cs
@@ -992,7 +994,7 @@ WinForms construction is not unit-tested here (the existing popup isn't either);
 - Consumes: `CreditFormat.Describe`, `CreditFormat.DescribeState` (Task 5); `PopupRows.ForScopedLimits`, `ScopedRows` (Task 6); `UsageSnapshot.ScopedLimits`, `UsageSnapshot.Credits` (Tasks 2, 4).
 - Produces: nothing consumed by later tasks.
 
-- [ ] **Step 1: Extract the bar primitive**
+- [x] **Step 1: Extract the bar primitive**
 
 Replace `AddWindowRow` (currently lines 66-102) with a caption/bar split. `AddBar` is the shared
 primitive; scoped limits and credits get their own captions rather than being forced through a
@@ -1076,7 +1078,7 @@ primitive; scoped limits and credits get their own captions rather than being fo
     }
 ```
 
-- [ ] **Step 2: Add the rows to the constructor**
+- [x] **Step 2: Add the rows to the constructor**
 
 In the `else` branch, after the two `AddWindowRow` calls and before the `updated` label:
 
@@ -1096,19 +1098,19 @@ In the `else` branch, after the two `AddWindowRow` calls and before the `updated
             if (snapshot.Credits is { } credits) AddCreditRow(layout, credits, settings);
 ```
 
-- [ ] **Step 3: Build and run the whole suite**
+- [x] **Step 3: Build and run the whole suite**
 
 Run: `dotnet build ClaudeUsageTray.sln` then `dotnet test tests/ClaudeUsageTray.Tests/ClaudeUsageTray.Tests.csproj`
 Expected: build succeeds with no warnings; all tests pass, including `SmokeTests`.
 
-- [ ] **Step 4: Look at the running app**
+- [x] **Step 4: Look at the running app**
 
 Run: `dotnet run --project src/ClaudeUsageTray/ClaudeUsageTray.csproj`
 Left-click the tray icon. With the current `~/.claude.json`, expect a `Fable weekly — 100%` bar
 between the 7-day bar and a `Credits — 40.01 / 40.00 EUR (100%)` bar, followed by a red
 `limit reached` line. Confirm the popup fits on screen and the 5-hour and 7-day rows are unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs

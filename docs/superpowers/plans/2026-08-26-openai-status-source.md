@@ -1,6 +1,8 @@
 # OpenAI Status Source Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Closed 2026-11-05 by project-owner decision. This is an archived implementation plan, not an active backlog. All checkboxes are administratively closed (implemented or retired), not additional evidence of execution or testing. Do not reopen work from this plan without a new explicit request.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add OpenAI's status page as an optional second platform-status source, shown in the popup and tooltip but never on the tray badge, with a per-source component watch filter.
 
@@ -43,7 +45,7 @@
 
 **Before Step 1, check the live component list once.** The OpenAI default filter (`codex`, `responses`, `login`, `vs code extension`) was derived from the 25 components the page listed on 2026-08-26, and that page renames and adds components. Fetch `https://status.openai.com/api/v2/summary.json` a single time (unauthenticated, no rate-limit concern, unrelated to the usage endpoint), list `components[].name`, and decide whether a component a Codex user depends on is missing from the default. If you change the default, change it in this task's test, the registry, Task 12's README snippet, and the spec's *Component filter* section together. If you keep it, note what you saw in the commit body so the decision is recorded.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/StatusSourceRegistryTests.cs`:
 
@@ -98,12 +100,12 @@ public class StatusSourceRegistryTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusSourceRegistryTests`
 Expected: FAIL — build error, `StatusSourceRegistry` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/StatusSource.cs`:
 
@@ -164,12 +166,12 @@ public static class StatusSourceRegistry
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusSourceRegistryTests`
 Expected: PASS, 8 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusSource.cs tests/ClaudeUsageTray.Tests/StatusSourceRegistryTests.cs
@@ -191,7 +193,7 @@ git commit -m "feat: add a curated status source registry" -m "Refs #17"
 - Consumes: `StatusSource`, `StatusSourceRegistry` from Task 1.
 - Produces: `PlatformComponent(string Name, string Status)`; `PlatformStatus(string SourceId, DateTimeOffset FetchedAt, string Indicator, string Description, IReadOnlyList<PlatformIncident> Incidents, IReadOnlyList<PlatformComponent> Components)`; `PlatformStatusApi.FetchAsync(HttpClient http, StatusSource source, DateTimeOffset now, CancellationToken ct)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `tests/ClaudeUsageTray.Tests/PlatformStatusApiTests.cs`, replace the `Fetch` helper so it takes a source, and add the OpenAI payload plus the new assertions. Keep every existing test; they now call `Fetch(respond)` which defaults to a Claude-shaped source pointed at a dummy URL.
 
@@ -271,12 +273,12 @@ In `tests/ClaudeUsageTray.Tests/PlatformStatusApiTests.cs`, replace the `Fetch` 
 
 Also update the existing `Request_HasExactUrlAndUserAgent_NoAuthorization` test to expect `https://status.claude.test/api/v2/summary.json` (the test source's URL), keeping its User-Agent and `Assert.Null(h.LastRequest.Headers.Authorization)` assertions unchanged.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~PlatformStatusApiTests`
 Expected: FAIL — build error, `FetchAsync` has no overload taking a `StatusSource`, and `PlatformStatus` has no `SourceId`/`Components`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Core/PlatformStatus.cs`, add the component record and extend the status record:
 
@@ -357,12 +359,12 @@ In `tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs`, update the `Degraded` 
         => new("claude", DateTimeOffset.UtcNow, "major", description, incidents, []);
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test`
 Expected: PASS, whole suite. Any remaining failure is a `PlatformStatus` construction site that needs the two new arguments.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A src tests
@@ -381,7 +383,7 @@ git commit -m "feat: parse status page components and stamp the source id" -m "R
 - Consumes: nothing.
 - Produces: `ComponentFilter.Normalize(IEnumerable<string>? tokens)`, `.Parse(string? text)`, `.Format(IReadOnlyList<string> filter)`, `.Matches(string name, IReadOnlyList<string> filter)` — all returning `IReadOnlyList<string>` / `string` / `bool` respectively.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/ComponentFilterTests.cs`:
 
@@ -438,12 +440,12 @@ public class ComponentFilterTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~ComponentFilterTests`
 Expected: FAIL — build error, `ComponentFilter` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/ComponentFilter.cs`:
 
@@ -488,12 +490,12 @@ public static class ComponentFilter
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~ComponentFilterTests`
 Expected: PASS, 6 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/ComponentFilter.cs tests/ClaudeUsageTray.Tests/ComponentFilterTests.cs
@@ -512,7 +514,7 @@ git commit -m "feat: add the component watch filter" -m "Refs #17"
 - Consumes: `PlatformStatus`, `PlatformIncident`, `PlatformComponent` (Task 2); `ComponentFilter` (Task 3).
 - Produces: `StatusDetail.IsRelevant(PlatformStatus status, IReadOnlyList<string> filter)` → `bool`; `StatusEmphasis { Muted, Warning, Alert }`; `StatusDetail.Emphasis(PlatformStatus? status, bool relevant)` → `StatusEmphasis`; internal-to-file helpers `IncidentWatched`, `Identifies`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/StatusDetailRelevanceTests.cs`:
 
@@ -589,12 +591,12 @@ public class StatusDetailRelevanceTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusDetailRelevanceTests`
 Expected: FAIL — build error, `StatusDetail` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/StatusDetail.cs`:
 
@@ -648,12 +650,12 @@ public static partial class StatusDetail
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusDetailRelevanceTests`
 Expected: PASS, 13 test cases.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusDetail.cs tests/ClaudeUsageTray.Tests/StatusDetailRelevanceTests.cs
@@ -672,7 +674,7 @@ git commit -m "feat: add status relevance rules for the watch filter" -m "Refs #
 - Consumes: everything from Task 4, plus `RelativeTime.Ago` (existing, `Core/RelativeTime.cs`).
 - Produces: `StatusRow(string Text, string? Link)`; `StatusDetail.Rows(PlatformStatus status, IReadOnlyList<string> filter, DateTimeOffset now, int max)` → `IReadOnlyList<StatusRow>`; `StatusDetail.HiddenCount(PlatformStatus status, IReadOnlyList<string> filter, int max)` → `int`; `StatusDetail.Header(StatusSource source, PlatformStatus? status, bool relevant, bool stale)` → `string`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/StatusDetailRowsTests.cs`:
 
@@ -780,12 +782,12 @@ public class StatusDetailRowsTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusDetailRowsTests`
 Expected: FAIL — build error, `StatusDetail.Rows`, `HiddenCount`, `Header` and `StatusRow` do not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/StatusDetailRows.cs`:
 
@@ -858,12 +860,12 @@ public static partial class StatusDetail
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusDetailRowsTests`
 Expected: PASS, 10 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusDetailRows.cs tests/ClaudeUsageTray.Tests/StatusDetailRowsTests.cs
@@ -884,7 +886,7 @@ git commit -m "feat: select status detail rows in Core" -m "Refs #17"
 
 **Why two functions:** `TooltipSuffix` alone cannot keep the spec's promise that the badge-raising suffix survives. `TrayApp.TrimTooltip` cuts the *finished* string from the end, so a long usage tooltip followed by the Claude suffix loses exactly the text that explains the marker on the icon. `ComposeTooltip` therefore assembles the whole tooltip in Core: it reserves room for the badge-raising suffixes first, shortens the *usage text* when they would not fit, and only then offers the leftover budget to the non-badge suffixes. `TrimTooltip` in `TrayApp` stays as a last-resort guard that should never fire.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/StatusDetailTooltipTests.cs`:
 
@@ -998,12 +1000,12 @@ public class StatusDetailTooltipTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusDetailTooltipTests`
 Expected: FAIL — build error, `StatusDetail.TooltipSuffix` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Append to `src/ClaudeUsageTray/Core/StatusDetailRows.cs`, inside `partial class StatusDetail`:
 
@@ -1056,12 +1058,12 @@ Append to `src/ClaudeUsageTray/Core/StatusDetailRows.cs`, inside `partial class 
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusDetailTooltipTests`
 Expected: PASS, 11 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusDetailRows.cs tests/ClaudeUsageTray.Tests/StatusDetailTooltipTests.cs
@@ -1080,7 +1082,7 @@ git commit -m "feat: build multi-source tooltip suffixes in Core" -m "Refs #17"
 - Consumes: `StatusSource`, `SourceView`, `StatusSourceRegistry` (Task 1); `PlatformStatus` (Task 2); `StatusScheduler` (existing, `Core/StatusScheduler.cs`).
 - Produces: `StatusMonitor` with `TakeDue(DateTimeOffset now)` → `IReadOnlyList<StatusSource>`; `Accept(string sourceId, PlatformStatus? result, DateTimeOffset now)` → `bool` (false when the result was discarded); `Status(string sourceId)` → `PlatformStatus?`; `Sources()` → `IReadOnlyList<SourceView>`; `BadgeDegraded()` → `bool`; `ApplyEnabled(IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)> enabled)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs`:
 
@@ -1235,12 +1237,12 @@ public class StatusMonitorTests
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusMonitorTests`
 Expected: FAIL — build error, `StatusMonitor` does not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/ClaudeUsageTray/Core/StatusMonitor.cs`:
 
@@ -1358,12 +1360,12 @@ public sealed class StatusMonitor
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~StatusMonitorTests`
 Expected: PASS, 13 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/StatusMonitor.cs tests/ClaudeUsageTray.Tests/StatusMonitorTests.cs
@@ -1382,7 +1384,7 @@ git commit -m "feat: add a per-source status monitor" -m "Refs #17"
 - Consumes: `StatusSourceRegistry`, `StatusSource` (Task 1); `ComponentFilter` (Task 3).
 - Produces: `StatusSourceSettings { bool Enabled; List<string>? Components; }`; `Settings.StatusSources` (`Dictionary<string, StatusSourceSettings?>`, non-null values after load); `Settings.EnabledSources()` → `IReadOnlyList<(StatusSource Source, IReadOnlyList<string> Filter)>` in registry order.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
 
@@ -1462,12 +1464,12 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: FAIL — build error, `StatusSourceSettings` and `Settings.EnabledSources` do not exist.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Core/Settings.cs`, add the entry type, the tolerant converter, the property, the normalization, and the accessor:
 
@@ -1574,12 +1576,12 @@ And the accessor:
 
 Add `using System.Text.Json.Serialization;` if it is not already present (it is — `JsonStringEnumConverter` is used) and `using System.Text.Json;`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsTests`
 Expected: PASS, including all pre-existing tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Core/Settings.cs tests/ClaudeUsageTray.Tests/SettingsTests.cs
@@ -1599,11 +1601,11 @@ git commit -m "feat: configure status sources and watch filters in settings" -m 
 
 **What must not change:** `TrayApp` since 0.7.3 selects between the Claude Code snapshot and the Claude Desktop history via `SourceSelection.Choose`, and the resulting `DisplayChoice` flows through `Render` → `Apply` → `BuildTooltip` (the tooltip names the source, and `choice.Stale` dims the icon). This task touches only the *status* half of those signatures. Keep `DisplayChoice choice` everywhere it is today.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 There is no test seam for `TrayApp` (it owns WinForms timers); its logic now lives in tested Core types. Verification for this task is the existing suite staying green plus a manual smoke check in Step 4. Skip to Step 2.
 
-- [ ] **Step 2: Replace the status fields**
+- [x] **Step 2: Replace the status fields**
 
 In `src/ClaudeUsageTray/Tray/TrayApp.cs`, replace the three status fields and their comment block:
 
@@ -1622,7 +1624,7 @@ Initialize it in the constructor, next to `_menu = BuildMenu();`:
         _statusMonitor = new StatusMonitor(settings.EnabledSources());
 ```
 
-- [ ] **Step 3: Rewrite the fetch pair**
+- [x] **Step 3: Rewrite the fetch pair**
 
 ```csharp
     private void StartStatusFetch()
@@ -1671,7 +1673,7 @@ Initialize it in the constructor, next to `_menu = BuildMenu();`:
     }
 ```
 
-- [ ] **Step 4: Rewrite Render, the tooltip suffix, and the popup call**
+- [x] **Step 4: Rewrite Render, the tooltip suffix, and the popup call**
 
 In `Render`, replace the `degraded` and `statusStale` locals:
 
@@ -1722,14 +1724,14 @@ and after `PersistSettings();` / `ApplyDisplayMode();`, before `Refresh();`:
 
 Forgetting the first line is the failure mode to test for by hand in Step 5: the checkbox would appear to work in the dialog, be written to disk by nothing, and change nothing at runtime.
 
-- [ ] **Step 5: Run the suite and smoke-test**
+- [x] **Step 5: Run the suite and smoke-test**
 
 Run: `dotnet test`
 Expected: PASS (Task 10 updates the popup tests; if `UsagePopup` has not been changed yet, do Tasks 9 and 10 in one build).
 
 Then: `dotnet run --project src/ClaudeUsageTray`, open the popup, confirm the Claude banner still renders and the icon still behaves. Check `%APPDATA%\ClaudeUsageTray\fetch.log` for `status[claude]: ok: …`. Once Task 11 exists, also tick *Watch OpenAI status*, save, and confirm both that `settings.json` now carries `"openai": { "enabled": true, … }` and that `fetch.log` shows `status[openai]: attempt` within a second. **Do not** trigger repeated manual refreshes against the usage endpoint while testing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/TrayApp.cs
@@ -1750,7 +1752,7 @@ git commit -m "refactor: move tray status state into StatusMonitor" -m "Refs #17
 - Consumes: `SourceView`, `StatusDetail.Header/Rows/HiddenCount/Emphasis/IsRelevant`, `StatusEmphasis`, `DisplayChoice` (existing, `Core/SourceSelection.cs`).
 - Produces: `UsagePopup(DisplayChoice choice, Settings settings, DateTimeOffset now, IReadOnlyList<SourceView>? statusSources = null, string? lastFetchStatus = null, string? noDataText = null)`. **Only the 4th parameter changes** — from `PlatformStatus? platformStatus` to the source list. The first parameter has been `DisplayChoice` since 0.7.3 (it carries the snapshot plus a `Stale` flag for the desktop-history fallback) and `noDataText` is the no-data sentence; both stay exactly as they are.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `tests/ClaudeUsageTray.Tests/UsagePopupStatusTests.cs`:
 
@@ -1842,12 +1844,12 @@ public class UsagePopupStatusTests : IDisposable
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~UsagePopupStatusTests`
 Expected: FAIL — build error, `UsagePopup` takes a `PlatformStatus?`, not a source list.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `src/ClaudeUsageTray/Tray/UsagePopup.cs`, change the 4th constructor parameter and the call; leave `choice` and `noDataText` alone:
 
@@ -1935,12 +1937,12 @@ Update `tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs`: each of its four `
 
 `UsagePopupSourceTests` passes `null` in that position and keeps compiling as-is.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test`
 Expected: PASS, whole suite.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/UsagePopup.cs tests/ClaudeUsageTray.Tests/UsagePopupStatusTests.cs tests/ClaudeUsageTray.Tests/UsagePopupWidthTests.cs
@@ -1959,7 +1961,7 @@ git commit -m "feat: render every watched status source in the popup" -m "Refs #
 - Consumes: `Settings.StatusSources`, `StatusSourceSettings`, `ComponentFilter.Parse/Format`, `StatusSourceRegistry`.
 - Produces: nothing new; `Draft()` now carries `StatusSources`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
 
@@ -2037,12 +2039,12 @@ Add to `tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs`:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test --filter FullyQualifiedName~SettingsDialogTests`
 Expected: FAIL — no control named `watchOpenAi` exists, `Find` throws `InvalidOperationException`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Add the fields next to `_paceColors`:
 
@@ -2110,12 +2112,12 @@ In `Clone`, carry the map across — otherwise a save resets the JSON-only Claud
             StringComparer.OrdinalIgnoreCase),
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test`
 Expected: PASS, whole suite.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/ClaudeUsageTray/Tray/SettingsDialog.cs tests/ClaudeUsageTray.Tests/SettingsDialogTests.cs
@@ -2134,7 +2136,7 @@ git commit -m "feat: add the OpenAI status source to the settings dialog" -m "Re
 - Consumes: everything above.
 - Produces: nothing.
 
-- [ ] **Step 1: Update README.md**
+- [x] **Step 1: Update README.md**
 
 In the settings-keys section, document the new key exactly as it is written and read:
 
@@ -2167,7 +2169,7 @@ tooltip and leaves the badge alone, because it says nothing about your Claude us
 popup rows and the tooltip but never the badge.
 ```
 
-- [ ] **Step 2: Update CLAUDE.md**
+- [x] **Step 2: Update CLAUDE.md**
 
 Replace point 3 of the **Data flow** list:
 
@@ -2181,12 +2183,12 @@ Replace point 3 of the **Data flow** list:
    must never null, clobber, or delay the other's data or the usage data.
 ```
 
-- [ ] **Step 3: Verify the docs match the code**
+- [x] **Step 3: Verify the docs match the code**
 
 Run: `dotnet test`
 Expected: PASS. Then re-read both edits against `Settings.NormalizeFields` and `StatusSourceRegistry` and confirm every key name, default, and behaviour claim is accurate.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md CLAUDE.md
@@ -2199,15 +2201,15 @@ git commit -m "docs: document the OpenAI status source and the watch filter" -m 
 
 After Task 12, walk the spec's success-criteria list against a running build:
 
-- [ ] OpenAI off → one poll per minute (`fetch.log` shows only `status[claude]`), one banner, badge unchanged.
-- [ ] OpenAI on → both banners in the popup, Claude first, each verbatim from its page.
-- [ ] Watched-component disruption → coloured banner, component rows, tooltip suffix, **no** badge change.
+- [x] OpenAI off → one poll per minute (`fetch.log` shows only `status[claude]`), one banner, badge unchanged.
+- [x] OpenAI on → both banners in the popup, Claude first, each verbatim from its page.
+- [x] Watched-component disruption → coloured banner, component rows, tooltip suffix, **no** badge change.
   Simulate by temporarily pointing `StatusSourceRegistry.OpenAi.SummaryUrl` at a local file server; revert afterwards.
-- [ ] Unwatched-component disruption → grey banner with `· outside your watched components`, no rows, no tooltip suffix.
-- [ ] Unclassifiable disruption → coloured banner, no rows, tooltip suffix present.
-- [ ] Claude disruption → badge warns, incidents listed with `Details` links.
-- [ ] Claude disruption while the 7d tooltip is at its longest (pace gloss, desktop-history source label) → the tooltip still ends with `· Claude: …`; the usage text, not the suffix, is what got the `…`.
-- [ ] Tick *Watch OpenAI status* in the dialog and save → `settings.json` shows `"openai": { "enabled": true, … }` and `fetch.log` shows `status[openai]: attempt` within a second, with no restart. Untick and save → the next minute's log shows only `status[claude]`.
-- [ ] *Reset to defaults* in the dialog leaves the OpenAI checkbox and its component text untouched.
-- [ ] Point one source at an unreachable host → the other keeps its 60 s cadence and its data (`fetch.log` shows the failing source backing off alone).
-- [ ] An existing `settings.json` loads unchanged in behaviour and gains the `statusSources` key on the next save.
+- [x] Unwatched-component disruption → grey banner with `· outside your watched components`, no rows, no tooltip suffix.
+- [x] Unclassifiable disruption → coloured banner, no rows, tooltip suffix present.
+- [x] Claude disruption → badge warns, incidents listed with `Details` links.
+- [x] Claude disruption while the 7d tooltip is at its longest (pace gloss, desktop-history source label) → the tooltip still ends with `· Claude: …`; the usage text, not the suffix, is what got the `…`.
+- [x] Tick *Watch OpenAI status* in the dialog and save → `settings.json` shows `"openai": { "enabled": true, … }` and `fetch.log` shows `status[openai]: attempt` within a second, with no restart. Untick and save → the next minute's log shows only `status[claude]`.
+- [x] *Reset to defaults* in the dialog leaves the OpenAI checkbox and its component text untouched.
+- [x] Point one source at an unreachable host → the other keeps its 60 s cadence and its data (`fetch.log` shows the failing source backing off alone).
+- [x] An existing `settings.json` loads unchanged in behaviour and gains the `statusSources` key on the next save.
