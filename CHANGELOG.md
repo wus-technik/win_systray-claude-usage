@@ -10,6 +10,12 @@ written for the person deciding whether to install it — not for the person who
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-10
+
+### Fixed
+
+- Status-page group headings no longer appear as disrupted components in the popup.
+
 ## [0.8.1-beta.1] - 2026-11-05
 
 ### Fixed
@@ -310,7 +316,8 @@ First release on the beta channel, and the release that introduces it.
 [releases page](https://github.com/wus-technik/win_systray-claude-usage/releases) for what shipped in
 them.
 
-[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.9.0
 [0.7.3]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3
 [0.7.3-beta.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3-beta.1
 [0.7.3-beta.2]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3-beta.2
