@@ -10,6 +10,13 @@ written for the person deciding whether to install it — not for the person who
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-16
+
+### Changed
+
+- Released the current Claude and Codex usage tray as version 1.0.0. Functionality is unchanged
+  from 0.9.0.
+
 ## [0.9.0] - 2026-11-10
 
 ### Fixed
@@ -316,7 +323,8 @@ First release on the beta channel, and the release that introduces it.
 [releases page](https://github.com/wus-technik/win_systray-claude-usage/releases) for what shipped in
 them.
 
-[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/wus-technik/win_systray-claude-usage/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v1.0.0
 [0.9.0]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.9.0
 [0.7.3]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3
 [0.7.3-beta.1]: https://github.com/wus-technik/win_systray-claude-usage/releases/tag/v0.7.3-beta.1
